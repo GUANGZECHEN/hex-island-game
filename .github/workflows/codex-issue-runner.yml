@@ -1,0 +1,92 @@
+name: Codex issue runner
+on:
+  issues:
+    types: [opened, reopened, edited]
+permissions: {}
+concurrency:
+  group: codex-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  execute:
+    if: >-
+      github.repository == 'GUANGZECHEN/hex-island-game' &&
+      github.actor == 'GUANGZECHEN' &&
+      github.event.issue.user.login == 'GUANGZECHEN' &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.issue.title, '[READY]') &&
+      (github.event.action != 'edited' ||
+       (github.event.changes.title.from != null &&
+        !startsWith(github.event.changes.title.from, '[READY]')))
+    runs-on: [self-hosted, Windows, hex-island-codex]
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Remove the previous dedicated task checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Remove-OwnedPath([string]$path) {
+            if (-not (Test-Path -LiteralPath $path)) { return }
+            $item = Get-Item -LiteralPath $path -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Remove-Item -LiteralPath $path -Force; return }
+            if ($item.PSIsContainer) { Get-ChildItem -LiteralPath $path -Force | ForEach-Object { Remove-OwnedPath $_.FullName } }
+            Remove-Item -LiteralPath $path -Force
+          }
+          $task = Join-Path $env:GITHUB_WORKSPACE 'task'
+          Remove-OwnedPath $task
+      - name: Fresh trusted main checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          clean: true
+          persist-credentials: false
+          path: task
+      - name: Run one authorized issue
+        shell: pwsh
+        working-directory: task
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/codex-runner/run.mjs
+      - name: Report bootstrap failure
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            if ($env:GITHUB_REPOSITORY -ne 'GUANGZECHEN/hex-island-game' -or $env:ISSUE_NUMBER -notmatch '^[1-9][0-9]*$') { exit 1 }
+            $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+            $url = "https://api.github.com/repos/GUANGZECHEN/hex-island-game/issues/$env:ISSUE_NUMBER"
+            $issue = Invoke-RestMethod -Uri $url -Headers $headers
+            if ($issue.user.login -ne 'GUANGZECHEN' -or $issue.state -ne 'open' -or $issue.title -notmatch '^\[(READY|WORKING)\]') { exit 0 }
+            $title = $issue.title -replace '^\[(READY|WORKING)\]', '[BLOCKED]'
+            Invoke-RestMethod -Method Patch -Uri $url -Headers $headers -ContentType 'application/json' -Body (@{title=$title} | ConvertTo-Json -Compress) | Out-Null
+            $body = @{body='The runner could not complete the task. Check the Actions run and local runner prerequisites before retrying; sensitive output was suppressed.'} | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri "$url/comments" -Headers $headers -ContentType 'application/json' -Body $body | Out-Null
+          } catch { Write-Error 'Could not report the runner failure; inspect the Actions run.'; exit 1 }
+      - name: Clean task checkout and task temporary files
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_RUN_ID -notmatch '^[0-9]+$' -or $env:GITHUB_RUN_ATTEMPT -notmatch '^[0-9]+$') { throw 'Invalid run identity.' }
+          function Remove-OwnedPath([string]$path) {
+            if (-not (Test-Path -LiteralPath $path)) { return }
+            $item = Get-Item -LiteralPath $path -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Remove-Item -LiteralPath $path -Force; return }
+            if ($item.PSIsContainer) { Get-ChildItem -LiteralPath $path -Force | ForEach-Object { Remove-OwnedPath $_.FullName } }
+            Remove-Item -LiteralPath $path -Force
+          }
+          $task = Join-Path $env:GITHUB_WORKSPACE 'task'
+          Remove-OwnedPath $task
+          $prefix = "codex-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          foreach ($suffix in @('-prompt.txt','-spec.json','-result.json','-gitconfig','-gh')) {
+            $path = Join-Path $env:RUNNER_TEMP "$prefix$suffix"
+            Remove-OwnedPath $path
+          }
