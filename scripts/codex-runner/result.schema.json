@@ -1,1 +1,1 @@
-{"type":"object","properties":{"outcome":{"type":"string","enum":["pr","decision","failed"]},"pr_number":{"type":["integer","null"]}},"required":["outcome","pr_number"],"additionalProperties":false}
+{"type":"object","properties":{"outcome":{"type":"string","enum":["ready","decision","failed"]},"title":{"type":"string"},"body":{"type":"string"}},"required":["outcome","title","body"],"additionalProperties":false}

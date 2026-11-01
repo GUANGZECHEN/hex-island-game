@@ -28,14 +28,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $task = Join-Path $env:GITHUB_WORKSPACE 'task'
-          if (Test-Path -LiteralPath $task) {
-            $item = Get-Item -LiteralPath $task -Force
-            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Remove-Item -LiteralPath $task -Force }
-            else { Remove-Item -LiteralPath $task -Recurse -Force }
+          function Remove-OwnedPath([string]$path) {
+            if (-not (Test-Path -LiteralPath $path)) { return }
+            $item = Get-Item -LiteralPath $path -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Remove-Item -LiteralPath $path -Force; return }
+            if ($item.PSIsContainer) { Get-ChildItem -LiteralPath $path -Force | ForEach-Object { Remove-OwnedPath $_.FullName } }
+            Remove-Item -LiteralPath $path -Force
           }
+          $task = Join-Path $env:GITHUB_WORKSPACE 'task'
+          Remove-OwnedPath $task
       - name: Fresh trusted main checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
           clean: true
@@ -67,3 +70,23 @@ jobs:
             $body = @{body='The runner could not complete the task. Check the Actions run and local runner prerequisites before retrying; sensitive output was suppressed.'} | ConvertTo-Json -Compress
             Invoke-RestMethod -Method Post -Uri "$url/comments" -Headers $headers -ContentType 'application/json' -Body $body | Out-Null
           } catch { Write-Error 'Could not report the runner failure; inspect the Actions run.'; exit 1 }
+      - name: Clean task checkout and task temporary files
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_RUN_ID -notmatch '^[0-9]+$' -or $env:GITHUB_RUN_ATTEMPT -notmatch '^[0-9]+$') { throw 'Invalid run identity.' }
+          function Remove-OwnedPath([string]$path) {
+            if (-not (Test-Path -LiteralPath $path)) { return }
+            $item = Get-Item -LiteralPath $path -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { Remove-Item -LiteralPath $path -Force; return }
+            if ($item.PSIsContainer) { Get-ChildItem -LiteralPath $path -Force | ForEach-Object { Remove-OwnedPath $_.FullName } }
+            Remove-Item -LiteralPath $path -Force
+          }
+          $task = Join-Path $env:GITHUB_WORKSPACE 'task'
+          Remove-OwnedPath $task
+          $prefix = "codex-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          foreach ($suffix in @('-prompt.txt','-spec.json','-result.json','-gitconfig','-gh')) {
+            $path = Join-Path $env:RUNNER_TEMP "$prefix$suffix"
+            Remove-OwnedPath $path
+          }
