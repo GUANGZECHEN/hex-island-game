@@ -18,3 +18,7 @@ Each task should include:
 - Out-of-scope items
 
 Before implementation, identify applicable rules and escalate conflicts or consequential ambiguities. Report changed files, tests performed, unresolved issues, and compliance with design principles. Never report unexecuted tests as passed.
+
+## Engineering-task model routing
+
+Apply the approved deterministic routing policy in docs/orchestration/MODEL_ROUTING_POLICY.md: simple uses gpt-5.6-luna with high reasoning; complex uses gpt-6.1-terra with high reasoning; decision does not start a coding agent. Failure never triggers an automatic retry with a different model. Only an explicit Architect decision can reclassify a task.
