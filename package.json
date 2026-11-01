@@ -1,0 +1,8 @@
+{
+  "name": "hex-island-webrtc-poc",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "dev": "vite", "typecheck": "tsc --noEmit", "build": "tsc --noEmit && vite build", "test": "node --experimental-strip-types --test tests/*.test.ts" },
+  "devDependencies": { "typescript": "^5.8.3", "vite": "^6.3.5" }
+}
