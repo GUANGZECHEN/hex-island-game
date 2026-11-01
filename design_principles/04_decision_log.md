@@ -15,3 +15,7 @@ Dates are not supplied in the task specification and are recorded as unknown; th
 D006: The website may be public; private rooms require a valid invitation or capability, and the website URL alone grants no private-room access.
 D007: Evaluate Cloudflare Workers and SQLite-backed Durable Objects for signaling and temporary room coordination; keep actual game traffic peer-to-peer through WebRTC where practical.
 D008: The intended game-state architecture is host-authoritative; implementing game state is outside Task 00-03.
+
+## Task ORCH-003 approved decision
+
+D009: The Architect owns engineering-task classification. Simple routes to gpt-5.6-luna with high reasoning; complex routes to gpt-6.1-terra with high reasoning; decision does not start a coding agent. Failures do not trigger automatic model escalation; reclassification requires an explicit Architect decision.

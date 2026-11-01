@@ -17,3 +17,7 @@ Before every development task, read `design_principles/README.md`, the relevant 
 - Update relevant documentation whenever approved decisions change.
 - For every completed task, report changed files, tests performed, unresolved issues, and compliance with design principles. Never mark unexecuted tests as passed.
 - Keep commits focused and avoid unrelated changes.
+
+## Engineering task routing
+
+The Architect's task classification is authoritative. Follow [the model-routing policy](docs/orchestration/MODEL_ROUTING_POLICY.md): do not self-escalate a model after failure, and do not start implementation for a `decision` task until the consequential decision is resolved and the Architect explicitly classifies the implementation task.
