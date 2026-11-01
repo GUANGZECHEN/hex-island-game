@@ -12,3 +12,7 @@
 - Use original project branding and visual assets.
 
 Detailed rules and implementation choices require the appropriate approved specifications; this scope does not settle them.
+
+## Private-room access
+
+The game website may be publicly accessible. Joining a private game room requires a valid invitation or capability; possession of the website URL alone does not grant access to a private room.
