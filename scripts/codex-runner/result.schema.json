@@ -1,0 +1,1 @@
+{"type":"object","properties":{"outcome":{"type":"string","enum":["pr","decision","failed"]},"pr_number":{"type":["integer","null"]}},"required":["outcome","pr_number"],"additionalProperties":false}
