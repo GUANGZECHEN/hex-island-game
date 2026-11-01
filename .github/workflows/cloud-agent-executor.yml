@@ -1,0 +1,138 @@
+name: Cloud agent issue executor
+on:
+  issues:
+    types: [opened, reopened, edited]
+permissions: {}
+concurrency:
+  group: cloud-agent-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  generate:
+    if: >-
+      github.repository == 'GUANGZECHEN/hex-island-game' &&
+      github.actor == 'GUANGZECHEN' &&
+      github.event.issue.user.login == 'GUANGZECHEN' &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.issue.title, '[READY]') &&
+      (github.event.action != 'edited' ||
+       (github.event.changes.title.from != null &&
+        !startsWith(github.event.changes.title.from, '[READY]')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      ready: ${{ steps.agent.outputs.ready }}
+      base: ${{ steps.agent.outputs.base }}
+      number: ${{ steps.agent.outputs.number }}
+      patch_hash: ${{ steps.agent.outputs.patch_hash }}
+      result_hash: ${{ steps.agent.outputs.result_hash }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Record exact checkout
+        id: base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Generate one task
+        id: agent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: node --experimental-strip-types scripts/cloud-executor/generate.mjs
+      - name: Store bounded artifacts for isolated verification
+        if: steps.agent.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cloud-agent-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-task/
+          if-no-files-found: error
+          retention-days: 1
+  verify:
+    needs: generate
+    if: needs.generate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.generate.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cloud-agent-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-task
+      - name: Validate and apply exact artifact
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/cloud-task
+          BASE_SHA: ${{ needs.generate.outputs.base }}
+          PATCH_HASH: ${{ needs.generate.outputs.patch_hash }}
+          RESULT_HASH: ${{ needs.generate.outputs.result_hash }}
+        run: node --experimental-strip-types scripts/cloud-executor/check-patch.mjs
+      - name: Run allowlisted checks in an isolated container without workflow secrets
+        run: |
+          docker run --rm --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 2g \
+            --user "$(id -u):$(id -g)" --env HOME=/tmp --env XDG_CONFIG_HOME=/tmp/xdg --env WRANGLER_SEND_METRICS=false \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/work" --workdir /work node:24-bookworm \
+            sh -eu -c 'npm ci && npm run typecheck && npm test && npm run build && node --test scripts/codex-runner/tests/*.test.mjs && npm --prefix signaling ci && npm --prefix signaling run typecheck && npm --prefix signaling test && npm --prefix signaling run build' > /dev/null 2>&1
+          echo 'Allowlisted checks passed.'
+  publish:
+    needs: [generate, verify]
+    if: needs.generate.outputs.ready == 'true' && needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.generate.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cloud-agent-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-task
+      - name: Revalidate and publish without executing patched code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.generate.outputs.number }}
+          BASE_SHA: ${{ needs.generate.outputs.base }}
+          PATCH_HASH: ${{ needs.generate.outputs.patch_hash }}
+          RESULT_HASH: ${{ needs.generate.outputs.result_hash }}
+          ARTIFACT_DIR: ${{ runner.temp }}/cloud-task
+        run: node --experimental-strip-types scripts/cloud-executor/publish.mjs
+  report_failure:
+    needs: [generate, verify, publish]
+    if: always() && needs.generate.outputs.ready == 'true' && (needs.verify.result != 'success' || needs.publish.result != 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.generate.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Report failure without rerunning the agent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.generate.outputs.number }}
+        run: node --experimental-strip-types scripts/cloud-executor/report-failure.mjs

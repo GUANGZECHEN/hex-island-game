@@ -1,7 +1,6 @@
 name: Codex issue runner
 on:
-  issues:
-    types: [opened, reopened, edited]
+  workflow_dispatch:
 permissions: {}
 concurrency:
   group: codex-issue-${{ github.event.issue.number }}

@@ -1,0 +1,39 @@
+# Cloud Agents API issue executor
+
+ORCH-004 is the authoritative event-driven execution path after merge; no personal PC or self-hosted runner is needed. The ORCH-002 workflow's automatic issue trigger is disabled and its code and setup notes remain as legacy reference. No polling daemon or automatic task retry exists.
+
+## Lifecycle and trust boundaries
+
+An `issues` opened/reopened/title-transition event is eligible only for this exact repository, exact owner actor and issue author, an open issue and the exact `[READY]` prefix. The controller re-fetches the issue, filters comments to the owner, and consumes `complexity: simple|complex|decision` from the issue body via the ORCH-003 policy module. Missing, invalid or duplicate metadata means complex. The owner and Architect must ensure the classification is appropriate. An issue requiring a consequential decision must be explicitly marked `decision`: it goes to `[DECISION]` without an Agents API call.
+
+```text
+[READY] -> [WORKING] -> [ARCH-REVIEW]
+    |          |
+    v          +-> [DECISION] or [BLOCKED]
+[DECISION]
+```
+
+The generator has an ephemeral GitHub token and `OPENAI_API_KEY`; it sends neither to the sandbox. It snapshots tracked files from the recorded main SHA and creates one streamed Agents API session with one initial turn: selected policy model, high reasoning, `multi_agent.enabled: false`, an OpenAI-hosted `small` container, and network access `restricted` to `registry.npmjs.org`. No GitHub credential, remote, environment secret, external tool, or vault is supplied. It filters owner text before creating the task input. It records numeric token usage when provided, does not print full prompts, and attempts to delete published artifacts and the session in `finally`. The beta API and provider model availability can change; failures are blocked rather than retried or escalated. If the stream ends before a session ID arrives, cleanup cannot be requested and an operator must inspect the OpenAI dashboard. Deletion can fail while a session is active; inspect failed cleanup and remove resources manually. OpenAI documentation states the Agents API is not Zero Data Retention eligible and supports US data residency only; project owners must consider that for future issue content.
+
+The agent returns a bounded binary-capable `changes.patch` and strictly checked `result.json` under `/workspace/outputs`. The controller verifies the session, environment, turn and artifact paths, sizes, schema, and SHA-256 hashes. A separate GitHub-hosted verification job starts from the exact trusted base, rejects unsafe paths, `.git`, symlinks and gitlinks, applies the patch with Git and checks the changed-file list. It runs the fixed allowlisted npm/typecheck/test/build commands, including both orchestration suites and signaling checks, inside a disposable Docker container with dropped capabilities and no OpenAI or GitHub write secrets. Agent-modified package scripts are still untrusted code; they execute only in that isolated verification job. The verification job has read-only repository permission. Its success is not a substitute for human code review.
+
+A different publisher job re-downloads the original artifact, checks its hash and reapplies it to a fresh base. It never executes patched code. The trusted publisher verifies main has not moved, rejects existing automation PR collisions, reconstructs the Git tree through GitHub's API and checks its hash, creates a branch and fixed-identity commit, then opens and verifies one PR against main. It never merges. Verification failures and agent failures go to `[BLOCKED]` without a new turn; agent decisions go to `[DECISION]`; a verified PR goes to `[ARCH-REVIEW]`. A branch may remain if PR creation fails after its creation. GitHub issue title updates are not atomic compare-and-swap and can race with manual edits.
+
+## One-time setup and operation
+
+1. Enable GitHub Actions on this repository and allow Actions to create PRs. Configure GitHub-hosted runners with Docker available. No inbound ports or local computer are needed.
+2. Create a restricted OpenAI Platform project/application key with `api.agents.read`, `api.agents.write`, and `api.responses.write` permissions. Set it as the repository Actions secret `OPENAI_API_KEY`. Never put the key into an issue, repository file, model prompt, or sandbox environment. Review provider pricing and quota controls: both model inference and hosted container time are billed by OpenAI.
+3. After merge, create an owner-authored issue with an explicit `complexity: simple`, `complexity: complex`, or `complexity: decision`, and put it in `[READY]`. An `edited` event must change the title from a non-READY state. Observe the Actions run and issue state. A `decision` issue should reach `[DECISION]` without consuming a coding turn.
+4. For the first paid smoke test, use an explicitly authorized small, reversible task and inspect its PR and run. No real paid test was performed by this change. Existing task execution and model availability must be independently verified before depending on the workflow.
+
+The trusted job uses `npm ci`, `npm run typecheck`, `npm test`, `npm run build`, the ORCH-002 and cloud executor test suites, and signaling install/typecheck/test/dry-run build. Outputs are suppressed because modified tests and package scripts are untrusted; a failed check marks the task blocked. The controller pins its Actions dependencies, retains only bounded workflow artifacts for one day, and does not print agent task text, API keys, patches or full result content in Actions logs. A successful PR includes the bounded agent-reported summary and test results, which remain subject to review.
+
+## Recovery and limitations
+
+No failure automatically escalates the model, starts another agent turn, or resubmits a session. Inspect the issue, Actions run, OpenAI dashboard and any remaining branch/artifact before an Architect explicitly decides to retry; move a resolved issue from a non-READY state back to `[READY]` deliberately. If a run is cancelled, a machine fails, or a workflow artifact upload fails after generation, state or cleanup may need manual repair. The API stream may disconnect after a turn has begun; the controller fails closed and does not resubmit, but an operator must inspect and clean up the existing session if its ID was not recovered. A failed PR verification can leave an unmerged PR or branch requiring owner review.
+
+OpenAI-hosted sandboxes can access the files and allowed network domains provided to them; agent text and code remain untrusted. Domain allowlisting is not a defense against all exfiltration through an allowed service. GitHub-hosted job separation limits secret exposure but does not prove the agent's code is correct or safe. The sandbox, provider, dependency registry, Docker image and GitHub Actions are supply-chain dependencies. Review all changes before merge. No real OpenAI session, paid call, GitHub-hosted workflow run or cross-network deployment has been executed by this PR.
+
+GitHub may suppress downstream workflow events caused by `GITHUB_TOKEN` pushes or PR creation. Reviewers should check which CI checks actually ran and run required checks through an approved manual mechanism if GitHub does not trigger them. Do not assume PR validation workflows ran automatically.
+
+Provider references: [Agents API quickstart](https://developers.openai.com/api/docs/guides/agents-api/quickstart), [OpenAI-hosted sandbox configuration](https://developers.openai.com/api/docs/guides/agents-api/environments/openai-hosted), and [session files and artifacts](https://developers.openai.com/api/docs/guides/agents-api/environments/files). Verify the beta API, permissions, model availability, pricing and retention terms before enabling execution.

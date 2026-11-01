@@ -1,0 +1,2 @@
+import {GitHub} from './github.mjs';
+try{const n=Number(process.env.ISSUE_NUMBER);if(!Number.isSafeInteger(n)||n<=0)throw Error('Invalid issue');const gh=new GitHub(process.env.GITHUB_TOKEN);if(await gh.transition(n,'WORKING','BLOCKED'))await gh.comment(n,'Cloud verification or publication failed. No automatic retry was attempted; inspect the Actions run before explicitly retrying.');}catch{console.error('Could not report failure.');process.exitCode=1;}
