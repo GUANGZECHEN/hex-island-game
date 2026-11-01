@@ -17,3 +17,7 @@ For every scenario, follow the offer/answer steps in the README, confirm both sh
 ## Results
 
 Cross-device, cross-network and mobile testing have not been performed. No cross-network success is claimed. A local two-page headless Chromium 154 attempt exchanged offer and answer, but neither browser gathered an ICE candidate in this execution environment; the channel remained connecting and bidirectional messages could not be verified. This does not establish behavior on a normal desktop or other network. Behavior depends on browser, network and STUN availability.
+
+## GitHub Pages browser test
+
+After a successful Pages deployment, open https://guangzechen.github.io/hex-island-game/ in both peers. Complete the offer/answer exchange and send a unique message in each direction. Repeat on same-device tabs, same Wi-Fi, separate networks and mobile browsers. Record browser versions, connection states and aggregate candidate counts/types; do not record or share SDP, IP addresses or connection data in public reports. Verify reset and retry, and note that zero candidates, restrictive NATs and blocked UDP can prevent connection. Deployment and these tests remain unverified until actually performed.

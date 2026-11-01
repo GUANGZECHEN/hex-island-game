@@ -1,3 +1,4 @@
+import { formatCandidates } from './candidates';
 import { decodeSignal, encodeSignal } from './signaling';
 
 type Events = { status: (status: string) => void; message: (message: string) => void; error: (message: string) => void; diagnostics: (text: string) => void; ready: (ready: boolean) => void };
@@ -13,10 +14,10 @@ export class Peer {
     const update = () => {
       if (this.pc !== pc) return;
       this.events.status(`Connection: ${pc.connectionState}; channel: ${this.channel?.readyState ?? 'waiting'}`);
-      this.events.diagnostics(`Signaling: ${pc.signalingState}\nICE gathering: ${pc.iceGatheringState}\nICE connection: ${pc.iceConnectionState}\nPeer connection: ${pc.connectionState}\nData channel: ${this.channel?.readyState ?? 'waiting'}`);
+      this.events.diagnostics(`Signaling: ${pc.signalingState}\nICE gathering: ${pc.iceGatheringState}\nICE connection: ${pc.iceConnectionState}\nPeer connection: ${pc.connectionState}\nData channel: ${this.channel?.readyState ?? 'waiting'}\nLocal candidates: ${formatCandidates(pc.localDescription?.sdp)}\nRemote candidates: ${formatCandidates(pc.remoteDescription?.sdp)}`);
       this.events.ready(this.channel?.readyState === 'open');
     };
-    pc.onconnectionstatechange = update; pc.oniceconnectionstatechange = update; pc.onicegatheringstatechange = update; pc.onsignalingstatechange = update;
+    pc.onicecandidate = update; pc.onconnectionstatechange = update; pc.oniceconnectionstatechange = update; pc.onicegatheringstatechange = update; pc.onsignalingstatechange = update;
     pc.onicecandidateerror = () => { if (this.pc === pc) this.events.error('ICE candidate gathering reported an error. A direct connection may still be possible.'); };
     pc.ondatachannel = event => { if (this.pc === pc) this.bindChannel(event.channel, update); else event.channel.close(); };
     update(); return pc;
@@ -36,6 +37,7 @@ export class Peer {
       pc.addEventListener('icegatheringstatechange', changed); pc.addEventListener('connectionstatechange', changed); changed();
     });
     if (this.pc !== pc || !pc.localDescription) throw new Error('Session was reset.');
+    this.refresh(pc);
     if (!/^a=candidate:/m.test(pc.localDescription.sdp ?? '')) this.events.error('No ICE candidates were gathered; a connection is unlikely. Check browser and network access, then reset and retry.');
     return encodeSignal(pc.localDescription);
   }
@@ -45,14 +47,14 @@ export class Peer {
   }
   async join(input: string): Promise<string> {
     const offer = decodeSignal(input, 'offer'); const pc = this.start();
-    try { await pc.setRemoteDescription(offer); await pc.setLocalDescription(await pc.createAnswer()); return await this.complete(pc); } catch (error) { if (this.pc === pc) this.reset(); throw error; }
+    try { await pc.setRemoteDescription(offer); this.refresh(pc); await pc.setLocalDescription(await pc.createAnswer()); return await this.complete(pc); } catch (error) { if (this.pc === pc) this.reset(); throw error; }
   }
   async apply(input: string): Promise<void> {
     const answer = decodeSignal(input, 'answer');
     if (!this.pc || this.pc.signalingState !== 'have-local-offer') throw new Error('Create an offer before applying an answer.');
-    await this.pc.setRemoteDescription(answer);
+    await this.pc.setRemoteDescription(answer); this.refresh(this.pc);
   }
   send(text: string): void { if (!this.channel || this.channel.readyState !== 'open') throw new Error('Data channel is not open.'); this.channel.send(text); }
-  private refresh(pc: RTCPeerConnection): void { if (this.pc !== pc) return; this.events.status(`Connection: ${pc.connectionState}; channel: ${this.channel?.readyState ?? 'waiting'}`); this.events.diagnostics(`Signaling: ${pc.signalingState}\nICE gathering: ${pc.iceGatheringState}\nICE connection: ${pc.iceConnectionState}\nPeer connection: ${pc.connectionState}\nData channel: ${this.channel?.readyState ?? 'waiting'}`); this.events.ready(this.channel?.readyState === 'open'); }
+  private refresh(pc: RTCPeerConnection): void { if (this.pc !== pc) return; this.events.status(`Connection: ${pc.connectionState}; channel: ${this.channel?.readyState ?? 'waiting'}`); this.events.diagnostics(`Signaling: ${pc.signalingState}\nICE gathering: ${pc.iceGatheringState}\nICE connection: ${pc.iceConnectionState}\nPeer connection: ${pc.connectionState}\nData channel: ${this.channel?.readyState ?? 'waiting'}\nLocal candidates: ${formatCandidates(pc.localDescription?.sdp)}\nRemote candidates: ${formatCandidates(pc.remoteDescription?.sdp)}`); this.events.ready(this.channel?.readyState === 'open'); }
   reset(): void { const pc = this.pc; this.pc = null; this.channel?.close(); this.channel = null; pc?.close(); this.events.ready(false); this.events.status('Idle'); this.events.diagnostics('No connection'); }
 }
