@@ -1,4 +1,6 @@
-# Event-driven local Codex runner
+# Event-driven local Codex runner (legacy)
+
+**Legacy:** ORCH-004 disables this workflow’s automatic issue trigger. The authoritative path is the [cloud executor](CLOUD_AGENT_EXECUTOR.md); do not enable both triggers. This document is retained for reference.
 
 This workflow runs one `codex exec` for an owner-authored open issue when it enters `[READY]`; it does not poll. `opened`, `reopened`, and an edit changing a title from a non-READY state to READY can enqueue work. Events must come from `GUANGZECHEN` on this exact repository and the issue author must also be `GUANGZECHEN`. The job re-fetches the current issue and checks it again before changing `[READY]` to `[WORKING]`. Per-issue concurrency prevents two jobs for the same issue from running at once. An edit already in READY does not start another run; to retry, an owner must intentionally change the title from a non-READY state to READY.
 
