@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WebRTC connectivity experiment</title></head>
+<body><main><h1>WebRTC connectivity experiment</h1><p>Two peers exchange connection data manually. Share it only with someone you trust. STUN does not guarantee a connection.</p>
+<section><h2>1. Connect</h2><p>Peer A creates an offer. Peer B pastes the offer and joins, then sends the answer back. Peer A pastes the answer and applies it.</p><div class="buttons"><button id="create">Create session (A)</button><button id="join">Join with offer (B)</button><button id="apply">Apply answer (A)</button><button id="reset">Disconnect / reset</button></div>
+<label for="remote">Paste remote offer or answer</label><textarea id="remote" rows="6" spellcheck="false"></textarea><label for="local">Your connection data</label><textarea id="local" rows="6" readonly></textarea><button id="copy">Copy connection data</button></section>
+<section><h2>2. Messages</h2><form id="message-form"><label for="message">Text message</label><input id="message" autocomplete="off" maxlength="16384"><button id="send" disabled>Send</button></form><ul id="messages" aria-live="polite"></ul></section>
+<section><h2>Diagnostics</h2><p id="status" role="status">Idle</p><p id="error" role="alert"></p><pre id="diagnostics">No connection</pre></section></main><script type="module" src="/src/main.ts"></script></body></html>
