@@ -1,0 +1,1 @@
+{"$schema":"node_modules/wrangler/config-schema.json","name":"hex-island-signaling","main":"src/index.ts","compatibility_date":"2025-04-01","durable_objects":{"bindings":[{"name":"ROOMS","class_name":"Room"}]},"migrations":[{"tag":"v1","new_sqlite_classes":["Room"]}],"observability":{"enabled":false}}
