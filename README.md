@@ -4,4 +4,4 @@ A planned browser-based multiplayer board game inspired by Catan, for private us
 
 Start with [design principles](design_principles/README.md) and [project instructions](AGENTS.md) before development.
 
-See [board geometry](docs/game/BOARD_GEOMETRY.md) for the prototype model and deferred decisions.
+See [board geometry](docs/game/BOARD_GEOMETRY.md) and [seeded board setup](docs/game/BOARD_SETUP.md) for the prototype model, reproducibility, and deferred decisions.
