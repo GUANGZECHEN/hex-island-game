@@ -1,18 +1,25 @@
 import './style.css';
+import { initializeNetwork, type BrowserGame } from './game/network/browser';
+import type { projectState } from './game/network/authority';
 import { createIslandBoard } from './game/board/geometry';
 import { createBoardView } from './game/board/presentation';
 import { renderIslandBoard } from './game/board/render';
 import { createGame, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
-import { applySetupCommand } from './game/rules/state';
-import { applyTurnCommand } from './game/rules/turn';
-import { applyBuildCommand } from './game/rules/build';
-import { applyEconomyCommand } from './game/rules/economy';
+import { applySetupCommand as localSetup } from './game/rules/state';
+import { applyTurnCommand as localTurn } from './game/rules/turn';
+import { applyBuildCommand as localBuild } from './game/rules/build';
+import { applyEconomyCommand as localEconomy } from './game/rules/economy';
 
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
+let remote:BrowserGame | null=null, networkRevision=0, projection:ReturnType<typeof projectState> | null=null;
 let state:GameState | null=null, viewer='', targetMode:'settlement'|'road'|'city'|'robber'|null=null, log:string[]=[];
+const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
+const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
+const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
+const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => remote ? (remote.submit(c,networkRevision), null) : localEconomy(s,c);
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
-function commit(next:GameState, description:string){const old=state!;state=next;log.unshift(description);targetMode=null;if(old.currentSeat!==next.currentSeat)handoff(next.players[next.currentSeat].id);render();}
+function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;log.unshift(description);targetMode=null;if(old.currentSeat!==next.currentSeat)handoff(next.players[next.currentSeat].id);render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function button(parent:HTMLElement,label:string,action:()=>void){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>attempt(action);parent.append(b);return b;}
 function select(parent:HTMLElement,label:string,options:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const value of options){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
@@ -31,11 +38,13 @@ function drawBoard(){const s=state!,container=el('board');renderIslandBoard(cont
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=byId(viewer);el('game-status').textContent=`Seed ${s.board.seed}. ${active.id}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
- el('players').textContent=s.players.map(p=>`${p.id}: ${Object.values(s.buildings).filter(b=>b.playerId===p.id).reduce((n,b)=>n+(b.kind==='city'?2:1),0)} building VP, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${p.cards.length} cards`).join(' | ');
- el('bank').textContent=`Bank: ${RESOURCES.map(r=>`${r} ${s.bank[r]}`).join(', ')}; development deck: ${s.deck.length}.`;el('bonuses').textContent=`Longest route: ${s.longestHolder??'none'}; largest army: ${s.armyHolder??'none'}.`;
+ el('players').textContent=s.players.map(p=>`${p.id}: ${Object.values(s.buildings).filter(b=>b.playerId===p.id).reduce((n,b)=>n+(b.kind==='city'?2:1),0)} building VP, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
+ el('bank').textContent=`Bank: ${RESOURCES.map(r=>`${r} ${s.bank[r]}`).join(', ')}; development deck: ${projection?.public.deckCount ?? s.deck.length}.`;el('bonuses').textContent=`Longest route: ${s.longestHolder??'none'}; largest army: ${s.armyHolder??'none'}.`;
  el('hand').textContent=RESOURCES.map(r=>`${r}: ${actor.hand[r]}`).join(', ');el('cards').textContent=actor.cards.map(c=>`${c.type}${c.boughtTurn===s.turn?' (new)':''}`).join(', ')||'No development cards.';
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
- drawBoard();const actions=el('actions');actions.replaceChildren();const targets=el('targets');targets.textContent=targetMode?`Select a ${targetMode} target on the board.`:'';
+ drawBoard();const actions=el('actions');actions.replaceChildren();const targets=el('targets');targets.replaceChildren();
+ if(targetMode){const description=document.createElement('p');description.textContent=`Select a ${targetMode} target on the board or from the list.`;targets.append(description);const board=createIslandBoard();const choices=targetMode==='road'?board.edges.map(e=>e.id):targetMode==='robber'?board.hexes.map(h=>h.id):board.vertices.map(v=>v.id);const choice=select(targets,'Target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}
+
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  if(s.discards[viewer]&&s.phase==='discard'){const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`);button(actions,'Discard',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
  if(s.offer?.targets.includes(viewer)){button(actions,'Accept trade',()=>commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),`${viewer} accepted a trade.`));button(actions,'Reject trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
@@ -59,6 +68,13 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  }
  if(!['setup-settlement','setup-road','finished'].includes(s.phase))button(actions,'Claim victory',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];handoff(state.players[state.currentSeat].id);render();});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];handoff(state.players[state.currentSeat].id);render();});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
-el('switch-player').onclick=()=>{if(!state)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
+el('switch-player').onclick=()=>{if(!state||remote)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
+
+const network=initializeNetwork({status:()=>{},snapshot:(value,playerId)=>{
+  projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
+  const pub=value.public;
+  state={version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:p.id===playerId?value.private.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:p.id===playerId?value.private.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:false,resumePhase:null,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
+  el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;render();
+}});
