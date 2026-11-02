@@ -10,11 +10,13 @@ export interface Player {
   roads: number; settlements: number; cities: number; knights: number;
 }
 export interface Building { playerId: string; kind: 'settlement' | 'city' }
+export interface TradeOffer { id: string; proposer: string; targets: string[]; give: Hand; receive: Hand; }
 export interface GameState {
   version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
   randomState: number; startingSeat: number; currentSeat: number; turn: number;
-  phase: 'setup-settlement' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'steal' | 'action'; setupStep: number;
-  longestHolder: string | null; dice: [number, number] | null; discards: Record<string, number>; victims: string[];
+  phase: 'setup-settlement' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
+  longestHolder: string | null; armyHolder: string | null; playedDevelopment: boolean; resumePhase: 'roll' | 'action' | null; freeRoads: number; winner: string | null;
+  offer: TradeOffer | null; dice: [number, number] | null; discards: Record<string, number>; victims: string[];
   pendingSettlement: string | null; buildings: Record<string, Building>; roads: Record<string, string>;
 }
 export type SetupCommand = { type: 'place-settlement'; playerId: string; vertexId: string } | { type: 'place-road'; playerId: string; edgeId: string };
@@ -44,10 +46,10 @@ export function createGame(seed: number, ids: readonly string[]): GameState {
     [deck[i], deck[draw.index]] = [deck[draw.index], deck[i]];
   }
   const start = drawIndex(randomState, ids.length); randomState = start.state;
-  return { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
+  return { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
 }
 export function publicVictoryPoints(state: GameState, id: string): number {
-  return Object.values(state.buildings).filter(building => building.playerId === id).reduce((sum, building) => sum + (building.kind === 'city' ? 2 : 1), 0) + (state.longestHolder === id ? 2 : 0);
+  return Object.values(state.buildings).filter(building => building.playerId === id).reduce((sum, building) => sum + (building.kind === 'city' ? 2 : 1), 0) + (state.longestHolder === id ? 2 : 0) + (state.armyHolder === id ? 2 : 0);
 }
 /** Validate and apply one setup command without changing the supplied state. */
 export function applySetupCommand(original: GameState, command: SetupCommand): GameState {

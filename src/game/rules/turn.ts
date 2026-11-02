@@ -51,16 +51,16 @@ export function applyTurnCommand(original: GameState, command: TurnCommand): Gam
     if (!hex || hex.id === state.board.robberHexId) throw new Error('Robber must move to a different hex.');
     state.board = { ...state.board, robberHexId: hex.id };
     state.victims = [...new Set(hex.vertexIds.map(id => state.buildings[id]?.playerId).filter((id): id is string => !!id && id !== active.id && size(state.players.find(p => p.id === id)!.hand) > 0))];
-    state.phase = state.victims.length ? 'steal' : 'action';
+    state.phase = state.victims.length ? 'steal' : state.resumePhase ?? 'action'; if (!state.victims.length) state.resumePhase = null;
   } else if (command.type === 'steal' && state.phase === 'steal' && active.id === command.playerId) {
     if (!state.victims.includes(command.victimId)) throw new Error('Invalid victim.');
     const victim = state.players.find(player => player.id === command.victimId)!;
     const draw = drawIndex(state.randomState, size(victim.hand)); state.randomState = draw.state;
     let index = draw.index;
     for (const resource of RESOURCES) { if (index < victim.hand[resource]) { victim.hand[resource]--; active.hand[resource]++; break; } index -= victim.hand[resource]; }
-    state.victims = []; state.phase = 'action';
+    state.victims = []; state.phase = state.resumePhase ?? 'action'; state.resumePhase = null;
   } else if (command.type === 'end-turn' && state.phase === 'action' && active.id === command.playerId) {
-    state.currentSeat = (state.currentSeat + 1) % state.players.length; state.turn++; state.dice = null; state.phase = 'roll';
+    state.currentSeat = (state.currentSeat + 1) % state.players.length; state.turn++; state.dice = null; state.playedDevelopment = false; state.offer = null; state.phase = 'roll';
   } else throw new Error('Command is not allowed in this phase.');
   return state;
 }
