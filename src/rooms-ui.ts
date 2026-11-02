@@ -1,8 +1,8 @@
 import './style.css';
 import { RoomClient } from './rooms';
-import { renderIslandBoard } from './game/board/render';
+import { initializeBoardUI } from './game/board/ui';
 
-renderIslandBoard(document.getElementById('board')!);
+initializeBoardUI();
 function el<T extends HTMLElement>(id:string):T {const e=document.getElementById(id);if(!e)throw Error('Missing UI element');return e as T;}
 const status=el<HTMLElement>('status'),error=el<HTMLElement>('error'),list=el<HTMLUListElement>('peers'),target=el<HTMLSelectElement>('target'),send=el<HTMLButtonElement>('send'),create=el<HTMLButtonElement>('create'),copy=el<HTMLButtonElement>('copy'),message=el<HTMLInputElement>('message'),messages=el<HTMLUListElement>('messages');
 let endpoint=(import.meta.env.VITE_SIGNALING_URL as string | undefined)?.trim().replace(/\/$/,'') ?? '';let invite='';const entries=new Map<string,{li:HTMLLIElement;option:HTMLOptionElement}>();
