@@ -36,16 +36,22 @@ export function drawIndex(state: number, bound: number): { state: number; index:
   }
   throw new Error('Random index generation exhausted.');
 }
-export function createGame(seed: number, ids: readonly string[]): GameState {
+/** Host-supplied entropy supports private outcomes without deriving them from the public board seed. */
+export function secureIndex(random: () => number, bound: number): { state?: undefined; index: number } {
+  const limit = 0x100000000 - 0x100000000 % bound;
+  for (let i=0; i<128; i++) { const value=random(); if (!Number.isInteger(value) || value<0 || value>0xffffffff) throw new Error('Invalid entropy.'); if (value<limit) return {index:value%bound}; }
+  throw new Error('Random index generation exhausted.');
+}
+export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number): GameState {
   if (ids.length < 3 || ids.length > 4 || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error('A game requires three or four distinct player IDs.');
   const board = generateBoardSetup(seed);
   let randomState = seed;
   const deck: Development[] = [...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
   for (let i = deck.length - 1; i > 0; i--) {
-    const draw = drawIndex(randomState, i + 1); randomState = draw.state;
+    const draw = secureRandom ? secureIndex(secureRandom, i + 1) : drawIndex(randomState, i + 1); randomState = draw.state ?? randomState;
     [deck[i], deck[draw.index]] = [deck[draw.index], deck[i]];
   }
-  const start = drawIndex(randomState, ids.length); randomState = start.state;
+  const start = secureRandom ? secureIndex(secureRandom, ids.length) : drawIndex(randomState, ids.length); randomState = start.state ?? randomState;
   return { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
 }
 export function publicVictoryPoints(state: GameState, id: string): number {

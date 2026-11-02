@@ -104,5 +104,9 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       } else assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'Robber'));
       assert.ok(list.children[index].textContent.includes(hex.hexId));
     }
+    const occupied = setup.hexes.find(hex => hex.token !== null)!;
+    renderIslandBoard(container as unknown as HTMLElement, { ...setup, robberHexId: occupied.hexId });
+    const moved = container.children[0].children.find(group => group.attributes.get('data-hex-id') === occupied.hexId)!;
+    assert.ok(moved.children.some(child => child.tag === 'text' && child.textContent === 'Robber'));
   } finally { Object.assign(globalThis, { document: previous }); }
 });

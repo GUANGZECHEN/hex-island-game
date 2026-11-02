@@ -46,7 +46,8 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
       circle.setAttribute('cx', String(hex.center.x)); circle.setAttribute('cy', String(hex.center.y + .4)); circle.setAttribute('r', '.29'); circle.setAttribute('class', 'island-token');
       group.append(circle);
       text(String(hex.token), .4, `island-number${hex.token === 6 || hex.token === 8 ? ' island-number-red' : ''}`);
-    } else if (hex.robber) text('Robber', .4, 'island-label');
+    }
+    if (hex.robber) text('Robber', hex.token === null ? .4 : .83, 'robber-label');
     svg.append(group);
   }
   const vertices = new Map(view.vertices.map(vertex => [vertex.id, vertex.point]));

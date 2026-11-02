@@ -1,5 +1,5 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { drawIndex, RESOURCES, type GameState, type Hand } from './state.ts';
+import { drawIndex, secureIndex, RESOURCES, type GameState, type Hand } from './state.ts';
 
 export type TurnCommand =
   | { type: 'roll'; playerId: string }
@@ -31,12 +31,12 @@ export function produce(state: GameState, total: number): void {
     }
   }
 }
-export function applyTurnCommand(original: GameState, command: TurnCommand): GameState {
+export function applyTurnCommand(original: GameState, command: TurnCommand, secureRandom?: () => number): GameState {
   const state = structuredClone(original), active = state.players[state.currentSeat];
   if (!command || (!state.discards[command.playerId] && active.id !== command.playerId)) throw new Error('Not an authorized player.');
   if (command.type === 'roll' && state.phase === 'roll' && active.id === command.playerId) {
-    const first = drawIndex(state.randomState, 6), second = drawIndex(first.state, 6);
-    state.randomState = second.state; state.dice = [first.index + 1, second.index + 1];
+    const first = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(state.randomState, 6), second = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(first.state!, 6);
+    state.randomState = second.state ?? state.randomState; state.dice = [first.index + 1, second.index + 1];
     if (state.dice[0] + state.dice[1] === 7) {
       state.discards = Object.fromEntries(state.players.filter(player => size(player.hand) > 7).map(player => [player.id, Math.floor(size(player.hand) / 2)]));
       state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
@@ -55,7 +55,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand): Gam
   } else if (command.type === 'steal' && state.phase === 'steal' && active.id === command.playerId) {
     if (!state.victims.includes(command.victimId)) throw new Error('Invalid victim.');
     const victim = state.players.find(player => player.id === command.victimId)!;
-    const draw = drawIndex(state.randomState, size(victim.hand)); state.randomState = draw.state;
+    const draw = secureRandom ? secureIndex(secureRandom, size(victim.hand)) : drawIndex(state.randomState, size(victim.hand)); state.randomState = draw.state ?? state.randomState;
     let index = draw.index;
     for (const resource of RESOURCES) { if (index < victim.hand[resource]) { victim.hand[resource]--; active.hand[resource]++; break; } index -= victim.hand[resource]; }
     state.victims = []; state.phase = state.resumePhase ?? 'action'; state.resumePhase = null;
