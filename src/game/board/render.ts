@@ -17,7 +17,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   details.className = 'sr-only';
   details.setAttribute('aria-label', 'Island terrain and number tokens');
   for (const hex of view.hexes) {
-    const description = `${names[hex.terrain]}, ${hex.resource ?? 'no resource'}, ${hex.token === null ? 'no number' : `number ${hex.token}`}${hex.robber ? ', robber' : ''}, ${hex.id}`;
+    const description = `${names[hex.terrain]}, ${hex.resource ?? 'no resource'}, ${hex.token === null ? 'no number' : `number ${hex.token}${hex.token === 6 || hex.token === 8 ? ', high probability' : ''}`}${hex.robber ? ', robber' : ''}, ${hex.id}`;
     const item = document.createElement('li');
     item.textContent = description;
     details.append(item);
@@ -43,7 +43,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     text(hex.resource ?? 'None', -.10, 'island-resource');
     if (hex.token !== null) {
       const circle = document.createElementNS(SVG_NS, 'circle');
-      circle.setAttribute('cx', String(hex.center.x)); circle.setAttribute('cy', String(hex.center.y + .4)); circle.setAttribute('r', '.29'); circle.setAttribute('class', 'island-token');
+      circle.setAttribute('cx', String(hex.center.x)); circle.setAttribute('cy', String(hex.center.y + .4)); circle.setAttribute('r', '.29'); circle.setAttribute('class', `island-token${hex.token === 6 || hex.token === 8 ? ' island-token-high' : ''}`);
       group.append(circle);
       text(String(hex.token), .4, `island-number${hex.token === 6 || hex.token === 8 ? ' island-number-red' : ''}`);
     }
