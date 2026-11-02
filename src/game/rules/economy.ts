@@ -57,7 +57,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase='robber';player.knights++;updateArmy(state);}
   else if(command.card==='road-building') { if(player.roads>0){state.resumePhase=state.phase;state.phase='free-road';state.freeRoads=Math.min(2,player.roads);} }
   else throw new Error('Invalid card.');
-  player.cards.splice(index,1);state.playedDevelopment=true;return state;
+  player.cards.splice(index,1);state.playedCards.push(command.card);state.playedDevelopment=true;return state;
  }
  if(state.phase!=='action')throw new Error('Action phase required.');
  if(command.type==='bank-trade') {

@@ -6,4 +6,4 @@ The prototype uses pointy-top hexagons. To identify corners without floating-poi
 
 The separate presentation mapping converts a vertex to `(x, y) = (u * sqrt(3) / 2, v / 2)` and hex center to `(sqrt(3) * (q + r/2), 3r/2)`. These render coordinates can be floating point; they never determine identity. The SVG uses a padded viewBox and preserves its aspect ratio. The renderer joins stable hex IDs to the seeded terrain and number assignments described in [board setup](BOARD_SETUP.md).
 
-Ports, placement rules, roads and buildings, gameplay state and multiplayer synchronization are intentionally deferred. The board model contains only topology and does not encode these rules. Existing private-room and manual WebRTC diagnostic interfaces remain available.
+The board model contains topology only; setup, ports, placement rules, buildings and multiplayer state are defined in separate modules. Existing private-room and manual WebRTC diagnostic interfaces remain available.
