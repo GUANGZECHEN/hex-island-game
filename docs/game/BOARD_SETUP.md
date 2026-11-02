@@ -1,0 +1,11 @@
+# Seeded island setup
+
+The island uses the stable hex IDs and edge-based neighbor relationships in [board geometry](BOARD_GEOMETRY.md). For each setup, its 19 cells receive four forests (lumber), three hills (brick), four pastures (wool), four fields (grain), three mountains (ore), and one desert (no resource). The 18 non-desert cells receive one each of 2 and 12 and two each of 3, 4, 5, 6, 8, 9, 10, and 11. The desert has no number; the robber starts there. No two 6 or 8 tokens share an edge. This is a setup prototype, not a complete game.
+
+Enter an integer seed from 0 through 4294967295 and select **Apply seed** to reproduce a board. **New random board** uses the browser's cryptographic random source to select a seed. The current seed appears above the board; the initial seed is 1. Terrain and resources are labeled on the board; mountains are abbreviated Mtns. A text list provides the same details to assistive technology. Changing a board does not synchronize it with other peers.
+
+`generateBoardSetup(seed)` is a pure function. Its version, `mulberry32-fy-rejection-v1`, identifies the deterministic Mulberry32 unsigned 32-bit stream, Fisher–Yates shuffles and rejection-sampled indices. Geometry iteration order is ascending axial q then r. The terrain multiset is shuffled first. Token shuffles are tried in order against the existing `neighborIds`; the first valid assignment is accepted. At most 1000 token shuffles and 128 random draws per index are attempted. Failure raises an error rather than weakening the adjacency rule. The version and seed are returned with the setup; changing this algorithm requires a new version. The generator is for reproducibility, not cryptographic security.
+
+The counts and red-number spacing follow the [CATAN base-game rules](https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf). The layout is not a statement of additional game or balancing rules.
+
+To check locally, run `npm install`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run dev`. At desktop and narrow mobile widths, inspect the 19 cells, try a seed twice, generate a new board, and check that the previous seed reproduces the previous layout. The private room and manual signaling controls remain available separately.
