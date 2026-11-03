@@ -36,3 +36,41 @@ test('gameplay commands propagate to every connected peer with a new revision',(
  const updated=(published.at(-1) as any).data;assert.equal(updated.revision,1);assert.equal(updated.public.phase,'setup-road');
  for(const key of ['two','three']){const snapshots=(messages.get(key) as any[]).filter(x=>x.type==='snapshot');assert.equal(snapshots.at(-1).data.revision,1);}
 });
+
+for(const count of [3,4])test(`${count}-player pre-game replacement reuses the lowest disconnected seat with a fresh credential`,()=>{
+ const messages=new Map<string,any[]>();let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),()=>{},()=>String(++serial).padStart(43,'a'),()=>1);
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ for(let i=2;i<=count;i++){send(`p${i}`,{type:'hello'});send(`p${i}`,{type:'ready',ready:true});}
+ const old=messages.get('p2')!.find(x=>x.type==='seat').data;host.disconnect('p2');
+ send('replacement',{type:'hello'});const replacement=messages.get('replacement')!.find(x=>x.type==='seat').data;
+ assert.equal(replacement.id,'Player 2');assert.notEqual(replacement.token,old.token);assert.equal(host.lobby().length,count);
+ host.disconnect('replacement');send('old-seat',{type:'hello',token:old.token});assert.equal(messages.get('old-seat')!.at(-1).type,'error');
+ send('replacement-2',{type:'hello',token:replacement.token});send('replacement-2',{type:'ready',ready:true});host.setHostReady(true);assert.doesNotThrow(()=>host.start(1));
+});
+
+test('QA opt-in requires exactly two ready players, standard mode still requires 3 or 4',()=>{
+ let serial=0;const make=(qaTwoPlayers=false)=>new HostSession(()=>{},()=>{},()=>String(++serial).padStart(43,'a'),()=>0,{qaTwoPlayers});
+ const hello=(host:HostSession,id:string)=>host.receive(id,JSON.stringify({protocol:1,type:'hello'}));
+ const ready=(host:HostSession,id:string)=>host.receive(id,JSON.stringify({protocol:1,type:'ready',ready:true}));
+ const normal=make();hello(normal,'p2');ready(normal,'p2');normal.setHostReady(true);assert.throws(()=>normal.start(1));
+ const qa=make(true);hello(qa,'p2');qa.setHostReady(true);assert.throws(()=>qa.start(1));ready(qa,'p2');hello(qa,'p3');assert.equal(qa.lobby().length,2);assert.doesNotThrow(()=>qa.start(1));
+});
+
+test('two-player QA uses normal authority, private projection, revision and credential-bound resync',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0,{qaTwoPlayers:true});
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ send('guest',{type:'hello'});const seat=messages.get('guest')!.find(x=>x.type==='seat').data;send('guest',{type:'ready',ready:true});host.setHostReady(true);host.start(9);
+ let snapshot=published.at(-1).data;assert.equal(snapshot.public.players.length,2);assert.equal(snapshot.public.currentSeat,0);
+ assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'host-place',0).ok,true);
+ snapshot=published.at(-1).data;assert.equal(snapshot.revision,1);const edge=createIslandBoard().edges.find(e=>e.vertexIds.includes(snapshot.public.pendingSettlement))!;
+ assert.equal(host.submit({type:'place-road',edgeId:edge.id},'host-road',1).ok,true);
+ snapshot=messages.get('guest')!.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(snapshot.revision,2);assert.equal(snapshot.public.currentSeat,1);
+ for(const player of snapshot.public.players){assert.equal('hand' in player,false);assert.equal('cards' in player,false);}assert.ok(snapshot.private.hand);
+ const command={protocol:1,gameId:snapshot.gameId,revision:2,commandId:'guest-place',sender:seat.id,command:{type:'place-settlement',playerId:seat.id,vertexId:createIslandBoard().vertices.find(v=>!createIslandBoard().edges.some(e=>e.vertexIds.includes(v.id)&&e.vertexIds.includes(createIslandBoard().vertices[0].id))&&v.id!==createIslandBoard().vertices[0].id)!.id}};
+ send('guest',{type:'command',command:JSON.stringify(command)});assert.equal(published.at(-1).data.revision,3);
+ host.disconnect('guest');send('stranger',{type:'hello'});assert.equal(messages.get('stranger')!.at(-1).type,'error');
+ send('resumed',{type:'hello',token:seat.token});const restored=messages.get('resumed')!.find(x=>x.type==='snapshot').data;assert.equal(restored.revision,3);assert.equal(messages.get('resumed')!.find(x=>x.type==='seat').data.id,seat.id);
+ send('resumed',{type:'command',command:JSON.stringify({...command,commandId:'stale'})});assert.equal(messages.get('resumed')!.at(-1).data.code,'stale');
+});

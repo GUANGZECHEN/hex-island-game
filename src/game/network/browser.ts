@@ -1,6 +1,7 @@
 import { RoomClient } from '../../rooms';
 import { HostSession } from './session';
 import type { projectState } from './authority';
+import { isTwoPlayerQa } from './qa';
 
 type Snapshot = ReturnType<typeof projectState>;
 type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void };
@@ -14,7 +15,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const endpoint=(import.meta.env.VITE_SIGNALING_URL as string|undefined)?.trim().replace(/\/$/,'')??'';
  let allowed=false;try{const u=new URL(endpoint);allowed=!u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{}
  const status=(s:string)=>{el('network-status').textContent=s;callbacks.status(s);};
- const showLobby=(seats:unknown)=>{if(!Array.isArray(seats))return;el('lobby').textContent=seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | ');};
+ const showLobby=(data:unknown)=>{const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown};if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean')return;const seats=lobby.seats;el('qa-indicator').hidden=!lobby.qaTwoPlayers;el('lobby').textContent=seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | ');};
  const publish=(event:unknown)=>{const x=event as {type:string;lobby?:unknown;data?:Snapshot};if(x.type==='lobby')showLobby(x.lobby);if(x.type==='snapshot'&&x.data){gameId=x.data.gameId;callbacks.snapshot(x.data,'Player 1');}};
  const send=(peer:string,data:string)=>client.send(peer,data);
  client=new RoomClient(allowed?endpoint:'',{status,error:status,peer:(id,_status,isOpen)=>{
@@ -32,10 +33,11 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   else if(message.type==='error'||message.type==='rejection')status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);
  }});
  el<HTMLButtonElement>('room-create').disabled=!allowed;
- el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random);const invite=await client.create();el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;status('Room created. Share the invitation privately.');}catch{status('Could not create the room.');}};
- el('room-ready').onclick=()=>{try{hostReady=!hostReady;if(role==='host')host?.setHostReady(hostReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:hostReady}));el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
+ el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch{status('Could not create the room.');}};
+ el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
  el('room-start').onclick=()=>{try{const seed=el<HTMLInputElement>('seed');if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid board seed.');host?.start(seed.valueAsNumber);}catch(e){status(e instanceof Error?e.message:'Could not start.');}};
- async function join(roomId:string,capability:string){role='guest';room=roomId;open=false;hostReady=false;el('room-ready').hidden=false;el('room-start').hidden=true;sessionStorage.setItem('hex-room',JSON.stringify({room:roomId,capability}));try{await client.join(roomId,capability);}catch{status('Could not join the room.');}}
+ async function join(roomId:string,capability:string){role='guest';room=roomId;open=false;hostReady=false;el('room-ready').textContent='Mark ready';el('room-ready').hidden=false;el('room-start').hidden=true;sessionStorage.setItem('hex-room',JSON.stringify({room:roomId,capability}));try{await client.join(roomId,capability);}catch{status('Could not join the room.');}}
+ el('qa-indicator').hidden=!isTwoPlayerQa(location.search);
  const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
  el('room-reconnect').onclick=()=>{try{const saved=JSON.parse(sessionStorage.getItem('hex-room')??'null') as {room:string;capability:string}|null;if(!saved)throw new Error('No room to rejoin.');void join(saved.room,saved.capability);}catch(e){status(e instanceof Error?e.message:'Could not rejoin.');}};
  if(!allowed)status('Automatic rooms unavailable: signaling endpoint is not configured.');

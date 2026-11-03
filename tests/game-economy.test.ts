@@ -45,3 +45,14 @@ test('largest army retains ties and transfers to a unique leader',()=>{
  s=applyEconomyCommand(s,{type:'play-card',playerId:'b',card:'knight'});assert.equal(s.armyHolder,'a');
  s.phase='action';s.resumePhase=null;s.playedDevelopment=false;s=applyEconomyCommand(s,{type:'play-card',playerId:'b',card:'knight'});assert.equal(s.armyHolder,'b');
 });
+
+test('trade offer IDs are safe strings and survive serialization for accept and cancel',()=>{
+ const base=game();const offer=(id:unknown)=>({type:'offer' as const,playerId:'a',id:id as string,targets:['b'],give:hand({brick:1}),receive:hand({ore:1})});
+ for(const id of [{}, [], '', 'x'.repeat(81), 'has space', 'bad!', 'bad.id', '\n']) assert.throws(()=>applyEconomyCommand(base,offer(id)),/Invalid offer/);
+ for(const id of ['a','x'.repeat(80),'valid_1-A']) {
+  const proposed=applyEconomyCommand(base,offer(id));
+  const cloned=JSON.parse(JSON.stringify(proposed));
+  assert.equal(applyEconomyCommand(cloned,{type:'accept-offer',playerId:'b',id}).offer,null);
+  assert.equal(applyEconomyCommand(cloned,{type:'cancel-offer',playerId:'a',id}).offer,null);
+ }
+});

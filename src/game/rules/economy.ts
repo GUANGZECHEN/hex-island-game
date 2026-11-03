@@ -67,7 +67,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   const give=Object.fromEntries(RESOURCES.map(r=>[r,r===command.give?command.rate:0])) as Hand,receive=Object.fromEntries(RESOURCES.map(r=>[r,r===command.receive?1:0])) as Hand;
   transfer(player.hand,state.bank,give);transfer(state.bank,player.hand,receive);
  } else if(command.type==='offer') {
-  if(!command.id||!Array.isArray(command.targets)||!command.targets.length||new Set(command.targets).size!==command.targets.length||command.targets.some(id=>id===player.id||!state.players.some(p=>p.id===id))||!validHand(command.give)||!validHand(command.receive)||!handSize(command.give)||!handSize(command.receive)||RESOURCES.some(r=>command.give[r]>player.hand[r]))throw new Error('Invalid offer.');
+  if(typeof command.id!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(command.id)||!Array.isArray(command.targets)||!command.targets.length||new Set(command.targets).size!==command.targets.length||command.targets.some(id=>id===player.id||!state.players.some(p=>p.id===id))||!validHand(command.give)||!validHand(command.receive)||!handSize(command.give)||!handSize(command.receive)||RESOURCES.some(r=>command.give[r]>player.hand[r]))throw new Error('Invalid offer.');
   state.offer={id:command.id,proposer:player.id,targets:[...command.targets],give:{...command.give},receive:{...command.receive}};
  } else if(command.type==='cancel-offer') {if(state.offer?.id!==command.id)throw new Error('Offer is stale.');state.offer=null;}
  else if(command.type==='buy-card') {
