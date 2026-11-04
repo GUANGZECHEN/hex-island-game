@@ -1,0 +1,12 @@
+name: Temporary signaling live diagnostic
+on:
+  pull_request:
+    types: [synchronize]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    if: github.event.pull_request.number == 20 && github.event.pull_request.head.ref == 'game/mvp' && github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/deploy-signaling.yml
+    permissions:
+      contents: read

@@ -1,4 +1,4 @@
-import { RoomClient } from '../../rooms';
+import { RoomClient, RoomError } from '../../rooms';
 import { HostSession } from './session';
 import type { projectState } from './authority';
 import { isTwoPlayerQa } from './qa';
@@ -33,7 +33,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   else if(message.type==='error'||message.type==='rejection')status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);
  }});
  el<HTMLButtonElement>('room-create').disabled=!allowed;
- el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch{status('Could not create the room.');}};
+ el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
  el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
  el('room-start').onclick=()=>{try{const seed=el<HTMLInputElement>('seed');if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid board seed.');host?.start(seed.valueAsNumber);}catch(e){status(e instanceof Error?e.message:'Could not start.');}};
  async function join(roomId:string,capability:string){role='guest';room=roomId;open=false;hostReady=false;el('room-ready').textContent='Mark ready';el('room-ready').hidden=false;el('room-start').hidden=true;sessionStorage.setItem('hex-room',JSON.stringify({room:roomId,capability}));try{await client.join(roomId,capability);}catch{status('Could not join the room.');}}

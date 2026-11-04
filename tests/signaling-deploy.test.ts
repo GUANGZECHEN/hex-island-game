@@ -53,6 +53,7 @@ test('deployment wrapper suppresses and deletes claim material on success and fa
  try {
   mkdirSync(bin);mkdirSync(runner);const npm=join(bin,'npm');
   writeFileSync(npm,`#!/usr/bin/env bash\nmkdir -p "$XDG_CONFIG_HOME"\nprintf '%s' "$CLAIM_CANARY" > "$XDG_CONFIG_HOME/secret"\nprintf '%s\\n' "$CLAIM_CANARY"\nif [[ "\${MOCK_FAILURE:-}" == yes ]]; then exit 1; fi\nprintf '%s\\n' '{"type":"deploy","version":1,"worker_name":"hex-island-signaling","version_id":"v","targets":["https://hex-island-signaling.temporary-123.workers.dev"],"claim_url":"'"$CLAIM_CANARY"'"}' > "$WRANGLER_OUTPUT_FILE_PATH"\n`);chmodSync(npm,0o700);
+  const fakeNode=join(bin,'node');writeFileSync(fakeNode,`#!/usr/bin/env bash\nif [[ "$1" == scripts/smoke.mjs ]]; then [[ "\${MOCK_SMOKE_FAIL:-no}" != yes ]]; exit $?; fi\nexec "${process.execPath}" "$@"\n`);chmodSync(fakeNode,0o700);
   for(const mode of ['temporary','permanent'])for(const failure of [false,true]){
    const output=join(dir,`${mode}-${failure}-output`),summary=join(dir,`${mode}-${failure}-summary`);
    const env={...process.env,PATH:`${bin}:${process.env.PATH}`,RUNNER_TEMP:runner,GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summary,DEPLOYMENT_MODE:mode,MOCK_FAILURE:failure?'yes':'no',CLAIM_CANARY:claim,CLOUDFLARE_API_TOKEN:mode==='permanent'?'token':'',CLOUDFLARE_ACCOUNT_ID:mode==='permanent'?'account':''};
@@ -61,5 +62,9 @@ test('deployment wrapper suppresses and deletes claim material on success and fa
    let visible=child.stdout+child.stderr;if(!failure)visible+=readFileSync(output,'utf8')+readFileSync(summary,'utf8');
    assert.ok(!visible.includes(claim));assert.deepEqual(readdirSync(runner),[]);
   }
+  const output=join(dir,'smoke-failed-output'),summary=join(dir,'smoke-failed-summary');
+  const env={...process.env,PATH:`${bin}:${process.env.PATH}`,RUNNER_TEMP:runner,GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summary,DEPLOYMENT_MODE:'temporary',MOCK_FAILURE:'no',MOCK_SMOKE_FAIL:'yes',CLAIM_CANARY:claim,CLOUDFLARE_API_TOKEN:'',CLOUDFLARE_ACCOUNT_ID:''};
+  const blocked=spawnSync('bash',[resolve('scripts/deploy-signaling.sh')],{cwd:'signaling',env,encoding:'utf8'});
+  assert.notEqual(blocked.status,0);assert.ok(!(blocked.stdout+blocked.stderr).includes(claim));assert.ok(!readdirSync(dir).includes('smoke-failed-output'));assert.ok(!readdirSync(dir).includes('smoke-failed-summary'));assert.deepEqual(readdirSync(runner),[]);
  } finally {rmSync(dir,{recursive:true,force:true});}
 });

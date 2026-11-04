@@ -28,6 +28,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const mode = process.argv[3];
     if (mode !== 'temporary' && mode !== 'permanent') throw new Error('Invalid deployment mode.');
     const origin = deployedWorkerOrigin(readFileSync(process.argv[2], 'utf8'), config.name);
+    if (process.argv[4] === '--extract') { console.log(origin); process.exit(0); }
     if (!process.env.GITHUB_OUTPUT || !process.env.GITHUB_STEP_SUMMARY) throw new Error('GitHub Actions output paths are unavailable.');
     appendFileSync(process.env.GITHUB_OUTPUT, `worker_origin=${origin}\n`);
     const handoff = mode === 'temporary' ? 'Temporary QA Worker: begin testing promptly; it is expected to expire after about 60 minutes. No Cloudflare setup is required.' : 'Permanent Worker: set the repository Actions variable **SIGNALING_URL** to this origin for future production builds.';

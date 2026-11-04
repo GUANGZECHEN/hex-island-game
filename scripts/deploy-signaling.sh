@@ -42,4 +42,6 @@ else
     exit 1
   fi
 fi
+worker_origin=$(node ../scripts/signaling-deploy-origin.mjs "$WRANGLER_OUTPUT_FILE_PATH" "$DEPLOYMENT_MODE" --extract)
+node scripts/smoke.mjs "$worker_origin"
 node ../scripts/signaling-deploy-origin.mjs "$WRANGLER_OUTPUT_FILE_PATH" "$DEPLOYMENT_MODE"

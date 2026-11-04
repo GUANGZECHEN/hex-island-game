@@ -1,4 +1,6 @@
 import { formatCandidates } from './candidates';
+import { requestRoom, RoomError } from './room-request';
+export { RoomError } from './room-request';
 type Role = 'host' | 'guest';
 type Events = { status: (s:string)=>void; error: (s:string)=>void; peer: (id:string, status:string, open:boolean)=>void; remove: (id:string)=>void; message: (id:string,text:string)=>void };
 type Entry = { pc: RTCPeerConnection; channel: RTCDataChannel | null; pending: RTCIceCandidateInit[]; chain: Promise<void> };
@@ -7,8 +9,7 @@ export class RoomClient {
  constructor(private endpoint:string,private events:Events) {}
  async create(): Promise<string> {
   this.reset(); const generation=this.generation;
-  const response=await fetch(`${this.endpoint}/rooms`,{method:'POST',headers:{'Content-Type':'application/json'}}); if(!response.ok) throw Error('Room creation failed.');
-  const room=await response.json() as {room:string;host:string;guest:string}; if(generation!==this.generation) throw Error('Session cancelled.');
+  const room=await requestRoom(this.endpoint); if(generation!==this.generation) throw Error('Session cancelled.');
   await this.connect(room.room,room.host,'host');
   const link=new URL(location.href); link.hash=`join=${room.room}.${room.guest}`; return link.toString();
  }
@@ -17,11 +18,11 @@ export class RoomClient {
   this.role=role; this.events.status('Connecting to signaling…');
   const url=new URL(`${this.endpoint}/rooms/${room}/socket`); url.protocol=url.protocol==='https:'?'wss:':'ws:';
   const ws=new WebSocket(url); this.ws=ws;
-  return new Promise((resolve,reject)=>{ let settled=false; const fail=(message:string)=>{if(!settled){settled=true;reject(Error(message));}else this.events.error(message);};
-   ws.onmessage=(event)=>{ if(this.ws!==ws)return; let msg: {type:string;id?:string;from?:string;code?:string;data?:unknown}; try{msg=JSON.parse(String(event.data));}catch{fail('Invalid signaling response.');return}
+  return new Promise((resolve,reject)=>{ let settled=false; const fail=(message:string)=>{if(!settled){settled=true;reject(new RoomError(message));}else this.events.error(message);};
+   ws.onmessage=(event)=>{ if(this.ws!==ws)return; let msg: {type:string;id?:string;from?:string;code?:string;data?:unknown}; try{msg=JSON.parse(String(event.data));}catch{fail('Signaling WebSocket connection or authentication failed.');return}
     if(msg.type==='authenticate'){ws.send(JSON.stringify({type:'auth',role,token}));return;}
     if(msg.type==='ready'){settled=true;this.events.status('Room connected. Waiting for peers…');resolve();return;}
-    if(msg.type==='error'){fail(`Room error: ${msg.code ?? 'unknown'}`);return;}
+    if(msg.type==='error'){fail('Signaling WebSocket connection or authentication failed.');return;}
     if(msg.type==='join' && role==='host' && msg.id){const id=msg.id;this.queue(id,async e=>{const ch=e.pc.createDataChannel('messages');this.bind(id,e,ch);await e.pc.setLocalDescription(await e.pc.createOffer());this.signal('offer',id,e.pc.localDescription?.sdp);});return;}
     if(msg.type==='leave' && msg.id){this.remove(msg.id);return;}
     if(msg.from && ['offer','answer','candidate'].includes(msg.type)){const id=msg.from;this.queue(id,async e=>{
@@ -30,7 +31,7 @@ export class RoomClient {
       else if(msg.type==='candidate' && msg.data && typeof msg.data==='object'){const c=msg.data as RTCIceCandidateInit;if(e.pc.remoteDescription) await e.pc.addIceCandidate(c);else e.pending.push(c);}
     });}
    };
-   ws.onerror=()=>fail('Signaling connection failed.'); ws.onclose=(event)=>{if(this.ws!==ws)return;this.ws=null;for(const id of [...this.peers.keys()])this.remove(id);fail(`Signaling disconnected${event.reason ? `: ${event.reason}` : '.'}`);this.events.status('Disconnected');};
+   ws.onerror=()=>fail('Signaling WebSocket connection or authentication failed.'); ws.onclose=(event)=>{if(this.ws!==ws)return;this.ws=null;for(const id of [...this.peers.keys()])this.remove(id);fail('Signaling WebSocket connection or authentication failed.');this.events.status('Disconnected');};
   });
  }
  private entry(id:string):Entry { let e=this.peers.get(id);if(e)return e;const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});e={pc,channel:null,pending:[],chain:Promise.resolve()};this.peers.set(id,e);const current=e;
