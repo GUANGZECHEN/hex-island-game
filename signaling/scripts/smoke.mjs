@@ -53,12 +53,19 @@ export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeou
     throw new SmokeError(`Room creation failed (HTTP ${status}${code}).`);
   }
   if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.room !== 'string' || !TOKEN.test(body.room) || typeof body.host !== 'string' || !TOKEN.test(body.host) || typeof body.guest !== 'string' || !TOKEN.test(body.guest) || !Number.isSafeInteger(body.expires) || body.expires <= now()) throw new SmokeError('Room creation returned an invalid response.');
+  if (response.headers.get('access-control-allow-origin') !== PRODUCTION_ORIGIN) throw new SmokeError('Signaling CORS response failed.');
+  let preflight;
+  try { preflight = await fetchImpl(new URL('/rooms', url), { method: 'OPTIONS', headers: { Origin: PRODUCTION_ORIGIN, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }); }
+  catch { throw new SmokeError('Signaling CORS preflight failed.'); }
+  const methods = (preflight.headers.get('access-control-allow-methods') ?? '').toUpperCase().split(',').map(value => value.trim());
+  const headers = (preflight.headers.get('access-control-allow-headers') ?? '').toLowerCase().split(',').map(value => value.trim());
+  if (preflight.status !== 204 || preflight.headers.get('access-control-allow-origin') !== PRODUCTION_ORIGIN || !methods.includes('POST') || !headers.includes('content-type')) throw new SmokeError('Signaling CORS preflight failed.');
   if (!Socket) { try { Socket = (await import('ws')).default; } catch { throw new SmokeError('Host WebSocket connection or authentication failed.'); } }
   const ws = new URL(`/rooms/${body.room}/socket`, url); ws.protocol = local ? 'ws:' : 'wss:';
   await socketReady(ws.toString(), body.host, Socket, timeoutMs);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await smokeSignaling(process.argv[2], { retries: 7, onRetry: () => console.log('Signaling smoke: HTTP 404; retrying.') }); console.log('Signaling smoke passed: HTTP 201 and host WebSocket ready.'); }
+  try { await smokeSignaling(process.argv[2], { retries: 7, onRetry: () => console.log('Signaling smoke: HTTP 404; retrying.') }); console.log('Signaling smoke passed: HTTP 201, CORS preflight and host WebSocket ready.'); }
   catch (error) { console.error(`::error::${error instanceof SmokeError ? error.message : 'Signaling smoke failed.'}`); process.exitCode = 1; }
 }
