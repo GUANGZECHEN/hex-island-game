@@ -33,13 +33,18 @@ function socketReady(url, token, Socket, timeoutMs) {
 }
 
 /** Creates a throwaway room and authenticates its host without persisting or logging capabilities. */
-export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeoutMs = 15000, now = Date.now, allowLocal = false } = {}) {
+export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeoutMs = 15000, now = Date.now, allowLocal = false, retries = 0, retryDelayMs = 4000, onRetry = () => {} } = {}) {
   let url; try { url = new URL(origin); } catch { throw new SmokeError('Invalid signaling origin.'); }
   const local = allowLocal && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
   if ((!local && (url.protocol !== 'https:' || !url.hostname.endsWith('.workers.dev'))) || url.username || url.password || (url.port && !local) || url.pathname !== '/' || url.search || url.hash) throw new SmokeError('Invalid signaling origin.');
   let response;
-  try { response = await fetchImpl(new URL('/rooms', url), { method: 'POST', headers: { Origin: PRODUCTION_ORIGIN, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }); }
-  catch { throw new SmokeError('Signaling service is unreachable.'); }
+  for (let attempt = 0; ; attempt++) {
+    try { response = await fetchImpl(new URL('/rooms', url), { method: 'POST', headers: { Origin: PRODUCTION_ORIGIN, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }); }
+    catch { throw new SmokeError('Signaling service is unreachable.'); }
+    if (response.status !== 404 || attempt >= retries) break;
+    try { await response.body?.cancel(); } catch {}
+    onRetry(); await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+  }
   let body;
   try { const text = await response.text(); if (text.length <= 8192) body = JSON.parse(text); } catch {}
   if (response.status !== 201) {
@@ -54,6 +59,6 @@ export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeou
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await smokeSignaling(process.argv[2]); console.log('Signaling smoke passed: HTTP 201 and host WebSocket ready.'); }
+  try { await smokeSignaling(process.argv[2], { retries: 7, onRetry: () => console.log('Signaling smoke: HTTP 404; retrying.') }); console.log('Signaling smoke passed: HTTP 201 and host WebSocket ready.'); }
   catch (error) { console.error(`::error::${error instanceof SmokeError ? error.message : 'Signaling smoke failed.'}`); process.exitCode = 1; }
 }

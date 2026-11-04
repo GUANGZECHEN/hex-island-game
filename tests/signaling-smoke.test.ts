@@ -38,3 +38,9 @@ test('host authentication rejection is sanitized',async()=>{
  }
  await assert.rejects(smokeSignaling('https://hex-island-signaling.example.workers.dev',{fetchImpl:async()=>new Response(JSON.stringify(valid()),{status:201}),Socket:RejectSocket}),error=>String(error).includes('WebSocket')&&!String(error).includes(secret));
 });
+test('a temporarily unavailable route is retried within a fixed limit',async()=>{
+ let attempts=0,retries=0;
+ await smokeSignaling('https://hex-island-signaling.example.workers.dev',{fetchImpl:async()=>{attempts++;return attempts===1?new Response('not found',{status:404}):new Response(JSON.stringify(valid()),{status:201});},Socket:GoodSocket,retries:1,retryDelayMs:0,onRetry:()=>retries++});
+ assert.equal(attempts,2);assert.equal(retries,1);
+ attempts=0;await assert.rejects(smokeSignaling('https://hex-island-signaling.example.workers.dev',{fetchImpl:async()=>{attempts++;return new Response('not found',{status:404});},Socket:GoodSocket,retries:2,retryDelayMs:0}),/HTTP 404/);assert.equal(attempts,3);
+});
