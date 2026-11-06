@@ -41,8 +41,14 @@ export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeou
   if ((!local && !workersDev && !quickTunnel) || url.username || url.password || (url.port && !local) || url.pathname !== '/' || url.search || url.hash) throw new SmokeError('Invalid signaling origin.');
   let response;
   for (let attempt = 0; ; attempt++) {
-    try { response = await fetchImpl(new URL('/rooms', url), { method: 'POST', headers: { Origin: PRODUCTION_ORIGIN, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }); }
-    catch { throw new SmokeError('Signaling service is unreachable.'); }
+    try {
+      response = await fetchImpl(new URL('/rooms', url), { method: 'POST', headers: { Origin: PRODUCTION_ORIGIN, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' });
+    } catch {
+      if (attempt >= retries) throw new SmokeError('Signaling service is unreachable.');
+      onRetry();
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+      continue;
+    }
     if (response.status !== 404 || attempt >= retries) break;
     try { await response.body?.cancel(); } catch {}
     onRetry(); await new Promise(resolve => setTimeout(resolve, retryDelayMs));
@@ -68,6 +74,6 @@ export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeou
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { await smokeSignaling(process.argv[2], { retries: 7, onRetry: () => console.log('Signaling smoke: HTTP 404; retrying.') }); console.log('Signaling smoke passed: HTTP 201, CORS preflight and host WebSocket ready.'); }
+  try { await smokeSignaling(process.argv[2], { retries: 10, retryDelayMs: 3000, onRetry: () => console.log('Signaling smoke: endpoint not ready; retrying.') }); console.log('Signaling smoke passed: HTTP 201, CORS preflight and host WebSocket ready.'); }
   catch (error) { console.error(`::error::${error instanceof SmokeError ? error.message : 'Signaling smoke failed.'}`); process.exitCode = 1; }
 }
