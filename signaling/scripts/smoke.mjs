@@ -36,7 +36,9 @@ function socketReady(url, token, Socket, timeoutMs) {
 export async function smokeSignaling(origin, { fetchImpl = fetch, Socket, timeoutMs = 15000, now = Date.now, allowLocal = false, retries = 0, retryDelayMs = 4000, onRetry = () => {} } = {}) {
   let url; try { url = new URL(origin); } catch { throw new SmokeError('Invalid signaling origin.'); }
   const local = allowLocal && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
-  if ((!local && (url.protocol !== 'https:' || !url.hostname.endsWith('.workers.dev'))) || url.username || url.password || (url.port && !local) || url.pathname !== '/' || url.search || url.hash) throw new SmokeError('Invalid signaling origin.');
+  const workersDev = url.protocol === 'https:' && /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.workers\.dev$/.test(url.hostname);
+  const quickTunnel = url.protocol === 'https:' && /^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname);
+  if ((!local && !workersDev && !quickTunnel) || url.username || url.password || (url.port && !local) || url.pathname !== '/' || url.search || url.hash) throw new SmokeError('Invalid signaling origin.');
   let response;
   for (let attempt = 0; ; attempt++) {
     try { response = await fetchImpl(new URL('/rooms', url), { method: 'POST', headers: { Origin: PRODUCTION_ORIGIN, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), redirect: 'error' }); }
