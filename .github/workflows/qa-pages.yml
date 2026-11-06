@@ -10,8 +10,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: game-mvp-live-qa
-  cancel-in-progress: true
+  group: game-mvp-live-qa-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   qa:
