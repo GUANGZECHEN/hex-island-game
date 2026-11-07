@@ -217,6 +217,27 @@ export async function smokeSignaling(origin, {
     !headers.includes('authorization')
   ) throw new SmokeError('Signaling CORS preflight failed.');
 
+  const wrongCreator=(creatorCapability[0]==='A'?'B':'A')+creatorCapability.slice(1);
+  for(const authorization of [null,`Bearer ${wrongCreator}`]){
+    let rejected;
+    try{
+      const requestHeaders={Origin:PRODUCTION_ORIGIN,'Content-Type':'application/json'};
+      if(authorization)requestHeaders.Authorization=authorization;
+      rejected=await fetchImpl(new URL('/rooms',url),{
+        method:'POST',
+        headers:requestHeaders,
+        signal:AbortSignal.timeout(timeoutMs),
+        redirect:'error',
+      });
+    }catch{
+      throw new SmokeError('Room creation authorization check failed.');
+    }
+    try{await rejected.body?.cancel();}catch{}
+    if(rejected.status!==401||rejected.headers.get('access-control-allow-origin')!==PRODUCTION_ORIGIN){
+      throw new SmokeError('Room creation authorization check failed.');
+    }
+  }
+
   if(!Socket){
     try{Socket=(await import('ws')).default;}
     catch{throw new SmokeError('Room WebSocket connection or authentication failed.');}
