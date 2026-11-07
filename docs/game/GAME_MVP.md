@@ -46,3 +46,12 @@ The opt-in `?qaPlayers=2` mode tests the real room transport and UI with two peo
 10. Confirm the same guest seat, board state and revision return, then perform one legal action and verify both browsers update.
 
 The invitation and seat capability are bearer capabilities. Keep them private and do not log or publish them.
+
+
+## Board readability polish
+
+The gameplay control surface includes a compact public player strip showing every player, each player's public resource-card count, player color, the local player marker, and a non-color-only current-turn highlight. Resource composition remains private.
+
+Board target modes reuse the deterministic local rules reducers to calculate legal settlement, road, city and robber candidates. These candidates are highlighted directly on the SVG board and target-mode changes remain client-only; they do not generate WebSocket messages.
+
+Resource-specific ports use the same local resource SVG vocabulary as hands and build costs. Each port is connected to its two coastal vertices by visible connector lines; generic ports retain a 3:1 label and resource ports show the resource icon plus 2:1. Full port descriptions remain available to assistive technology.

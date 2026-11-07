@@ -78,16 +78,27 @@ try{
 
   const actor=hostTurn?host:guest;
   const observer=hostTurn?guest:host;
+  const visualBeforeTarget=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
   await actor.getByRole('button',{name:'Place settlement'}).click();
+  if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
+  if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget)throw new Error('Opening target mode sent a network message.');
   await actor.locator('#targets select').first().selectOption({index:0});
   await actor.getByRole('button',{name:'Use target'}).click();
   await observer.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
+  const beforeRoadHighlight=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
+  await actor.getByRole('button',{name:'Place road',exact:true}).click();
+  if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
+  if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==beforeRoadHighlight)throw new Error('Road highlighting sent a network message.');
 
   // Client-only layout checks keep the established reconnect test above intact.
   await actor.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
   for(const width of [320,375,1280]){
     await actor.setViewportSize({width,height:900});
     if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
+    if(await actor.locator('#player-strip .player-summary').count()!==2)throw new Error(`Player summary missing at ${width}px.`);
+    if(await actor.locator('#player-strip .active-player').count()!==1)throw new Error(`Active player highlight missing at ${width}px.`);
+    if(await actor.locator('[data-port-type] .port-connector').count()!==18)throw new Error(`Port connector lines missing at ${width}px.`);
+    if(await actor.locator('[data-port-type]:not([data-port-type="generic"]) [data-resource-icon]').count()!==5)throw new Error(`Resource port icons missing at ${width}px.`);
     if(await actor.locator('[data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);
     if(await actor.locator('[data-hex-id][data-resource]:not([data-resource="none"]) text.island-label').count()!==0)throw new Error(`Resource tiles still show terrain labels at ${width}px.`);
     if(await actor.locator('#board ul[aria-label="Island terrain and number tokens"] li').count()!==19)throw new Error('Accessible tile descriptions are missing.');

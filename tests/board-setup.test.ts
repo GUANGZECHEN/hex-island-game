@@ -105,12 +105,27 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
         assert.ok(list.children[index].textContent.toLowerCase().includes(hex.terrain));
         assert.ok(list.children[index].textContent.toLowerCase().includes(hex.resource));
       }
-      else assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'None')); 
+      else { assert.equal(hex.terrain,'desert'); assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'Desert')); assert.ok(!group.children.some(child => child.tag === 'text' && child.textContent === 'None')); } 
       if (hex.token !== null) {
         assert.ok(group.children.some(child => child.tag === 'circle'));
         assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === String(hex.token)));
       } else assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'Robber'));
       assert.ok(list.children[index].textContent.includes(hex.hexId));
+    }
+    const portGroups=svg.children.slice(19);
+    assert.equal(portGroups.length,9);
+    for(const [index,group] of portGroups.entries()){
+      const port=setup.ports[index];
+      assert.equal(group.attributes.get('data-port-edge'),port.edgeId);
+      assert.equal(group.attributes.get('data-port-type'),port.type);
+      assert.equal(group.children.filter(child=>child.tag==='line'&&child.attributes.get('class')==='port-connector').length,2);
+      if(port.type==='generic'){
+        assert.ok(group.children.some(child=>child.tag==='text'&&child.textContent==='3:1'));
+      }else{
+        assert.ok(group.children.some(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type));
+        assert.ok(group.children.some(child=>child.tag==='text'&&child.textContent==='2:1'));
+        assert.ok(!group.children.some(child=>child.tag==='text'&&child.textContent?.startsWith(port.type[0].toUpperCase())));
+      }
     }
     const occupied = setup.hexes.find(hex => hex.token !== null)!;
     renderIslandBoard(container as unknown as HTMLElement, { ...setup, robberHexId: occupied.hexId });

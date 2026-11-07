@@ -1,10 +1,11 @@
 import type { Resource } from '../rules/state.ts';
 
-/** Original, small line icons shared by the board, hand and costs. */
+/** Original, small line icons shared by the board, hand, ports and costs. */
 export const RESOURCE_PATHS: Readonly<Record<Resource, string>> = {
   lumber: 'M12 2 5 10h3l-4 5h6v5h4v-5h6l-4-5h3L12 2Z',
   brick: 'M3 6h18v12H3zM3 12h18M9 6v6m6 0v6',
-  wool: 'M7 16c-2 0-3-2-2-4-1-3 2-5 4-4 2-3 6-2 7 1 3-1 5 2 3 4 1 2-1 4-3 4H7Zm2 1v3m6-3v3',
+  // Sheep silhouette: woolly body, small head/ear and two legs.
+  wool: 'M7 15c-2.2 0-4-1.7-4-3.8S4.8 7.5 7 7.5c.6-2 2.3-3.4 4.4-3.4 2.2 0 4 1.5 4.5 3.6 2.2-.1 4.1 1.5 4.1 3.6 0 2.1-1.7 3.7-3.9 3.7H7Zm9-5 2-1 2 1-1 2h-2l-1-2ZM8 15v4m7-4v4m-7 0h2m5 0h2',
   grain: 'M12 21V3m0 14-4-3m4 0 4-3m-4 0L8 8m4 0 4-3',
   ore: 'm4 17 3-9 5-4 5 3 3 10-4 3H8Zm3-9 5 3 5-4m-5 4v9',
 };
@@ -14,6 +15,7 @@ export const ACTION_PATHS = {
   settlement: 'M3 11 12 3l9 8M5 10v10h14V10M10 20v-6h4v6',
   city: 'M3 20V9l5-4 5 4v11m0-8 4-3 4 3v8M7 12h2m-2 4h2m8-1h1',
   card: 'M6 3h12v18H6zM9 7h6m-6 4h6m-6 4h4',
+  hand: 'M5 5h12v15H5zM8 2h11v15',
   trade: 'M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4',
   end: 'M4 12h14m-5-5 5 5-5 5M20 5v14',
 } as const;

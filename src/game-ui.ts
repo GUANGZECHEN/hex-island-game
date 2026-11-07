@@ -1,5 +1,6 @@
 import './style.css';
 import { ACTION_PATHS, affordable, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
+import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { initializeNetwork, type BrowserGame } from './game/network/browser';
 import type { projectState } from './game/network/authority';
 import { createIslandBoard } from './game/board/geometry';
@@ -14,7 +15,7 @@ import { applyEconomyCommand as localEconomy } from './game/rules/economy';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:ReturnType<typeof projectState> | null=null;
 let activePanel:'actions'|'cards'|'trade'|'status'='actions';
-let state:GameState | null=null, viewer='', targetMode:'settlement'|'road'|'city'|'robber'|null=null, log:string[]=[];
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[];
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
@@ -40,21 +41,67 @@ function moveTarget(id:string){if(!state)return;const current=state.players[stat
  else if(targetMode==='road')commit(state.phase==='setup-road'?applySetupCommand(state,{type:'place-road',playerId:viewer,edgeId:id}):state.phase==='free-road'?applyEconomyCommand(state,{type:'free-road',playerId:viewer,edgeId:id}):applyBuildCommand(state,{type:'build-road',playerId:viewer,edgeId:id}),`${viewer} placed a road.`);
  else if(targetMode==='robber')commit(applyTurnCommand(state,{type:'move-robber',playerId:viewer,hexId:id}),`${viewer} moved the robber.`);
 }
-function drawBoard(){const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard());const NS='http://www.w3.org/2000/svg';
- for(const edge of view.edges){const owner=s.roads[edge.id];if(!owner&&targetMode!=='road')continue;const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));line.setAttribute('class',owner?`game-road player-${byId(owner).seat+1}`:'game-target');if(owner){const title=document.createElementNS(NS,'title');title.textContent=`${owner} road, ${edge.id}`;line.append(title);}if(!owner){line.setAttribute('tabindex','0');line.setAttribute('role','button');line.setAttribute('aria-label',`Road target ${edge.id}`);line.onclick=()=>attempt(()=>moveTarget(edge.id));line.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(edge.id));}};}svg.append(line);}
- for(const vertex of view.vertices){const owner=s.buildings[vertex.id];if(!owner&&targetMode!=='settlement'&&targetMode!=='city')continue;const node=document.createElementNS(NS,owner?.kind==='city'?'rect':'circle');if(owner?.kind==='city'){node.setAttribute('x',String(vertex.point.x-.15));node.setAttribute('y',String(vertex.point.y-.15));node.setAttribute('width','.3');node.setAttribute('height','.3');}else{node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r',owner?'.15':'.12');}node.setAttribute('class',owner?`game-building player-${byId(owner.playerId).seat+1}`:'game-target');if(owner){const title=document.createElementNS(NS,'title');title.textContent=`${owner.playerId} ${owner.kind}, ${vertex.id}`;node.append(title);}if(!owner||targetMode==='city'){node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Building target ${vertex.id}`);node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}svg.append(node);if(owner){const mark=document.createElementNS(NS,'text');mark.setAttribute('x',String(vertex.point.x));mark.setAttribute('y',String(vertex.point.y));mark.setAttribute('text-anchor','middle');mark.setAttribute('dominant-baseline','central');mark.setAttribute('class','piece-label');mark.textContent=String(byId(owner.playerId).seat+1);svg.append(mark);}}
- if(targetMode==='robber')for(const group of Array.from(svg.querySelectorAll<SVGGElement>('[data-hex-id]'))){group.setAttribute('tabindex','0');group.setAttribute('role','button');group.setAttribute('aria-label',`Move robber to ${group.dataset.hexId}`);group.onclick=()=>attempt(()=>moveTarget(group.dataset.hexId!));group.onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(group.dataset.hexId!));}};}
- // The interactive overlay is keyboard-accessible; the separate text lists describe every cell and port.
+function renderPlayerStrip(s:GameState,activeId:string){
+ const strip=el('player-strip');strip.replaceChildren();
+ for(const player of s.players){
+  const publicPlayer=projection?.public.players.find(p=>p.id===player.id);
+  const handCount=publicPlayer?.resources ?? RESOURCES.reduce((sum,r)=>sum+player.hand[r],0);
+  const card=document.createElement('div');
+  card.className=`player-summary player-${player.seat+1}${player.id===activeId?' active-player':''}${player.id===viewer?' local-player':''}`;
+  card.setAttribute('aria-label',`${player.id}${player.id===viewer?', you':''}: ${handCount} resource cards${player.id===activeId?', current turn':''}`);
+  const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(player.seat+1);marker.setAttribute('aria-hidden','true');
+  const name=document.createElement('span');name.className='player-summary-name';name.textContent=player.id===viewer?`${player.id} · You`:player.id;
+  const hand=document.createElement('span');hand.className='player-hand-count';hand.append(icon(ACTION_PATHS.hand,'icon player-hand-icon'),document.createTextNode(String(handCount)));
+  card.append(marker,name,hand);
+  if(player.id===activeId){const turn=document.createElement('span');turn.className='player-turn-badge';turn.textContent='Turn';card.append(turn);}
+  strip.append(card);
+ }
+}
+function drawBoard(){
+ const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard());const NS='http://www.w3.org/2000/svg';
+ const legal=targetMode?new Set(legalTargetIds(s,viewer,targetMode)):new Set<string>();
+ for(const edge of view.edges){
+  const owner=s.roads[edge.id];
+  if(owner){
+   const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
+   line.setAttribute('class',`game-road player-${byId(owner).seat+1}`);const title=document.createElementNS(NS,'title');title.textContent=`${owner} road, ${edge.id}`;line.append(title);svg.append(line);continue;
+  }
+  if(targetMode!=='road'||!legal.has(edge.id))continue;
+  const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
+  line.setAttribute('class','game-target game-target-road');line.setAttribute('data-legal-target','road');line.setAttribute('tabindex','0');line.setAttribute('role','button');line.setAttribute('aria-label',`Legal road target ${edge.id}`);
+  line.onclick=()=>attempt(()=>moveTarget(edge.id));line.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(edge.id));}};svg.append(line);
+ }
+ for(const vertex of view.vertices){
+  const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
+  if(owner){
+   const node=document.createElementNS(NS,owner.kind==='city'?'rect':'circle');
+   if(owner.kind==='city'){node.setAttribute('x',String(vertex.point.x-.15));node.setAttribute('y',String(vertex.point.y-.15));node.setAttribute('width','.3');node.setAttribute('height','.3');}
+   else{node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.15');}
+   node.setAttribute('class',`game-building player-${byId(owner.playerId).seat+1}${cityTarget?' game-target-city':''}`);
+   const title=document.createElementNS(NS,'title');title.textContent=`${owner.playerId} ${owner.kind}, ${vertex.id}`;node.append(title);
+   if(cityTarget){node.setAttribute('data-legal-target','city');node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
+   svg.append(node);
+   const mark=document.createElementNS(NS,'text');mark.setAttribute('x',String(vertex.point.x));mark.setAttribute('y',String(vertex.point.y));mark.setAttribute('text-anchor','middle');mark.setAttribute('dominant-baseline','central');mark.setAttribute('class','piece-label');mark.textContent=String(byId(owner.playerId).seat+1);svg.append(mark);continue;
+  }
+  if(targetMode!=='settlement'||!legal.has(vertex.id))continue;
+  const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target','settlement');node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal settlement target ${vertex.id}`);
+  node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};svg.append(node);
+ }
+ if(targetMode==='robber')for(const group of Array.from(svg.querySelectorAll<SVGGElement>('[data-hex-id]'))){
+  const id=group.dataset.hexId!;if(!legal.has(id))continue;group.classList.add('robber-target');group.setAttribute('data-legal-target','robber');group.setAttribute('tabindex','0');group.setAttribute('role','button');group.setAttribute('aria-label',`Legal robber target ${id}`);
+  group.onclick=()=>attempt(()=>moveTarget(id));group.onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(id));}};
+ }
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=byId(viewer);el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${active.id}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
+ renderPlayerStrip(s,active.id);
  el('players').textContent=s.players.map(p=>`${p.id}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder??'none'}; largest army: ${s.armyHolder??'none'}.`;
  el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));el('cards').textContent=actor.cards.map(c=>`${c.type}${c.boughtTurn===s.turn?' (new)':''}`).join(', ')||'';
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?'Choose cards to discard.':s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':`Waiting for ${active.id}.`;
  drawBoard();const actions=el('actions'),trade=el('trade-actions'),cards=el('card-actions');actions.replaceChildren();trade.replaceChildren();cards.replaceChildren();const targets=el('targets');targets.replaceChildren();
- if(targetMode){const description=document.createElement('p');description.textContent=`Select a ${targetMode} target on the board or from the list.`;targets.append(description);const board=createIslandBoard();const choices=targetMode==='road'?board.edges.map(e=>e.id):targetMode==='robber'?board.hexes.map(h=>h.id):board.vertices.map(v=>v.id);const choice=select(targets,'Target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}
+ if(targetMode){const description=document.createElement('p');description.textContent=`Select a highlighted ${targetMode} target on the board.`;targets.append(description);const choices=legalTargetIds(s,viewer,targetMode);if(choices.length){const choice=select(targets,'Legal target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}else{const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}}
 
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);

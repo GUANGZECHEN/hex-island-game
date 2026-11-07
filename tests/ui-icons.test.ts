@@ -5,7 +5,7 @@ import { ACTION_PATHS, RESOURCE_PATHS, affordable, resourceChip } from '../src/g
 test('the five resources and common actions have distinct local SVG paths',()=>{
  assert.deepEqual(Object.keys(RESOURCE_PATHS).sort(),['brick','grain','lumber','ore','wool']);
  assert.equal(new Set(Object.values(RESOURCE_PATHS)).size,5);
- for(const name of ['dice','road','settlement','city','card','trade','end'] as const)assert.ok(ACTION_PATHS[name]);
+ for(const name of ['dice','road','settlement','city','card','hand','trade','end'] as const)assert.ok(ACTION_PATHS[name]);
 });
 test('resource chips provide an accessible resource and count',()=>{
  class Element { attributes=new Map<string,string>();children:Element[]=[];textContent='';className='';tag:string;constructor(tag:string){this.tag=tag;}setAttribute(key:string,value:string){this.attributes.set(key,value);}append(...items:Element[]){this.children.push(...items);} }
