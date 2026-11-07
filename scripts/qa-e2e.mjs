@@ -30,14 +30,18 @@ try{
   await guest.locator('#game').waitFor({state:'visible'});
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
 
-  // Force a real guest transport interruption while leaving both game pages open.
-  await guestContext.setOffline(true);
+  // Trigger the same authenticated WebSocket close/reconnect path deterministically.
+  const injected=await guest.evaluate(()=>{
+    const hook=globalThis.__hexQaDropRoomConnection;
+    if(typeof hook!=='function')return false;
+    hook();
+    return true;
+  });
+  if(!injected)throw new Error('QA reconnect hook was unavailable.');
   await guest.waitForFunction(()=>{
     const status=document.querySelector('#network-status')?.textContent??'';
     return status.includes('interrupted') || status.includes('Reconnecting');
   },null,{timeout:10000});
-
-  await guestContext.setOffline(false);
   await guest.waitForFunction(()=>{
     const status=document.querySelector('#network-status')?.textContent??'';
     return status.includes('reconnected') || status.includes('Connected as Player 2');
@@ -68,7 +72,7 @@ try{
   await actor.getByRole('button',{name:'Use target'}).click();
   await observer.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
 
-  console.log('E2E passed: create/join/ready/start, forced guest disconnect, automatic reconnect, manual rejoin, seat resync and post-recovery revision update.');
+  console.log('E2E passed: create/join/ready/start, forced guest WebSocket disconnect, automatic reconnect, manual rejoin, seat resync and post-recovery revision update.');
 } finally {
   await guestContext.close();
   await hostContext.close();

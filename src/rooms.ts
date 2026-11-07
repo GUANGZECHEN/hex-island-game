@@ -228,6 +228,11 @@ export class RoomClient {
     });
   }
 
+  qaDropConnection():void {
+    const ws=this.ws;
+    if(ws?.readyState===WebSocket.OPEN)ws.close(1012,'qa-reconnect');
+  }
+
   send(id:string,text:string):void {
     const ws=this.ws;
     if(!ws || ws.readyState!==WebSocket.OPEN || !this.peers.has(id)){
