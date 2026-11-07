@@ -62,3 +62,12 @@ Resource-specific ports use the same local resource SVG vocabulary as hands and 
 Incoming domestic trade offers are displayed from the recipient's perspective: the proposer is named, resources the recipient would receive are shown separately from resources the recipient would give, and the existing Accept/Reject actions remain authoritative.
 
 The desert uses a local SVG terrain icon. The robber is represented by a white prohibition badge with a red ring and diagonal slash. On numbered tiles the badge is centered directly over the number token, and the occupied tile is visually dimmed while the robber marker remains fully visible.
+
+
+## Room-creation authorization
+
+Creating a room requires a separate owner creator capability. The public Pages URL and guest invitation links do not grant room-creation authority. The owner opens a private start URL whose fragment is `#create=<creator capability>`; the browser reads that capability into memory, immediately removes the fragment from the visible address bar, and sends the capability only in the Authorization header of `POST /rooms`. Guest invite URLs contain only the room ID and guest room capability and open in guest mode with host/local creation controls hidden.
+
+The Worker stores/configures only `CREATOR_CAPABILITY_HASH`, a SHA-256 verifier for the long-lived owner capability. Missing, malformed, stale or incorrect creator credentials all fail closed before any Durable Object room is initialized. The creator verifier is separate from each room's host and guest capability hashes, so rotating the creator capability affects future room creation only; existing rooms continue to authenticate with their existing room credentials until normal expiry.
+
+Generate or rotate the owner capability locally with `node scripts/creator-capability.mjs`. Configure the printed hash as the Worker's `CREATOR_CAPABILITY_HASH` secret/binding, keep the printed capability private, and bookmark a private owner URL ending in `#create=<capability>`. Never place the raw creator capability in GitHub variables, committed files, Pages build configuration, logs, issues, or invitations. Automated QA generates a separate ephemeral creator capability at runtime; it is masked and is not included in the Pages artifact.
