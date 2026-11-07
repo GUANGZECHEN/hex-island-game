@@ -149,7 +149,9 @@ for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-
 
 const network=initializeNetwork({status:connectionStatus,snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<networkRevision)return;
-  if(!projection || value.revision!==networkRevision)log.unshift(`Game updated to revision ${value.revision}.`);projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
+  const stateChanged=!projection||value.gameId!==projection.gameId||value.revision!==networkRevision;
+  if(stateChanged){log.unshift(`Game updated to revision ${value.revision}.`);targetMode=null;}
+  projection=value;networkRevision=value.revision;viewer=playerId;remote=network;
   const pub=value.public;
   state={version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:p.id===playerId?value.private.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:p.id===playerId?value.private.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:false,resumePhase:null,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
