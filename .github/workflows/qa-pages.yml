@@ -49,20 +49,39 @@ jobs:
           echo '1d356dac769d0dbf62ebe588c4034824bbff98d5790c2f844cc99e0e2f57462d  '"$RUNNER_TEMP"'/cloudflared' | sha256sum --check -
           chmod 700 "$RUNNER_TEMP/cloudflared"
 
-      - name: Start two public QA ingress tunnels to the Cloudflare Worker
+      - name: Start local Worker reverse proxy
         env:
           WORKER_ORIGIN: ${{ needs.signaling.outputs.worker_origin }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/worker-proxy"
+          cp scripts/qa-worker-proxy.cjs "$RUNNER_TEMP/worker-proxy/proxy.cjs"
+          cd "$RUNNER_TEMP/worker-proxy"
+          npm init -y >/dev/null 2>&1
+          npm install --silent http-proxy@1.18.1
+          setsid env WORKER_ORIGIN="$WORKER_ORIGIN" node proxy.cjs >"$RUNNER_TEMP/worker-proxy.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/worker-proxy.pid"
+          for attempt in {1..20}; do
+            if grep -q 'proxy-ready' "$RUNNER_TEMP/worker-proxy.log"; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/worker-proxy.pid")" 2>/dev/null; then
+              echo '::error::Local Worker reverse proxy exited.'
+              exit 1
+            fi
+            sleep 1
+          done
+          echo '::error::Local Worker reverse proxy did not become ready.'
+          exit 1
 
-          worker_host="${WORKER_ORIGIN#https://}"
+      - name: Start two public QA ingress tunnels
+        run: |
+          set -euo pipefail
 
           start_tunnel() {
             label="$1"
             setsid "$RUNNER_TEMP/cloudflared" tunnel \
-              --url "$WORKER_ORIGIN" \
-              --http-host-header "$worker_host" \
-              --origin-server-name "$worker_host" \
+              --url http://127.0.0.1:8788 \
               --no-autoupdate \
               --loglevel info \
               >"$RUNNER_TEMP/cloudflared-$label.log" 2>&1 &
@@ -181,4 +200,9 @@ jobs:
               kill -- -"$(cat "$RUNNER_TEMP/cloudflared-$label.pid")" 2>/dev/null || true
             fi
           done
-          rm -f "$RUNNER_TEMP"/cloudflared-{a,b}.{log,pid} "$RUNNER_TEMP/cloudflared"
+          if [[ -f "$RUNNER_TEMP/worker-proxy.pid" ]]; then
+            kill -- -"$(cat "$RUNNER_TEMP/worker-proxy.pid")" 2>/dev/null || true
+          fi
+          rm -rf "$RUNNER_TEMP/worker-proxy"
+          rm -f "$RUNNER_TEMP/worker-proxy.log" "$RUNNER_TEMP/worker-proxy.pid" \
+            "$RUNNER_TEMP"/cloudflared-{a,b}.{log,pid} "$RUNNER_TEMP/cloudflared"
