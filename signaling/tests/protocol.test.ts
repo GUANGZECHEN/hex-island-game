@@ -12,6 +12,7 @@ import {
   MAX_MESSAGE,
   MAX_RELAY_DATA,
   MAX_CHECKPOINT_DATA,
+  ROOM_TTL_MS,
 } from '../src/protocol.ts';
 
 test('tokens are random, correctly formatted and hashed', async()=>{
@@ -79,4 +80,9 @@ test('host checkpoint controls are strict and bounded',()=>{
     JSON.stringify({type:'checkpoint-save',revision:1,round:1,replace:false,data:'x'.repeat(MAX_CHECKPOINT_DATA+1)}),
     JSON.stringify({type:'checkpoint-list',extra:true}),
   ]) assert.equal(parseRoomControl(invalid),null);
+});
+
+
+test('rooms remain recoverable for 48 hours',()=>{
+  assert.equal(ROOM_TTL_MS,48*60*60*1000);
 });

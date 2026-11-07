@@ -30,14 +30,20 @@ export XDG_CONFIG_HOME="$temporary_dir/config"
 export XDG_CACHE_HOME="$temporary_dir/cache"
 export npm_config_cache="$temporary_dir/npm-cache"
 export WRANGLER_OUTPUT_FILE_PATH="$temporary_dir/deployment.jsonl"
+wrangler_config="${WRANGLER_CONFIG:-wrangler.jsonc}"
+if [[ ! -f "$wrangler_config" ]]; then
+  echo '::error::Wrangler config was not found.'
+  exit 1
+fi
+export WRANGLER_CONFIG="$wrangler_config"
 if [[ "$DEPLOYMENT_MODE" == temporary ]]; then
   unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-  if ! npm exec -- wrangler deploy --temporary --config wrangler.jsonc >"$temporary_dir/wrangler.log" 2>&1; then
+  if ! npm exec -- wrangler deploy --temporary --config "$wrangler_config" >"$temporary_dir/wrangler.log" 2>&1; then
     echo '::error::Temporary signaling deployment failed; sensitive Wrangler output was suppressed.'
     exit 1
   fi
 else
-  if ! npm exec -- wrangler deploy --config wrangler.jsonc >"$temporary_dir/wrangler.log" 2>&1; then
+  if ! npm exec -- wrangler deploy --config "$wrangler_config" >"$temporary_dir/wrangler.log" 2>&1; then
     echo '::error::Permanent signaling deployment failed; sensitive Wrangler output was suppressed.'
     exit 1
   fi

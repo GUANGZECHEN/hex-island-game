@@ -36,3 +36,8 @@ D012: Replace browser-to-browser WebRTC gameplay transport with authenticated We
 ## GAME-MVP recovery decision
 
 D013: Persist the host-produced latest authoritative game checkpoint plus the most recent three completed-round checkpoints in the room Durable Object. The Durable Object remains non-authoritative for gameplay: it stores and returns checkpoints but does not evaluate rules or advance state. Original room/seat capabilities are retained locally so the original players can reclaim their seats after page closure. A recovered game remains paused until all original players reconnect and the host explicitly selects a saved checkpoint to resume.
+
+
+## GAME-MVP QA availability decision
+
+D014: Give rooms a 48-hour lifetime. Keep automatic browser reconnection running for the room lifetime: fast retries first, then 30-second and 60-second background retries. Use a dedicated persistent `hex-island-signaling-qa` Cloudflare Worker and Durable Object namespace for unmerged QA when repository Cloudflare deployment credentials are configured; retain the existing ~50-minute Quick Tunnel path only as a credential-free fallback. The persistent QA Worker must remain separate from the production Worker name and storage.

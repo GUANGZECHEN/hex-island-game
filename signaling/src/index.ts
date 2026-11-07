@@ -1,4 +1,4 @@
-import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
+import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, ROOM_TTL_MS, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
 
 interface Env { ROOMS: DurableObjectNamespace }
 type Member = { id: string; role: Role };
@@ -33,7 +33,7 @@ export default {
 
     const url=new URL(req.url);
     if (url.pathname === '/rooms' && req.method === 'POST') {
-      const room=randomToken(), host=randomToken(), guest=randomToken(), expires=Date.now()+12*60*60*1000;
+      const room=randomToken(), host=randomToken(), guest=randomToken(), expires=Date.now()+ROOM_TTL_MS;
       const stub=env.ROOMS.get(env.ROOMS.idFromName(room));
       const init=await stub.fetch('https://room.internal/init',{
         method:'POST',

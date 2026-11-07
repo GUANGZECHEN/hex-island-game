@@ -17,11 +17,14 @@ type Connection = { room:string; token:string; role:Role; endpointIndex:number }
 
 const MAX_RELAY_DATA = 16384;
 const MAX_CHECKPOINT_DATA = 49152;
-const MAX_RECONNECT_ATTEMPTS = 10;
 const validPeerId = (value:unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 const validRoomToken=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
-const reconnectDelay = (attempt:number) => Math.min(500 * 2 ** Math.max(0,attempt-1), 8000);
+export const reconnectDelay = (attempt:number) => {
+  if(attempt<=10)return Math.min(500 * 2 ** Math.max(0,attempt-1),8000);
+  if(attempt<=30)return 30000;
+  return 60000;
+};
 const validMeta=(value:unknown):value is CheckpointMeta=>{
   const x=value as Partial<CheckpointMeta>|null;
   return !!x&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id)&&Number.isSafeInteger(x.revision)&&Number(x.revision)>=0&&Number.isSafeInteger(x.round)&&Number(x.round)>=0&&Number.isSafeInteger(x.savedAt)&&Number(x.savedAt)>0&&typeof x.latest==='boolean';
@@ -118,16 +121,15 @@ export class RoomClient {
 
   private scheduleReconnect(generation:number):void {
     if(generation!==this.generation || !this.connection || this.reconnectTimer!==null)return;
-    if(this.reconnectAttempt>=MAX_RECONNECT_ATTEMPTS){
-      this.events.status('Automatic reconnect paused. Use Rejoin previous room to retry.');
-      return;
-    }
 
-    const attempt=++this.reconnectAttempt;
+    this.reconnectAttempt=Math.min(this.reconnectAttempt+1,Number.MAX_SAFE_INTEGER);
+    const attempt=this.reconnectAttempt;
     const delay=reconnectDelay(attempt);
     const connection=this.connection;
     connection.endpointIndex=(connection.endpointIndex+1)%this.endpoints.length;
-    this.events.status(`Connection interrupted. Reconnecting automatically (${attempt}/${MAX_RECONNECT_ATTEMPTS})…`);
+    const seconds=Math.ceil(delay/1000);
+    const phase=attempt<=10?`fast retry ${attempt}/10`:attempt<=30?'background retry':'long-term retry';
+    this.events.status(`Connection interrupted. Automatic ${phase} in ${seconds}s…`);
 
     this.reconnectTimer=window.setTimeout(()=>{
       this.reconnectTimer=null;
