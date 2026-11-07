@@ -12,20 +12,24 @@ import { renderIslandBoard } from './game/board/render';
 import { createGame, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
 import { applyTurnCommand as localTurn } from './game/rules/turn';
-import { applyBuildCommand as localBuild } from './game/rules/build';
+import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
+import { derivePublicActivity, turnAnnouncement, type PublicActivityState } from './game/ui/activity';
 import { applyEconomyCommand as localEconomy } from './game/rules/economy';
 
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:ReturnType<typeof projectState> | null=null;
 let activePanel:'actions'|'cards'|'trade'|'status'='actions';
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[];
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='';
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
 const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => remote ? (remote.submit(c,networkRevision), null) : localEconomy(s,c);
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
+function activityState(s:GameState):PublicActivityState {
+ return {players:s.players.map(player=>({id:player.id,resources:RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0)})),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards};
+}
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
-function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;log.unshift(description);targetMode=null;if(old.currentSeat!==next.currentSeat)handoff(next.players[next.currentSeat].id);render();}
+function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;const message=derivePublicActivity(activityState(old),activityState(next))??description;if(message){log.unshift(message);publicActivity=message;}targetMode=null;if(old.currentSeat!==next.currentSeat)handoff(next.players[next.currentSeat].id);render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function button(parent:HTMLElement,label:string,action:()=>void){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>attempt(action);parent.append(b);return b;}
 function select(parent:HTMLElement,label:string,options:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const value of options){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
@@ -68,6 +72,18 @@ function developmentAction(parent:HTMLElement,label:string,card:Exclude<Developm
 function renderDevelopmentCards(parent:HTMLElement,cards:GameState['players'][number]['cards'],turn:number){
  parent.replaceChildren();for(const type of Object.keys(DEVELOPMENT_LABELS) as Development[]){const owned=cards.filter(card=>card.type===type);if(!owned.length)continue;parent.append(developmentChip(type,owned.length,owned.filter(card=>card.boughtTurn===turn).length));}
 }
+function playerStat(path:string,count:number,title:string,className:string,label?:string){
+ const item=document.createElement('span');item.className=`player-stat ${className}`;item.title=title;item.setAttribute('aria-label',`${title}: ${count}`);
+ if(label){const tag=document.createElement('span');tag.className='player-stat-label';tag.textContent=label;item.append(tag);}
+ item.append(icon(path,'icon player-stat-icon'),document.createTextNode(String(count)));return item;
+}
+function renderPieceSupply(player:GameState['players'][number]){
+ const supply=el('piece-supply');supply.replaceChildren();
+ const title=document.createElement('strong');title.textContent='Pieces left';supply.append(title,
+  playerStat(ACTION_PATHS.road,player.roads,'Roads remaining','supply-road','R'),
+  playerStat(ACTION_PATHS.settlement,player.settlements,'Settlements remaining','supply-settlement','S'),
+  playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','supply-city','C'));
+}
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  renderIslandBoard(preview,generateBoardSetup(input.valueAsNumber));const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
@@ -84,19 +100,34 @@ function renderPlayerStrip(s:GameState,activeId:string){
   const publicPlayer=projection?.public.players.find(p=>p.id===player.id);
   const handCount=publicPlayer?.resources ?? RESOURCES.reduce((sum,r)=>sum+player.hand[r],0);
   const developmentCount=publicPlayer?.developmentCards ?? player.cards.length;
-  const publicVp=publicVictoryPoints(s,player.id);
+  const publicVp=publicVictoryPoints(s,player.id),routeLength=longestRoute(s,player.id);
   const card=document.createElement('div');
   card.className=`player-summary player-${player.seat+1}${player.id===activeId?' active-player':''}${player.id===viewer?' local-player':''}`;
-  card.setAttribute('aria-label',`${player.id}${player.id===viewer?', you':''}: ${handCount} resource cards, ${developmentCount} development cards, ${publicVp} public victory points${player.id===activeId?', current turn':''}`);
+  card.dataset.seat=String(player.seat+1);
+  card.setAttribute('aria-label',`${player.id}${player.id===viewer?', you':''}: ${handCount} resource cards, ${developmentCount} development cards, ${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${player.id===activeId?', current turn':''}`);
+
+  const header=document.createElement('div');header.className='player-summary-header';
   const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(player.seat+1);marker.setAttribute('aria-hidden','true');
   const name=document.createElement('span');name.className='player-summary-name';name.textContent=player.id===viewer?`${player.id} · You`:player.id;
-  const stats=document.createElement('span');stats.className='player-public-stats';
-  const hand=document.createElement('span');hand.className='player-stat player-hand-count';hand.title='Resource cards';hand.append(icon(ACTION_PATHS.hand,'icon player-stat-icon'),document.createTextNode(String(handCount)));
-  const dev=document.createElement('span');dev.className='player-stat player-dev-count';dev.title='Development cards';dev.append(icon(ACTION_PATHS.card,'icon player-stat-icon'),document.createTextNode(String(developmentCount)));
-  const vp=document.createElement('span');vp.className='player-stat player-vp-count';vp.title='Public victory points';vp.append(icon(ACTION_PATHS.victory,'icon player-stat-icon'),document.createTextNode(String(publicVp)));
-  stats.append(hand,dev,vp);card.append(marker,name,stats);
-  if(player.id===activeId){const turn=document.createElement('span');turn.className='player-turn-badge';turn.textContent='Turn';card.append(turn);}
-  strip.append(card);
+  header.append(marker,name);
+  if(player.id===activeId){const turn=document.createElement('span');turn.className='player-turn-badge';turn.textContent='Turn';header.append(turn);}
+
+  const publicStats=document.createElement('div');publicStats.className='player-public-stats';
+  publicStats.append(
+   playerStat(ACTION_PATHS.victory,publicVp,'Public victory points','player-vp-count','VP'),
+   playerStat(ACTION_PATHS.hand,handCount,'Resource cards','player-hand-count'),
+   playerStat(ACTION_PATHS.card,developmentCount,'Development cards','player-dev-count')
+  );
+
+  const pieces=document.createElement('div');pieces.className='player-piece-stats';
+  pieces.append(
+   playerStat(ACTION_PATHS.road,player.roads,'Roads remaining','player-road-left','R'),
+   playerStat(ACTION_PATHS.settlement,player.settlements,'Settlements remaining','player-settlement-left','S'),
+   playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','player-city-left','C'),
+   playerStat(ACTION_PATHS.road,routeLength,'Longest road length','player-longest-road','LR')
+  );
+  if(s.longestHolder===player.id)pieces.lastElementChild?.classList.add('award-holder');
+  card.append(header,publicStats,pieces);strip.append(card);
  }
 }
 function drawBoard(){
@@ -136,8 +167,10 @@ function drawBoard(){
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=byId(viewer);el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${active.id}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
- renderPlayerStrip(s,active.id);
- el('players').textContent=s.players.map(p=>`${p.id}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
+ el('turn-banner').textContent=turnAnnouncement(activityState(s));
+ el('public-action').textContent=publicActivity||'Game ready.';
+ renderPlayerStrip(s,active.id);renderPieceSupply(actor);
+ el('players').textContent=s.players.map(p=>`${p.id}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder??'none'}; largest army: ${s.armyHolder??'none'}.`;
  el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
@@ -182,7 +215,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];publicActivity='Game started.';activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
@@ -191,10 +224,13 @@ const roomSeed=el<HTMLInputElement>('room-seed');roomSeed.addEventListener('inpu
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  projection=null;networkRevision=0;state=null;targetMode=null;log=[];el('game').hidden=true;
+  projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
-  if(!projection || value.revision!==networkRevision)log.unshift(`Game updated to revision ${value.revision}.`);projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
+  const previousPublic=projection?.public as unknown as PublicActivityState|null;
+  const activity=derivePublicActivity(previousPublic,value.public as unknown as PublicActivityState);
+  if(activity){log.unshift(activity);publicActivity=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
+  projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;
   state={version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:p.id===playerId?value.private.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:p.id===playerId?value.private.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:false,resumePhase:null,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
