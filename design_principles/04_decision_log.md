@@ -31,3 +31,8 @@ D011: Agents API coding sessions have Product Owner-approved limits of USD 0.50 
 ## GAME-MVP multiplayer transport decision
 
 D012: Replace browser-to-browser WebRTC gameplay transport with authenticated WebSocket relay through Cloudflare Workers and SQLite-backed Durable Objects. Keep the game host-authoritative: the host browser owns gameplay state, entropy, validation and per-player projections; the Durable Object owns room authentication, membership, expiry and bounded message routing. Keep the transport replaceable so a future backend can move away from Cloudflare without rewriting game rules. No TURN, STUN or ICE is required for the standard multiplayer path.
+
+
+## SEC-001 room-creation authorization decision
+
+D013: Room creation requires one long-lived owner creator capability that is separate from per-room host and guest capabilities. Only a SHA-256 verifier is configured server-side; guest invitations and the public website do not grant room-creation authority. The owner capability is manually rotatable, and rotation affects future room creation without invalidating already-created rooms.
