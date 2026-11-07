@@ -41,9 +41,12 @@ test('manual QA Pages uses the deployed origin while Wrangler output is captured
  assert.ok(pages.includes('needs.signaling.outputs.worker_origin || vars.SIGNALING_URL'));
  assert.ok(pages.includes("github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/game/mvp'"));
  assert.ok(workflow.includes('bash ../scripts/deploy-signaling.sh'));
- assert.ok(script.includes('wrangler deploy --temporary --config wrangler.jsonc >"$temporary_dir/wrangler.log" 2>&1')); 
+ assert.ok(script.includes('wrangler deploy --temporary --config wrangler.jsonc --var "CREATOR_CAPABILITY_HASH:$creator_hash" >"$temporary_dir/wrangler.log" 2>&1')); 
  assert.ok(script.includes("trap 'rm -rf -- \"$temporary_dir\"' EXIT"));
  assert.ok(!workflow.includes('upload-artifact'));
+ assert.ok(script.includes('creator-capability.mjs --machine'));
+ assert.ok(script.includes('CREATOR_CAPABILITY="$creator_capability" node scripts/smoke.mjs'));
+ assert.ok(!pages.includes('VITE_CREATOR_CAPABILITY'));
 });
 
 test('deployment wrapper suppresses and deletes claim material on success and failure',async()=>{
