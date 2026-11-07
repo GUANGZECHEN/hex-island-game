@@ -139,7 +139,7 @@ try{
 
   await guestRecovered.goto(qaUrl,{waitUntil:'domcontentloaded'});
   await guestRecovered.getByRole('button',{name:'Rejoin previous room'}).click();
-  await guestRecovered.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2'),null,{timeout:20000});
+  await guestRecovered.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Seat restored as Player 2')&&document.querySelector('#network-status')?.textContent?.includes('Waiting for host to resume saved game'),null,{timeout:20000});
   await hostRecovered.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:20000});
   await hostRecovered.waitForFunction(()=>Array.from(document.querySelectorAll('#room-recovery-options button')).some(button=>!button.disabled),null,{timeout:20000});
 

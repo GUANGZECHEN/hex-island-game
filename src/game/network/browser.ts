@@ -80,6 +80,10 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   lastLobbySeats=seats;
   el('qa-indicator').hidden=!lobby.qaTwoPlayers;
   el('lobby').textContent=seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | ');
+  if(role==='guest'&&lobby.recovering===true&&playerId){
+   clearSyncTimer();syncAttempts=0;setSynchronizing(true,`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
+   el('room-ready').hidden=true;
+  }
   if(role==='host'&&host){
    if(recoveryMode||lobby.recovering===true){el('room-ready').hidden=true;el('room-start').hidden=true;renderRecovery();return;}
    const validCount=lobby.qaTwoPlayers?seats.length===2:seats.length>=3&&seats.length<=4;
