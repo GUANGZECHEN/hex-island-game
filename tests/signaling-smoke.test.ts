@@ -8,6 +8,7 @@ const valid=()=>({room,host,guest,expires:Date.now()+60000});
 const cors={'Access-Control-Allow-Origin':'https://guangzechen.github.io'};
 const preflight=()=>new Response(null,{status:204,headers:{...cors,'Access-Control-Allow-Methods':'POST, GET, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'}});
 const ok=()=>new Response(JSON.stringify(valid()),{status:201,headers:cors});
+const unauthorized=()=>new Response(JSON.stringify({error:'unauthorized'}),{status:401,headers:cors});
 
 class GoodSocket extends EventEmitter {
   static sockets:GoodSocket[]=[];
@@ -72,7 +73,7 @@ test('smoke creates a room, authenticates host+guest and relays both directions'
     }
     assert.equal(options.method,'POST');
     assert.equal(options.headers['Content-Type'],'application/json');
-    assert.equal(options.headers.Authorization,`Bearer ${creator}`);
+    if(options.headers.Authorization!==`Bearer ${creator}`)return unauthorized();
     return ok();
   };
   await smokeSignaling('https://hex-island-signaling.example.workers.dev',{fetchImpl:fetcher,Socket:GoodSocket,creatorCapability:creator});
@@ -98,7 +99,7 @@ test('smoke sanitizes WebSocket and authentication failures',async()=>{
   await assert.rejects(
     smokeSignaling(
       'https://hex-island-signaling.example.workers.dev',
-      {fetchImpl:async(_url:any,options:any)=>options.method==='OPTIONS'?preflight():ok(),Socket:BadSocket,creatorCapability:creator},
+      {fetchImpl:async(_url:any,options:any)=>options.method==='OPTIONS'?preflight():options.headers.Authorization===`Bearer ${creator}`?ok():unauthorized(),Socket:BadSocket,creatorCapability:creator},
     ),
     error=>String(error).includes('WebSocket')&&!String(error).includes(secret),
   );
@@ -112,6 +113,7 @@ test('a temporarily unavailable route is retried within a fixed limit',async()=>
     {
       fetchImpl:async(_url:any,options:any)=>{
         if(options.method==='OPTIONS')return preflight();
+        if(options.headers.Authorization!==`Bearer ${creator}`)return unauthorized();
         attempts++;
         return attempts===1?new Response('not found',{status:404}):ok();
       },
