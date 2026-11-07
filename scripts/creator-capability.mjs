@@ -20,7 +20,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    console.log(creatorCapabilityHash(capability));
   }else{
    const value=generateCreatorCapability();
-   if(process.argv[2]==='--machine')process.stdout.write(`${value.capability}\t${value.hash}\n`);
+   if(process.argv[2]==='--machine')process.stdout.write(`${value.capability} ${value.hash}\n`);
    else{
     console.log(`Creator capability: ${value.capability}`);
     console.log(`CREATOR_CAPABILITY_HASH: ${value.hash}`);
