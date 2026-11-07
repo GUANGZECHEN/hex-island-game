@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: game-mvp-qa
+  group: game-mvp-qa-persistent
   cancel-in-progress: true
 
 jobs:
