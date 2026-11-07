@@ -182,7 +182,7 @@ export class RoomClient {
         if(this.ws!==ws || generation!==this.generation)return;
         this.ws=null;
         for(const id of [...this.peers])this.remove(id);
-        if(!settled){
+        if(!authenticated){
           rejectInitial('Room WebSocket connection or authentication failed.');
           return;
         }
