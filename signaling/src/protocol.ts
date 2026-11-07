@@ -18,6 +18,21 @@ export async function hash(s: string): Promise<string> {
   return Array.from(new Uint8Array(bytes), x => x.toString(16).padStart(2,'0')).join('');
 }
 
+const validHash = (s: unknown): s is string =>
+  typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
+
+export function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i=0;i<a.length;i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+export async function authorizeCreator(capability: unknown, storedHash: unknown): Promise<boolean> {
+  if (!validToken(capability) || !validHash(storedHash)) return false;
+  return constantTimeEqual(await hash(capability), storedHash);
+}
+
 export function allowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   if (origin === 'https://guangzechen.github.io') return true;
