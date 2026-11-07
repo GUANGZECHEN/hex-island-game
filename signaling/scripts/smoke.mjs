@@ -122,6 +122,7 @@ export async function smokeSignaling(origin, {
   retries = 0,
   retryDelayMs = 4000,
   onRetry = () => {},
+  creatorCapability = process.env.CREATOR_CAPABILITY ?? '',
 } = {}) {
   let url;
   try { url = new URL(origin); } catch { throw new SmokeError('Invalid signaling origin.'); }
@@ -139,12 +140,14 @@ export async function smokeSignaling(origin, {
     url.hash
   ) throw new SmokeError('Invalid signaling origin.');
 
+  if(!TOKEN.test(creatorCapability))throw new SmokeError('Creator capability is unavailable.');
+
   let response;
   for (let attempt=0;;attempt++) {
     try {
       response=await fetchImpl(new URL('/rooms',url),{
         method:'POST',
-        headers:{Origin:PRODUCTION_ORIGIN,'Content-Type':'application/json'},
+        headers:{Origin:PRODUCTION_ORIGIN,'Content-Type':'application/json','Authorization':`Bearer ${creatorCapability}`},
         signal:AbortSignal.timeout(timeoutMs),
         redirect:'error',
       });
@@ -195,7 +198,7 @@ export async function smokeSignaling(origin, {
       headers:{
         Origin:PRODUCTION_ORIGIN,
         'Access-Control-Request-Method':'POST',
-        'Access-Control-Request-Headers':'content-type',
+        'Access-Control-Request-Headers':'authorization,content-type',
       },
       signal:AbortSignal.timeout(timeoutMs),
       redirect:'error',
@@ -210,7 +213,8 @@ export async function smokeSignaling(origin, {
     preflight.status!==204 ||
     preflight.headers.get('access-control-allow-origin')!==PRODUCTION_ORIGIN ||
     !methods.includes('POST') ||
-    !headers.includes('content-type')
+    !headers.includes('content-type') ||
+    !headers.includes('authorization')
   ) throw new SmokeError('Signaling CORS preflight failed.');
 
   if(!Socket){
