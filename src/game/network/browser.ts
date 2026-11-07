@@ -9,7 +9,7 @@ export interface BrowserGame { submit:(command:Record<string,unknown>,revision:n
 const token=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
 const random=()=>crypto.getRandomValues(new Uint32Array(1))[0];
 const el=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
-/** Bind a host-only authority to authenticated room data channels. */
+/** Bind a host-only authority to authenticated Cloudflare room relays. */
 export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  let role:'host'|'guest'|null=null,host:HostSession|null=null,client:RoomClient,playerId='',room='',gameId='',counter=0,hostReady=false,open=false;
  const endpoint=(import.meta.env.VITE_SIGNALING_URL as string|undefined)?.trim().replace(/\/$/,'')??'';
@@ -33,9 +33,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const send=(peer:string,data:string)=>client.send(peer,data);
  client=new RoomClient(allowed?endpoint:'',{status,error:status,peer:(id,_status,isOpen)=>{
   if(!isOpen)status(`Connecting peer: ${_status}`);
-  if(role==='guest'&&id==='host'){if(isOpen&&!open){open=true;const credential=sessionStorage.getItem(`hex-seat:${room}`)??'';send('host',JSON.stringify({protocol:1,type:'hello',token:credential}));}else if(!isOpen&&open){open=false;status('Host connection lost. Rejoin the room to resynchronize.');}}
+  if(role==='guest'&&id==='host'){if(isOpen&&!open){open=true;const credential=sessionStorage.getItem(`hex-seat:${room}`)??'';send('host',JSON.stringify({protocol:1,type:'hello',token:credential}));}else if(!isOpen&&open){open=false;status('Host connection interrupted. Automatic reconnect is in progress.');}}
   if(role==='host'&&!isOpen)host?.disconnect(id);
- },remove:id=>{if(role==='host')host?.disconnect(id);else if(id==='host'){open=false;status('Host unavailable. Rejoin while the host is available.');}},message:(id,text)=>{
+ },remove:id=>{if(role==='host')host?.disconnect(id);else if(id==='host'){open=false;status('Host connection interrupted. Automatic reconnect is in progress.');}},message:(id,text)=>{
   if(role==='host'){host?.receive(id,text);return;}
   if(role!=='guest'||id!=='host'||text.length>16384)return;
   let message:{protocol?:number;type?:string;data?:unknown};try{message=JSON.parse(text);}catch{return;}

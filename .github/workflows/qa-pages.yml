@@ -10,13 +10,19 @@ permissions:
   id-token: write
 
 concurrency:
-  group: game-mvp-live-qa-${{ github.sha }}
-  cancel-in-progress: false
+  group: game-mvp-qa
+  cancel-in-progress: true
 
 jobs:
+  signaling:
+    uses: ./.github/workflows/deploy-signaling.yml
+    permissions:
+      contents: read
+
   qa:
+    needs: signaling
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -27,85 +33,16 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            signaling/package-lock.json
 
       - name: Install and validate
         run: |
           npm ci
           npm run typecheck
           npm test
-          (cd signaling && npm ci && npm run typecheck && npm test)
 
-      - name: Start local signaling service
-        run: |
-          set -euo pipefail
-          setsid bash -c 'cd signaling && exec npm exec -- wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.jsonc' >"$RUNNER_TEMP/wrangler-qa.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/wrangler-qa.pid"
-
-          for attempt in {1..30}; do
-            status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-              --request OPTIONS \
-              --header 'Origin: https://guangzechen.github.io' \
-              --header 'Access-Control-Request-Method: POST' \
-              --header 'Access-Control-Request-Headers: content-type' \
-              http://127.0.0.1:8787/rooms || true)
-            if [[ "$status" == "204" ]]; then
-              exit 0
-            fi
-            sleep 1
-          done
-
-          echo '::error::Local signaling service did not become ready.'
-          exit 1
-
-      - name: Install pinned cloudflared
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --location \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.10.6/cloudflared-linux-amd64 \
-            --output "$RUNNER_TEMP/cloudflared"
-          echo '1d356dac769d0dbf62ebe588c4034824bbff98d5790c2f844cc99e0e2f57462d  '"$RUNNER_TEMP"'/cloudflared' | sha256sum --check -
-          chmod 700 "$RUNNER_TEMP/cloudflared"
-
-      - name: Start credentialless Quick Tunnel
-        run: |
-          set -euo pipefail
-          setsid "$RUNNER_TEMP/cloudflared" tunnel \
-            --url http://127.0.0.1:8787 \
-            --no-autoupdate \
-            --loglevel info \
-            >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
-
-          tunnel_url=''
-          for attempt in {1..45}; do
-            tunnel_url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
-            if [[ -n "$tunnel_url" ]]; then
-              break
-            fi
-            if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then
-              echo '::error::Quick Tunnel process exited before publishing an endpoint.'
-              exit 1
-            fi
-            sleep 1
-          done
-
-          if [[ ! "$tunnel_url" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ ]]; then
-            echo '::error::Quick Tunnel did not provide a valid public endpoint.'
-            exit 1
-          fi
-
-          echo "QA_SIGNALING_URL=$tunnel_url" >> "$GITHUB_ENV"
-          echo "qa_signaling_url=$tunnel_url" >> "$GITHUB_OUTPUT"
-
-      - name: Live smoke through Quick Tunnel
-        run: node signaling/scripts/smoke.mjs "$QA_SIGNALING_URL"
-
-      - name: Build QA frontend
+      - name: Build QA frontend against Cloudflare Worker
         env:
-          VITE_SIGNALING_URL: ${{ env.QA_SIGNALING_URL }}
+          VITE_SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin }}
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
@@ -116,56 +53,17 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Report live QA window
+      - name: Report QA endpoint
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin }}
         run: |
           {
-            echo '## Live two-browser QA'
+            echo '## Cloudflare Worker QA'
             echo
             echo "QA page: ${PAGE_URL}?qaPlayers=2"
             echo
-            echo 'Signaling transport: credentialless Cloudflare Quick Tunnel (trycloudflare.com).'
-            echo 'The runner will keep this endpoint online for about 50 minutes.'
+            echo "Transport: Cloudflare-hosted temporary Worker + SQLite Durable Object."
+            echo "The Worker runtime smoke already verified room creation, CORS, host+guest WebSockets and bidirectional relay."
+            echo "This temporary Worker is expected to expire after about 60 minutes; rerun is automatic on the next game/mvp push."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Keep QA signaling online
-        run: |
-          set -euo pipefail
-          for minute in {1..50}; do
-            sleep 60
-            status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-              --request OPTIONS \
-              --header 'Origin: https://guangzechen.github.io' \
-              --header 'Access-Control-Request-Method: POST' \
-              --header 'Access-Control-Request-Headers: content-type' \
-              --max-time 10 \
-              "$QA_SIGNALING_URL/rooms" || true)
-            if [[ "$status" != "204" ]]; then
-              sleep 5
-              status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-                --request OPTIONS \
-                --header 'Origin: https://guangzechen.github.io' \
-                --header 'Access-Control-Request-Method: POST' \
-                --header 'Access-Control-Request-Headers: content-type' \
-                --max-time 10 \
-                "$QA_SIGNALING_URL/rooms" || true)
-            fi
-            if [[ "$status" != "204" ]]; then
-              echo "::error::QA signaling endpoint became unavailable during minute $minute."
-              exit 1
-            fi
-          done
-
-      - name: Cleanup QA processes
-        if: always()
-        run: |
-          set +e
-          if [[ -f "$RUNNER_TEMP/cloudflared-qa.pid" ]]; then
-            kill -- -"$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null || true
-          fi
-          if [[ -f "$RUNNER_TEMP/wrangler-qa.pid" ]]; then
-            kill -- -"$(cat "$RUNNER_TEMP/wrangler-qa.pid")" 2>/dev/null || true
-          fi
-          rm -f "$RUNNER_TEMP/cloudflared-qa.log" "$RUNNER_TEMP/wrangler-qa.log" \
-            "$RUNNER_TEMP/cloudflared-qa.pid" "$RUNNER_TEMP/wrangler-qa.pid" "$RUNNER_TEMP/cloudflared"

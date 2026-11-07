@@ -12,13 +12,13 @@ Gameplay remains host-authoritative. The host assigns a distinct random seat cap
 
 This standard multiplayer path does not use WebRTC DataChannels, ICE, STUN or TURN. The networking API remains isolated from game rules so a future WebSocket backend can replace Cloudflare without rewriting the rules engine.
 
-A returning guest can reclaim its seat with the session-stored seat capability while the host remains available. A host disconnect ends room gameplay availability; host migration and host-refresh recovery are not implemented.
+A returning guest can reclaim its seat with the session-stored seat capability while the host remains available. Transient WebSocket failures automatically retry with bounded exponential backoff; after reconnect, guests automatically present their existing seat capability and receive the latest snapshot/revision. A host browser that stays open also retries its room WebSocket automatically. Host migration and host-refresh recovery are not implemented.
 
 ## Deployment and verification
 
 The frontend is built with `npm ci && npm run build` and uses the existing GitHub Pages base path. The Worker is built from `signaling/` using the checked-in `wrangler.jsonc`. The Cloudflare Git integration can deploy the default branch to the persistent `hex-island-signaling` Worker. GitHub Pages receives the approved Worker HTTPS origin through `VITE_SIGNALING_URL`.
 
-For unmerged QA, the GitHub workflow runs the same Worker/Durable Object code behind an isolated temporary QA endpoint, performs live room/WebSocket checks, builds Pages with that tested endpoint and leaves the production Worker untouched. After Product Owner acceptance and merge, the Cloudflare Git integration deploys the same signaling code from `main`.
+For unmerged QA, the GitHub workflow deploys the same Worker/Durable Object code as a Cloudflare-hosted temporary Worker, performs live room/WebSocket and bidirectional relay checks, builds Pages with that tested endpoint and leaves the persistent production Worker untouched. The temporary Worker is expected to expire after about 60 minutes. After Product Owner acceptance and merge, the Cloudflare Git integration deploys the same signaling code from `main`.
 
 Local validation is:
 - root: `npm ci && npm run typecheck && npm test && npm run build`
