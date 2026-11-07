@@ -230,7 +230,7 @@ export class RoomClient {
 
   qaDropConnection():void {
     const ws=this.ws;
-    if(ws?.readyState===WebSocket.OPEN)ws.close(1012,'qa-reconnect');
+    if(ws?.readyState===WebSocket.OPEN)ws.close(4000,'qa-reconnect');
   }
 
   send(id:string,text:string):void {
