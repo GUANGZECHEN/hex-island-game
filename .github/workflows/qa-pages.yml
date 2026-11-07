@@ -22,7 +22,7 @@ jobs:
   qa:
     needs: signaling
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 65
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -40,9 +40,68 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Build QA frontend against Cloudflare Worker
+      - name: Install pinned cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.6/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo '1d356dac769d0dbf62ebe588c4034824bbff98d5790c2f844cc99e0e2f57462d  '"$RUNNER_TEMP"'/cloudflared' | sha256sum --check -
+          chmod 700 "$RUNNER_TEMP/cloudflared"
+
+      - name: Start two public QA ingress tunnels to the Cloudflare Worker
         env:
-          VITE_SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin }}
+          WORKER_ORIGIN: ${{ needs.signaling.outputs.worker_origin }}
+        run: |
+          set -euo pipefail
+
+          start_tunnel() {
+            label="$1"
+            setsid "$RUNNER_TEMP/cloudflared" tunnel \
+              --url "$WORKER_ORIGIN" \
+              --no-autoupdate \
+              --loglevel info \
+              >"$RUNNER_TEMP/cloudflared-$label.log" 2>&1 &
+            echo $! > "$RUNNER_TEMP/cloudflared-$label.pid"
+          }
+
+          wait_url() {
+            label="$1"
+            for attempt in {1..45}; do
+              url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-$label.log" | head -n 1 || true)
+              if [[ -n "$url" ]]; then
+                printf '%s' "$url"
+                return 0
+              fi
+              if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-$label.pid")" 2>/dev/null; then
+                return 1
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          start_tunnel a
+          start_tunnel b
+          a=$(wait_url a)
+          b=$(wait_url b)
+
+          if [[ ! "$a" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ || ! "$b" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ || "$a" == "$b" ]]; then
+            echo '::error::Could not establish two independent QA ingress tunnels.'
+            exit 1
+          fi
+
+          echo "QA_TUNNEL_A=$a" >> "$GITHUB_ENV"
+          echo "QA_TUNNEL_B=$b" >> "$GITHUB_ENV"
+
+      - name: Verify both public ingress paths
+        run: |
+          node signaling/scripts/smoke.mjs "$QA_TUNNEL_A"
+          node signaling/scripts/smoke.mjs "$QA_TUNNEL_B"
+
+      - name: Build QA frontend with automatic ingress failover
+        env:
+          VITE_SIGNALING_URLS: ${{ env.QA_TUNNEL_A }},${{ env.QA_TUNNEL_B }}
         run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
@@ -56,17 +115,66 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Report QA endpoint
+      - name: Run real Chromium multiplayer/reconnect E2E
+        env:
+          QA_URL: ${{ steps.deployment.outputs.page_url }}?qaPlayers=2
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qa-e2e"
+          cp scripts/qa-e2e.mjs "$RUNNER_TEMP/qa-e2e/qa-e2e.mjs"
+          cd "$RUNNER_TEMP/qa-e2e"
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.58.0
+          npx playwright install --with-deps chromium >/dev/null
+          node qa-e2e.mjs
+
+      - name: Report live QA window
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
-          SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin }}
         run: |
           {
-            echo '## Cloudflare Worker QA'
+            echo '## Cloudflare Durable Object QA'
             echo
             echo "QA page: ${PAGE_URL}?qaPlayers=2"
             echo
-            echo "Transport: Cloudflare-hosted temporary Worker + SQLite Durable Object."
-            echo "The Worker runtime smoke already verified room creation, CORS, host+guest WebSockets and bidirectional relay."
-            echo "This temporary Worker is expected to expire after about 60 minutes; rerun is automatic on the next game/mvp push."
+            echo 'Backend: Cloudflare-hosted temporary Worker + SQLite Durable Object.'
+            echo 'Browser ingress: two independent trycloudflare.com tunnels with client failover.'
+            echo 'Automated Chromium E2E passed create/join/ready/start, guest disconnect/reconnect, seat resync and post-reconnect state update.'
+            echo 'The QA backend and ingress URLs are temporary and expected to remain available for roughly 50 minutes.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep QA ingress online
+        run: |
+          set -euo pipefail
+          for minute in {1..50}; do
+            sleep 60
+            alive=0
+            for url in "$QA_TUNNEL_A" "$QA_TUNNEL_B"; do
+              status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+                --request OPTIONS \
+                --header 'Origin: https://guangzechen.github.io' \
+                --header 'Access-Control-Request-Method: POST' \
+                --header 'Access-Control-Request-Headers: content-type' \
+                --max-time 10 \
+                "$url/rooms" || true)
+              if [[ "$status" == "204" ]]; then alive=$((alive+1)); fi
+            done
+            if [[ "$alive" -eq 0 ]]; then
+              echo "::error::Both QA ingress tunnels became unavailable during minute $minute."
+              exit 1
+            fi
+            if [[ "$alive" -eq 1 ]]; then
+              echo "::warning::One QA ingress tunnel is unavailable; browser failover remains available through the other."
+            fi
+          done
+
+      - name: Cleanup QA processes
+        if: always()
+        run: |
+          set +e
+          for label in a b; do
+            if [[ -f "$RUNNER_TEMP/cloudflared-$label.pid" ]]; then
+              kill -- -"$(cat "$RUNNER_TEMP/cloudflared-$label.pid")" 2>/dev/null || true
+            fi
+          done
+          rm -f "$RUNNER_TEMP"/cloudflared-{a,b}.{log,pid} "$RUNNER_TEMP/cloudflared"

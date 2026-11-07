@@ -9,7 +9,7 @@ type Events = {
   remove: (id:string)=>void;
   message: (id:string,text:string)=>void;
 };
-type Connection = { room:string; token:string; role:Role };
+type Connection = { room:string; token:string; role:Role; endpointIndex:number };
 
 const MAX_RELAY_DATA = 16384;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -20,31 +20,63 @@ const reconnectDelay = (attempt:number) => Math.min(500 * 2 ** Math.max(0,attemp
 export class RoomClient {
   private ws: WebSocket | null = null;
   private peers = new Set<string>();
-  private role: Role = 'guest';
   private generation = 0;
   private connection: Connection | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
 
-  constructor(private endpoint:string,private events:Events) {}
+  constructor(private endpoints:string[],private events:Events) {
+    if(endpoints.length===0)throw new RoomError('Signaling service is unreachable.');
+  }
 
   async create(): Promise<string> {
     this.reset();
     const generation=this.generation;
-    const room=await requestRoom(this.endpoint);
-    if(generation!==this.generation) throw Error('Session cancelled.');
-    this.connection={room:room.room,token:room.host,role:'host'};
-    await this.open(this.connection,generation,false);
+    let roomData: Awaited<ReturnType<typeof requestRoom>> | null=null;
+    let usedIndex=0;
+    let lastError:unknown;
+
+    for(let i=0;i<this.endpoints.length;i++){
+      try{
+        roomData=await requestRoom(this.endpoints[i]);
+        usedIndex=i;
+        break;
+      }catch(error){
+        lastError=error;
+      }
+    }
+
+    if(!roomData)throw lastError instanceof Error?lastError:new RoomError('Signaling service is unreachable.');
+    if(generation!==this.generation)throw Error('Session cancelled.');
+
+    this.connection={room:roomData.room,token:roomData.host,role:'host',endpointIndex:usedIndex};
+    await this.openInitial(this.connection,generation);
+
     const link=new URL(location.href);
-    link.hash=`join=${room.room}.${room.guest}`;
+    link.hash=`join=${roomData.room}.${roomData.guest}`;
     return link.toString();
   }
 
   async join(room:string,token:string):Promise<void> {
     this.reset();
     const generation=this.generation;
-    this.connection={room,token,role:'guest'};
-    await this.open(this.connection,generation,false);
+    this.connection={room,token,role:'guest',endpointIndex:0};
+    await this.openInitial(this.connection,generation);
+  }
+
+  private async openInitial(connection:Connection,generation:number):Promise<void> {
+    let lastError:unknown;
+    const start=connection.endpointIndex;
+    for(let offset=0;offset<this.endpoints.length;offset++){
+      connection.endpointIndex=(start+offset)%this.endpoints.length;
+      try{
+        await this.open(connection,generation,false);
+        return;
+      }catch(error){
+        lastError=error;
+      }
+    }
+    throw lastError instanceof Error?lastError:new RoomError('Room WebSocket connection or authentication failed.');
   }
 
   private ensurePeer(id:string):void {
@@ -66,30 +98,35 @@ export class RoomClient {
       this.events.status('Automatic reconnect paused. Use Rejoin previous room to retry.');
       return;
     }
+
     const attempt=++this.reconnectAttempt;
     const delay=reconnectDelay(attempt);
+    const connection=this.connection;
+    connection.endpointIndex=(connection.endpointIndex+1)%this.endpoints.length;
     this.events.status(`Connection interrupted. Reconnecting automatically (${attempt}/${MAX_RECONNECT_ATTEMPTS})…`);
+
     this.reconnectTimer=window.setTimeout(()=>{
       this.reconnectTimer=null;
-      const connection=this.connection;
-      if(!connection || generation!==this.generation)return;
-      void this.open(connection,generation,true).catch(()=>{
+      if(generation!==this.generation || !this.connection)return;
+      void this.open(this.connection,generation,true).catch(()=>{
         if(generation===this.generation)this.scheduleReconnect(generation);
       });
     },delay);
   }
 
   private open(connection:Connection,generation:number,reconnecting:boolean):Promise<void> {
-    this.role=connection.role;
     this.events.status(reconnecting?'Reconnecting to Cloudflare room…':'Connecting to Cloudflare room…');
-    const url=new URL(`${this.endpoint}/rooms/${connection.room}/socket`);
+    const endpoint=this.endpoints[connection.endpointIndex];
+    const url=new URL(`${endpoint}/rooms/${connection.room}/socket`);
     url.protocol=url.protocol==='https:'?'wss:':'ws:';
+
     const ws=new WebSocket(url);
     this.ws=ws;
 
     return new Promise((resolve,reject)=>{
       let settled=false;
       let authenticated=false;
+
       const rejectInitial=(message:string)=>{
         if(settled)return;
         settled=true;

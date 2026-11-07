@@ -12,8 +12,10 @@ const el=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 /** Bind a host-only authority to authenticated Cloudflare room relays. */
 export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  let role:'host'|'guest'|null=null,host:HostSession|null=null,client:RoomClient,playerId='',room='',gameId='',counter=0,hostReady=false,open=false;
- const endpoint=(import.meta.env.VITE_SIGNALING_URL as string|undefined)?.trim().replace(/\/$/,'')??'';
- let allowed=false;try{const u=new URL(endpoint);allowed=!u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{}
+ const rawEndpoints=((import.meta.env.VITE_SIGNALING_URLS as string|undefined)??(import.meta.env.VITE_SIGNALING_URL as string|undefined)??'')
+  .split(',').map(value=>value.trim().replace(/\/$/,'')).filter(Boolean);
+ const endpoints=rawEndpoints.filter(value=>{try{const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{return false;}});
+ const allowed=endpoints.length>0;
  const status=(s:string)=>{el('network-status').textContent=s;callbacks.status(s);};
  const showLobby=(data:unknown)=>{
   const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown};
@@ -31,7 +33,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
  const publish=(event:unknown)=>{const x=event as {type:string;lobby?:unknown;data?:Snapshot};if(x.type==='lobby')showLobby(x.lobby);if(x.type==='snapshot'&&x.data){gameId=x.data.gameId;callbacks.snapshot(x.data,'Player 1');}};
  const send=(peer:string,data:string)=>client.send(peer,data);
- client=new RoomClient(allowed?endpoint:'',{status,error:status,peer:(id,_status,isOpen)=>{
+ client=new RoomClient(allowed?endpoints:['http://127.0.0.1:1'],{status,error:status,peer:(id,_status,isOpen)=>{
   if(!isOpen)status(`Connecting peer: ${_status}`);
   if(role==='guest'&&id==='host'){if(isOpen&&!open){open=true;const credential=sessionStorage.getItem(`hex-seat:${room}`)??'';send('host',JSON.stringify({protocol:1,type:'hello',token:credential}));}else if(!isOpen&&open){open=false;status('Host connection interrupted. Automatic reconnect is in progress.');}}
   if(role==='host'&&!isOpen)host?.disconnect(id);

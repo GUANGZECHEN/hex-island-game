@@ -23,7 +23,7 @@ export class HostSession {
   if(msg.type==='hello'){
    if(this.seats.some(s=>s.peer===peer))return;
    let seat:Seat|undefined;
-   if(typeof msg.token==='string' && msg.token) seat=this.seats.find(s=>s.token===msg.token&&!s.connected);
+   if(typeof msg.token==='string' && msg.token) seat=this.seats.find(s=>s.token===msg.token);
    else if ((msg.token === undefined || msg.token === '') && !this.authority) {
     const vacant = this.seats.find((s,index) => index > 0 && !s.connected);
     if (vacant || this.seats.length < (this.qaTwoPlayers ? 2 : 4)) {

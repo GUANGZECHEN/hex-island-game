@@ -74,3 +74,35 @@ test('two-player QA uses normal authority, private projection, revision and cred
  send('resumed',{type:'hello',token:seat.token});const restored=messages.get('resumed')!.find(x=>x.type==='snapshot').data;assert.equal(restored.revision,3);assert.equal(messages.get('resumed')!.find(x=>x.type==='seat').data.id,seat.id);
  send('resumed',{type:'command',command:JSON.stringify({...command,commandId:'stale'})});assert.equal(messages.get('resumed')!.at(-1).data.code,'stale');
 });
+
+
+test('valid seat credential can reclaim a stale still-connected peer',()=>{
+ const messages=new Map<string,any[]>();let serial=0;
+ const host=new HostSession(
+  (peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),
+  ()=>{},
+  ()=>String(++serial).padStart(43,'a'),
+  ()=>1,
+  {qaTwoPlayers:true},
+ );
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ send('old-peer',{type:'hello'});
+ const seat=messages.get('old-peer')!.find(x=>x.type==='seat').data;
+ assert.equal(host.lobby()[1].connected,true);
+
+ // Simulate a reconnect racing ahead of the old WebSocket close/leave event.
+ send('new-peer',{type:'hello',token:seat.token});
+ const reclaimed=messages.get('new-peer')!.find(x=>x.type==='seat').data;
+ assert.equal(reclaimed.id,seat.id);
+ assert.equal(host.lobby()[1].connected,true);
+
+ // The stale peer can no longer act for the seat.
+ send('old-peer',{type:'ready',ready:true});
+ assert.equal(host.lobby()[1].ready,false);
+ send('new-peer',{type:'ready',ready:true});
+ assert.equal(host.lobby()[1].ready,true);
+
+ // A delayed leave from the stale peer must not disconnect the replacement.
+ host.disconnect('old-peer');
+ assert.equal(host.lobby()[1].connected,true);
+});
