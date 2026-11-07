@@ -55,7 +55,8 @@ export default {
 };
 
 export class Room {
-  constructor(private state: DurableObjectState) {}
+  private state: DurableObjectState;
+  constructor(state: DurableObjectState) { this.state=state; }
 
   async fetch(req: Request): Promise<Response> {
     const path=new URL(req.url).pathname;
