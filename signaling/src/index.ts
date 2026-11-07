@@ -1,6 +1,6 @@
-import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
+import { allowedOrigin, authorize, authorizeCreator, canRoute, hash, MAX_MESSAGE, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
 
-interface Env { ROOMS: DurableObjectNamespace }
+interface Env { ROOMS: DurableObjectNamespace; CREATOR_CAPABILITY_HASH?: string }
 type Member = { id: string; role: Role };
 type RoomInfo = { hostHash: string; guestHash: string; expires: number };
 
@@ -23,7 +23,7 @@ export default {
         headers:{
           'Access-Control-Allow-Origin':origin!,
           'Access-Control-Allow-Methods':'POST, GET, OPTIONS',
-          'Access-Control-Allow-Headers':'Content-Type',
+          'Access-Control-Allow-Headers':'Content-Type, Authorization',
           'Vary':'Origin',
         },
       });
@@ -31,6 +31,10 @@ export default {
 
     const url=new URL(req.url);
     if (url.pathname === '/rooms' && req.method === 'POST') {
+      const auth=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.get('Authorization')??'');
+      if (!auth || !await authorizeCreator(auth[1],env.CREATOR_CAPABILITY_HASH)) {
+        return cors(json({error:'unauthorized'},401),origin!);
+      }
       const room=randomToken(), host=randomToken(), guest=randomToken(), expires=Date.now()+12*60*60*1000;
       const stub=env.ROOMS.get(env.ROOMS.idFromName(room));
       const init=await stub.fetch('https://room.internal/init',{
