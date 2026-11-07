@@ -32,7 +32,28 @@ try{
   await guest.locator('#game').waitFor({state:'visible'});
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
 
-  // Trigger the same authenticated WebSocket close/reconnect path deterministically.
+  const placeSetupPair=async(actor,observer,startRevision)=>{
+    await actor.getByRole('button',{name:'Place settlement'}).click();
+    if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
+    await actor.locator('#targets select').first().selectOption({index:0});
+    await actor.getByRole('button',{name:'Use target'}).click();
+    await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+1,{timeout:15000});
+    await actor.getByRole('button',{name:'Place road',exact:true}).click();
+    if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
+    await actor.locator('#targets select').first().selectOption({index:0});
+    await actor.getByRole('button',{name:'Use target'}).click();
+    await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+2,{timeout:15000});
+  };
+
+  // Reproduce the Product Owner failure mode with Player 2 actively owning the turn.
+  const hostStarts=(await host.locator('#game-status').textContent())?.includes("Player 1's turn")??false;
+  if(hostStarts)await placeSetupPair(host,guest,0);
+  await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 2's turn"),null,{timeout:15000});
+  await host.waitForFunction(()=>document.querySelector('#turn-hint')?.textContent?.includes('Waiting for Player 2'),null,{timeout:15000});
+  await guest.waitForFunction(()=>document.querySelector('#turn-hint')?.textContent?.includes('Your turn'),null,{timeout:15000});
+  const revisionBeforeDrop=Number((await guest.locator('#game-status').textContent())?.match(/Revision (\d+)/)?.[1]??'-1');
+  if(revisionBeforeDrop<0)throw new Error('Could not read revision before reconnect test.');
+
   const injected=await guest.evaluate(()=>{
     const hook=globalThis.__hexQaDropRoomConnection;
     if(typeof hook!=='function')return false;
@@ -40,58 +61,41 @@ try{
     return true;
   });
   if(!injected)throw new Error('QA reconnect hook was unavailable.');
-  await guest.waitForFunction(()=>{
-    const count=globalThis.__hexQaReconnectCount?.()??0;
-    return count>=1;
-  },null,{timeout:20000});
-  await guest.waitForFunction(()=>{
-    const status=document.querySelector('#network-status')?.textContent??'';
-    return status.includes('Connected as Player 2') || status.includes('reconnected');
-  },null,{timeout:20000});
-  await guest.locator('#game').waitFor({state:'visible'});
-  await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
+  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.toLowerCase().includes('reconnect'),null,{timeout:10000});
 
-  // Cover the Product Owner's manual fallback too. Reload immediately, then reclaim
-  // the same room and seat from sessionStorage while the old leave may still race in.
-  await guest.reload({waitUntil:'domcontentloaded'});
+  // Race a manual Rejoin against automatic reconnect, matching the reported real-world path.
   await guest.getByRole('button',{name:'Rejoin previous room'}).click();
-  try {
-    await guest.waitForFunction(()=>{
-      const status=document.querySelector('#network-status')?.textContent??'';
-      return status.includes('Connected as Player 2');
-    },null,{timeout:20000});
-  } catch {
-    const info=await guest.evaluate(()=>{
-      const text=(document.querySelector('#network-status')?.textContent??'').toLowerCase();
-      return {reconnecting:text.includes('reconnect'),connected:text.includes('connected'),paused:text.includes('paused'),failed:text.includes('fail'),unavailable:text.includes('unavailable'),gameVisible:!(document.querySelector('#game')?.hidden)};
-    });
-    console.error('Manual rejoin status categories:',JSON.stringify(info));
-    throw new Error('Manual rejoin did not restore the guest seat.');
-  }
-  await guest.locator('#game').waitFor({state:'visible'});
-  await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
+  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2'),null,{timeout:20000});
+  await guest.waitForFunction(()=>document.querySelector('#game')?.getAttribute('aria-busy')==='false',null,{timeout:20000});
+  await guest.waitForFunction(rev=>{
+    const text=document.querySelector('#game-status')?.textContent??'';
+    const match=text.match(/Revision (\d+)/);
+    return !!match&&Number(match[1])>=rev&&text.includes("Player 2's turn");
+  },revisionBeforeDrop,{timeout:20000});
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 2's turn"),null,{timeout:15000});
+  await guest.waitForFunction(()=>document.querySelector('#turn-hint')?.textContent?.includes('Your turn'),null,{timeout:15000});
+  await host.waitForFunction(()=>document.querySelector('#turn-hint')?.textContent?.includes('Waiting for Player 2'),null,{timeout:15000});
 
-  // Starting seat is game data, so act from whichever browser owns the current turn.
-  const hostTurn=(await host.locator('#game-status').textContent())?.includes("Player 1's turn")??false;
-  const guestTurn=(await guest.locator('#game-status').textContent())?.includes("Player 2's turn")??false;
-  if(hostTurn===guestTurn)throw new Error('Could not identify exactly one active setup player after reconnect.');
+  const hostRevision=Number((await host.locator('#game-status').textContent())?.match(/Revision (\d+)/)?.[1]??'-1');
+  const guestRevision=Number((await guest.locator('#game-status').textContent())?.match(/Revision (\d+)/)?.[1]??'-1');
+  if(hostRevision!==guestRevision)throw new Error(`Reconnect revision mismatch: host ${hostRevision}, guest ${guestRevision}.`);
 
-  const actor=hostTurn?host:guest;
-  const observer=hostTurn?guest:host;
+  const actor=guest;
+  const observer=host;
   const visualBeforeTarget=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
   await actor.getByRole('button',{name:'Place settlement'}).click();
   if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget)throw new Error('Opening target mode sent a network message.');
   await actor.locator('#targets select').first().selectOption({index:0});
   await actor.getByRole('button',{name:'Use target'}).click();
-  await observer.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
+  await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   const beforeRoadHighlight=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
   await actor.getByRole('button',{name:'Place road',exact:true}).click();
   if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==beforeRoadHighlight)throw new Error('Road highlighting sent a network message.');
 
   // Client-only layout checks keep the established reconnect test above intact.
-  await actor.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
+  await actor.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   for(const width of [320,375,1280]){
     await actor.setViewportSize({width,height:900});
     if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
@@ -116,7 +120,7 @@ try{
     if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Visual tabs sent a network message.');
   }
 
-  console.log('E2E passed: create/join/ready/start, forced guest WebSocket disconnect, automatic reconnect, manual rejoin, seat resync and post-recovery revision update.');
+  console.log('E2E passed: Player 2 active-turn disconnect, manual/automatic reconnect race, authoritative snapshot resync, current-seat agreement and post-rejoin gameplay update.');
 } finally {
   await guestContext.close();
   await hostContext.close();

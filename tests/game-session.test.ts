@@ -72,6 +72,7 @@ test('two-player QA uses normal authority, private projection, revision and cred
  send('guest',{type:'command',command:JSON.stringify(command)});assert.equal(published.at(-1).data.revision,3);
  host.disconnect('guest');send('stranger',{type:'hello'});assert.equal(messages.get('stranger')!.at(-1).type,'error');
  send('resumed',{type:'hello',token:seat.token});const restored=messages.get('resumed')!.find(x=>x.type==='snapshot').data;assert.equal(restored.revision,3);assert.equal(messages.get('resumed')!.find(x=>x.type==='seat').data.id,seat.id);
+ send('resumed',{type:'sync'});const synced=messages.get('resumed')!.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(synced.revision,3);assert.equal(synced.public.currentSeat,restored.public.currentSeat);
  send('resumed',{type:'command',command:JSON.stringify({...command,commandId:'stale'})});assert.equal(messages.get('resumed')!.at(-1).data.code,'stale');
 });
 
