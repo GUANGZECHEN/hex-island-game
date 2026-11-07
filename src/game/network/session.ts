@@ -38,6 +38,7 @@ export class HostSession {
   }
   const seat=this.seats.find(s=>s.peer===peer&&s.connected);if(!seat)return;
   if(msg.type==='ready' && !this.authority && typeof msg.ready==='boolean'){seat.ready=msg.ready;this.announce();return;}
+  if(msg.type==='sync' && this.authority){this.output(peer,'snapshot',this.authority.snapshot(seat.id));return;}
   if(msg.type==='command' && this.authority && typeof msg.command==='string'){
    const result=this.authority.receive(seat.id,msg.command);if(!result.ok)this.output(peer,'rejection',result);else this.broadcast();
   }
