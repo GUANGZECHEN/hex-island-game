@@ -1,7 +1,9 @@
 import { chromium } from 'playwright';
 
 const qaUrl=process.env.QA_URL;
+const qaCreator=process.env.QA_CREATOR_CAPABILITY;
 if(!qaUrl)throw new Error('QA_URL is required.');
+if(!qaCreator||!/^[A-Za-z0-9_-]{43}$/.test(qaCreator))throw new Error('QA_CREATOR_CAPABILITY is required.');
 
 const browser=await chromium.launch({headless:true});
 const hostContext=await browser.newContext();
@@ -12,13 +14,19 @@ const host=await hostContext.newPage();
 const guest=await guestContext.newPage();
 
 try{
-  await host.goto(qaUrl,{waitUntil:'networkidle'});
+  const hostUrl=new URL(qaUrl);hostUrl.hash=`create=${qaCreator}`;
+  await host.goto(hostUrl.toString(),{waitUntil:'networkidle'});
+  if(new URL(host.url()).hash)throw new Error('Creator capability remained visible in the address bar.');
+  if(await host.locator('#room-create').isHidden())throw new Error('Creator mode did not expose Create room.');
   await host.getByRole('button',{name:'Create room'}).click();
   await host.locator('#room-invite').waitFor({state:'visible'});
   await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
   const invite=await host.locator('#room-invite').inputValue();
+  if(invite.includes('create=')||!new URL(invite).hash.startsWith('#join='))throw new Error('Guest invitation leaked creator authority.');
 
   await guest.goto(invite,{waitUntil:'domcontentloaded'});
+  if(!await guest.locator('#room-create').isHidden())throw new Error('Guest invitation exposed Create room.');
+  if(!await guest.locator('#new-game').isHidden())throw new Error('Guest invitation exposed local host controls.');
   await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'));
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'));
 
