@@ -2,20 +2,30 @@ import { requestRoom, RoomError } from './room-request';
 export { RoomError } from './room-request';
 
 type Role = 'host' | 'guest';
+export type CheckpointMeta = {id:string;revision:number;round:number;savedAt:number;latest:boolean};
+export type StoredCheckpoint = Omit<CheckpointMeta,'latest'> & {data:string};
 type Events = {
   status: (s:string)=>void;
   error: (s:string)=>void;
   peer: (id:string, status:string, open:boolean)=>void;
   remove: (id:string)=>void;
   message: (id:string,text:string)=>void;
+  checkpoints?: (items:CheckpointMeta[])=>void;
+  checkpoint?: (item:StoredCheckpoint)=>void;
 };
 type Connection = { room:string; token:string; role:Role; endpointIndex:number };
 
 const MAX_RELAY_DATA = 16384;
+const MAX_CHECKPOINT_DATA = 49152;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const validPeerId = (value:unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+const validRoomToken=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
 const reconnectDelay = (attempt:number) => Math.min(500 * 2 ** Math.max(0,attempt-1), 8000);
+const validMeta=(value:unknown):value is CheckpointMeta=>{
+  const x=value as Partial<CheckpointMeta>|null;
+  return !!x&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id)&&Number.isSafeInteger(x.revision)&&Number(x.revision)>=0&&Number.isSafeInteger(x.round)&&Number(x.round)>=0&&Number.isSafeInteger(x.savedAt)&&Number(x.savedAt)>0&&typeof x.latest==='boolean';
+};
 
 export class RoomClient {
   private ws: WebSocket | null = null;
@@ -59,10 +69,23 @@ export class RoomClient {
   }
 
   async join(room:string,token:string):Promise<void> {
+    if(!validRoomToken(room)||!validRoomToken(token))throw new RoomError('Invalid room capability.');
     this.reset();
     const generation=this.generation;
     this.connection={room,token,role:'guest',endpointIndex:0};
     await this.openInitial(this.connection,generation);
+  }
+
+  async restoreHost(room:string,token:string):Promise<void> {
+    if(!validRoomToken(room)||!validRoomToken(token))throw new RoomError('Invalid host recovery capability.');
+    this.reset();
+    const generation=this.generation;
+    this.connection={room,token,role:'host',endpointIndex:0};
+    await this.openInitial(this.connection,generation);
+  }
+
+  connectionInfo():Readonly<Omit<Connection,'endpointIndex'>>|null {
+    return this.connection?{room:this.connection.room,token:this.connection.token,role:this.connection.role}:null;
   }
 
   private async openInitial(connection:Connection,generation:number):Promise<void> {
@@ -139,7 +162,7 @@ export class RoomClient {
 
       ws.onmessage=(event)=>{
         if(this.ws!==ws || generation!==this.generation)return;
-        let msg:{type?:unknown;id?:unknown;from?:unknown;role?:unknown;code?:unknown;data?:unknown};
+        let msg:{type?:unknown;id?:unknown;from?:unknown;role?:unknown;code?:unknown;data?:unknown;checkpoints?:unknown;checkpoint?:unknown};
         try{msg=JSON.parse(String(event.data));}
         catch{
           if(!authenticated)rejectInitial('Room WebSocket returned an invalid message.');
@@ -178,6 +201,24 @@ export class RoomClient {
           this.remove(msg.id);
           return;
         }
+
+        if(msg.type==='checkpoint-list'&&connection.role==='host'&&Array.isArray(msg.checkpoints)&&msg.checkpoints.every(validMeta)){
+          this.events.checkpoints?.(msg.checkpoints as CheckpointMeta[]);
+          return;
+        }
+
+        if(msg.type==='checkpoint-data'&&connection.role==='host'){
+          const value=msg.checkpoint as Partial<StoredCheckpoint>|null;
+          if(value&&typeof value.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(value.id)&&Number.isSafeInteger(value.revision)&&Number.isSafeInteger(value.round)&&Number.isSafeInteger(value.savedAt)&&typeof value.data==='string'&&new TextEncoder().encode(value.data).length<=MAX_CHECKPOINT_DATA){
+            this.events.checkpoint?.(value as StoredCheckpoint);
+            return;
+          }
+          this.events.error('Saved game data was invalid.');
+          return;
+        }
+
+        if(msg.type==='checkpoint-saved'&&connection.role==='host')return;
+        if(msg.type==='checkpoint-error'&&connection.role==='host'){this.events.error('Saved game checkpoint could not be processed.');return;}
 
         if(msg.type==='relay' && validPeerId(msg.from) && typeof msg.data==='string'){
           if(new TextEncoder().encode(msg.data).length>MAX_RELAY_DATA){
@@ -228,6 +269,23 @@ export class RoomClient {
         this.scheduleReconnect(generation);
       };
     });
+  }
+
+  private sendControl(value:unknown):void {
+    const ws=this.ws;
+    if(!ws||ws.readyState!==WebSocket.OPEN||this.connection?.role!=='host')throw new Error('Host room connection is unavailable.');
+    ws.send(JSON.stringify(value));
+  }
+
+  saveCheckpoint(data:string,revision:number,round:number,replace=false):void {
+    if(new TextEncoder().encode(data).length>MAX_CHECKPOINT_DATA)throw new Error('Saved game checkpoint is too large.');
+    this.sendControl({type:'checkpoint-save',revision,round,replace,data});
+  }
+
+  requestCheckpoints():void {this.sendControl({type:'checkpoint-list'});}
+  loadCheckpoint(id:string):void {
+    if(!/^[A-Za-z0-9_-]{1,80}$/.test(id))throw new Error('Invalid saved game ID.');
+    this.sendControl({type:'checkpoint-load',id});
   }
 
   qaDropConnection():void {

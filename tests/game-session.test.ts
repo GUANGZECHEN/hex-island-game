@@ -107,3 +107,42 @@ test('valid seat credential can reclaim a stale still-connected peer',()=>{
  host.disconnect('old-peer');
  assert.equal(host.lobby()[1].connected,true);
 });
+
+
+test('saved session restores original seats and waits for everyone before resume',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const sendOut=(peer:string,text:string)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]);
+ const token=()=>String(++serial).padStart(43,'a');
+ const host=new HostSession(sendOut,x=>published.push(x),token,()=>0,{qaTwoPlayers:true});
+ const send=(session:HostSession,peer:string,message:object)=>session.receive(peer,JSON.stringify({protocol:1,...message}));
+ send(host,'guest',{type:'hello'});
+ const seat=messages.get('guest')!.find(x=>x.type==='seat').data;
+ send(host,'guest',{type:'ready',ready:true});host.setHostReady(true);host.start(31);
+ const checkpoint=published.filter(x=>x.type==='checkpoint').at(-1);
+ assert.ok(checkpoint);assert.equal(checkpoint.round,0);assert.ok(JSON.stringify(checkpoint.data).length<49152);
+
+ const recoveredMessages=new Map<string,any[]>(),recoveredPublished:any[]=[];
+ const restored=HostSession.fromRecovery(
+  (peer,text)=>recoveredMessages.set(peer,[...(recoveredMessages.get(peer)??[]),JSON.parse(text)]),
+  x=>recoveredPublished.push(x),
+  token,
+  ()=>0,
+  checkpoint.data,
+ );
+ assert.equal(restored.isRecovering(),true);
+ assert.equal(restored.lobby()[0].connected,true);
+ assert.equal(restored.lobby()[1].connected,false);
+ assert.throws(()=>restored.resume(checkpoint.data),/All original players/);
+
+ send(restored,'guest-returned',{type:'hello',token:seat.token});
+ assert.equal(restored.lobby()[1].connected,true);
+ assert.equal(restored.allSeatsConnected(),true);
+ restored.resume(checkpoint.data);
+ assert.equal(restored.isRecovering(),false);
+ const returned=recoveredMessages.get('guest-returned')!;
+ assert.ok(returned.some(x=>x.type==='resume'&&x.data.gameId===checkpoint.data.authority.gameId));
+ const snapshot=returned.filter(x=>x.type==='snapshot').at(-1).data;
+ assert.equal(snapshot.revision,checkpoint.data.authority.revision);
+ assert.equal(snapshot.public.board.seed,31);
+ assert.equal(recoveredPublished.filter(x=>x.type==='checkpoint').at(-1).replace,true);
+});

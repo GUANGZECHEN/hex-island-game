@@ -6,7 +6,7 @@ const KNOWN_ERRORS = new Set(['origin-denied', 'creation-failed', 'not-found', '
 class SmokeError extends Error {}
 
 function parseSocketMessage(data, binary) {
-  if (binary || data.length > 32768) return null;
+  if (binary || data.length > 65536) return null;
   try {
     const value = JSON.parse(data.toString());
     return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
@@ -70,7 +70,7 @@ function connectSocket(url, token, role, Socket, timeoutMs) {
       socket=new Socket(url,{
         headers:{Origin:PRODUCTION_ORIGIN},
         handshakeTimeout:timeoutMs,
-        maxPayload:32768,
+        maxPayload:65536,
         perMessageDeflate:false,
       });
       socket.on('message',onMessage);
@@ -244,6 +244,29 @@ export async function smokeSignaling(origin, {
     );
     hostSocket.send(JSON.stringify({type:'relay',to:guestId,data:'relay-smoke-host'}));
     await hostToGuest;
+
+    const savedByRound=new Map();
+    const saveCheckpoint=async(revision,round,data)=>{
+      const savedPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-saved'&&m.checkpoint?.revision===revision&&m.checkpoint?.round===round,timeoutMs);
+      hostSocket.send(JSON.stringify({type:'checkpoint-save',revision,round,replace:false,data}));
+      const saved=await savedPromise;savedByRound.set(round,{...saved.checkpoint,data});return saved.checkpoint;
+    };
+    await saveCheckpoint(1,1,'{"state":"round-1-a"}');
+    await saveCheckpoint(2,1,'{"state":"round-1-final"}');
+    await saveCheckpoint(3,2,'{"state":"round-2-final"}');
+    await saveCheckpoint(4,3,'{"state":"round-3-final"}');
+    await saveCheckpoint(5,4,'{"state":"round-4-latest"}');
+
+    const listPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-list'&&Array.isArray(m.checkpoints),timeoutMs);
+    hostSocket.send(JSON.stringify({type:'checkpoint-list'}));
+    const listed=(await listPromise).checkpoints;
+    if(listed.length!==4||listed[0].latest!==true||listed.map(x=>x.round).join(',')!=='4,3,2,1')throw new SmokeError('Saved game checkpoint history failed.');
+
+    const historyItem=listed.find(x=>x.round===2);
+    const loadPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-data'&&m.checkpoint?.id===historyItem?.id,timeoutMs);
+    hostSocket.send(JSON.stringify({type:'checkpoint-load',id:historyItem.id}));
+    const loaded=(await loadPromise).checkpoint;
+    if(loaded.data!==savedByRound.get(2).data||loaded.revision!==3)throw new SmokeError('Saved game checkpoint load failed.');
   } finally {
     for(const socket of [guestSocket,hostSocket]){
       try{if(socket?.readyState===1)socket.close(1000);else if(socket?.readyState===0)socket.terminate();}catch{}
@@ -258,7 +281,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       retryDelayMs:3000,
       onRetry:()=>console.log('Signaling smoke: endpoint not ready; retrying.'),
     });
-    console.log('Signaling smoke passed: HTTP 201, CORS, host+guest WebSockets and bidirectional relay ready.');
+    console.log('Signaling smoke passed: HTTP 201, CORS, host+guest WebSockets, bidirectional relay and checkpoint persistence ready.');
   } catch(error) {
     console.error(`::error::${error instanceof SmokeError?error.message:'Signaling smoke failed.'}`);
     process.exitCode=1;

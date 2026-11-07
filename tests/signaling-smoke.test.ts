@@ -13,6 +13,8 @@ class GoodSocket extends EventEmitter {
   static sockets:GoodSocket[]=[];
   readyState=1;
   role:'host'|'guest'|null=null;
+  checkpointLatest:any=null;
+  checkpointHistory:any[]=[];
 
   constructor(_url:string,options:any){
     super();
@@ -47,6 +49,26 @@ class GoodSocket extends EventEmitter {
         const target=GoodSocket.sockets.find(x=>x.role==='guest');
         queueMicrotask(()=>target?.emit('message',Buffer.from(JSON.stringify({type:'relay',from:'host',data:message.data})),false));
       }
+      return;
+    }
+    if(this.role==='host'&&message.type==='checkpoint-save'){
+      if(this.checkpointLatest&&this.checkpointLatest.round>0&&this.checkpointLatest.round!==message.round){
+        this.checkpointHistory=[this.checkpointLatest,...this.checkpointHistory.filter(x=>x.round!==this.checkpointLatest.round&&x.round!==message.round)].slice(0,3);
+      }else this.checkpointHistory=this.checkpointHistory.filter(x=>x.round!==message.round);
+      this.checkpointLatest={id:`cp_mock_${message.revision}_${message.round}`,revision:message.revision,round:message.round,savedAt:Date.now(),data:message.data};
+      const {data,...meta}=this.checkpointLatest;
+      queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-saved',checkpoint:{...meta,latest:true}})),false));
+      return;
+    }
+    if(this.role==='host'&&message.type==='checkpoint-list'){
+      const meta=(x:any,latest:boolean)=>{const {data,...rest}=x;return {...rest,latest};};
+      const checkpoints=[...(this.checkpointLatest?[meta(this.checkpointLatest,true)]:[]),...this.checkpointHistory.map(x=>meta(x,false))];
+      queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-list',checkpoints})),false));
+      return;
+    }
+    if(this.role==='host'&&message.type==='checkpoint-load'){
+      const checkpoint=[...(this.checkpointLatest?[this.checkpointLatest]:[]),...this.checkpointHistory].find(x=>x.id===message.id);
+      queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-data',checkpoint})),false));
     }
   }
 

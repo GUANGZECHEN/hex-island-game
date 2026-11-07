@@ -190,7 +190,9 @@ for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-
 const roomSeed=el<HTMLInputElement>('room-seed');roomSeed.addEventListener('input',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
-const network=initializeNetwork({status:connectionStatus,snapshot:(value,playerId)=>{
+const network=initializeNetwork({status:connectionStatus,reset:()=>{
+  projection=null;networkRevision=0;state=null;targetMode=null;log=[];el('game').hidden=true;
+},snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<networkRevision)return;
   if(!projection || value.revision!==networkRevision)log.unshift(`Game updated to revision ${value.revision}.`);projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;

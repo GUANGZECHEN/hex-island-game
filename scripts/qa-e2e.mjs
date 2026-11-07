@@ -126,7 +126,33 @@ try{
     if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Visual tabs sent a network message.');
   }
 
-  console.log('E2E passed: Player 2 active-turn disconnect, manual/automatic reconnect race, authoritative snapshot resync, current-seat agreement and post-rejoin gameplay update.');
+  const expectedRecoveryRevision=guestRevision+1;
+  await guest.close();
+  await host.close();
+
+  const hostRecovered=await hostContext.newPage();
+  const guestRecovered=await guestContext.newPage();
+  await hostRecovered.goto(qaUrl,{waitUntil:'domcontentloaded'});
+  await hostRecovered.getByRole('button',{name:'Rejoin previous room'}).click();
+  await hostRecovered.locator('#room-recovery-panel').waitFor({state:'visible',timeout:20000});
+  await hostRecovered.waitForFunction(()=>document.querySelector('#room-recovery-status')?.textContent?.includes('Reconnect all original players'),null,{timeout:20000});
+
+  await guestRecovered.goto(qaUrl,{waitUntil:'domcontentloaded'});
+  await guestRecovered.getByRole('button',{name:'Rejoin previous room'}).click();
+  await guestRecovered.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2'),null,{timeout:20000});
+  await hostRecovered.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:20000});
+  await hostRecovered.waitForFunction(()=>Array.from(document.querySelectorAll('#room-recovery-options button')).some(button=>!button.disabled),null,{timeout:20000});
+
+  const resumeLatest=hostRecovered.getByRole('button',{name:/Resume latest/});
+  await resumeLatest.click();
+  await hostRecovered.locator('#game').waitFor({state:'visible',timeout:20000});
+  await guestRecovered.locator('#game').waitFor({state:'visible',timeout:20000});
+  await hostRecovered.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),expectedRecoveryRevision,{timeout:20000});
+  await guestRecovered.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),expectedRecoveryRevision,{timeout:20000});
+  if(!(await hostRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered host did not restore the selected map.');
+  if(!(await guestRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered guest did not restore the selected map.');
+
+  console.log('E2E passed: active-turn reconnect, persistent host+guest credentials, full-page shutdown, all-player rejoin and saved-game resume at the authoritative revision.');
 } finally {
   await guestContext.close();
   await hostContext.close();

@@ -14,11 +14,19 @@ A shared set of local SVG resource icons is used on tiles, the private hand, ban
 
 Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses a board map seed or randomizes a visual map preview; that selected seed is used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests.
 
-Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest and keeps the authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. The Durable Object does not evaluate game rules and does not store the authoritative game state.
+Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest and keeps the live authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. For crash/page-close recovery, the host also writes bounded complete checkpoints to the room Durable Object. The Durable Object stores these checkpoint payloads but does not evaluate game rules, choose random outcomes, or advance the game.
 
 This standard multiplayer path does not use WebRTC DataChannels, ICE, STUN or TURN. The networking API remains isolated from game rules so a future WebSocket backend can replace Cloudflare without rewriting the rules engine.
 
-A returning guest can reclaim its seat with the session-stored seat capability while the host remains available. A valid seat capability may replace a stale still-connected peer record, which prevents races between reconnect and delayed WebSocket leave detection. Transient WebSocket failures automatically retry with bounded exponential backoff and rotate across configured ingress URLs; after reconnect, guests automatically present their existing seat capability and receive the latest snapshot/revision. A host browser that stays open also retries its room WebSocket automatically. Host migration and host-refresh recovery are not implemented.
+A returning guest can reclaim its seat with its locally stored seat capability while the room remains valid. A valid seat capability may replace a stale still-connected peer record, which prevents races between reconnect and delayed WebSocket leave detection. Transient WebSocket failures automatically retry with bounded exponential backoff and rotate across configured ingress URLs; after reconnect, guests automatically present their existing seat capability and receive the latest snapshot/revision. The host room capability and guest seat capabilities are also retained in local browser storage so page closure does not by itself lose the rejoin identity.
+
+### Saved-game recovery
+
+After game start and after every accepted authoritative command, the host writes a complete latest checkpoint containing the game ID, revision, full private `GameState`, original seat mapping/capabilities, and QA mode flag. When a checkpoint enters a new normal-play round, the previous round's final latest checkpoint is moved into history. The room stores the current latest checkpoint plus at most three historical round checkpoints; setup checkpoints are not added to round history.
+
+If the host page is closed, guests are disconnected by the room relay as before. The original host can use **Rejoin previous room** from the same browser profile; the host capability reconnects to the existing room and loads the latest checkpoint only to reconstruct the original seat registry. Original guests then use their saved guest/seat capabilities to reclaim the same Player IDs. Gameplay stays paused during this process. When all original seats are connected, the host chooses **Resume latest** or one of the retained round checkpoints. The selected checkpoint recreates the host authority at that revision and broadcasts fresh per-player projections. Selecting an older checkpoint is an explicit rollback and becomes the new latest checkpoint.
+
+Recovery data expires with the room's existing room lifetime. Clearing browser storage loses that browser's locally retained rejoin capability. This is recovery for the original host and seats, not host migration to a different owner/device.
 
 ## Deployment and verification
 
@@ -44,6 +52,8 @@ The opt-in `?qaPlayers=2` mode tests the real room transport and UI with two peo
 8. Confirm each browser sees only its own private resources and development cards.
 9. Reload/disconnect the guest, then use **Rejoin previous room** in the same browser profile.
 10. Confirm the same guest seat, board state and revision return, then perform one legal action and verify both browsers update.
+11. Close both host and guest pages, reopen the same browser profiles, rejoin the hosted room first and the guest second, then confirm the host sees saved-game choices only after the original seats are restored.
+12. Select **Resume latest** and confirm both browsers restore the same saved revision, private views and board seed.
 
 The invitation and seat capability are bearer capabilities. Keep them private and do not log or publish them.
 

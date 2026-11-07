@@ -2,6 +2,7 @@ import { applySetupCommand, type GameState, type SetupCommand } from '../rules/s
 import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
+import type { AuthorityRecovery } from './recovery.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
@@ -25,7 +26,13 @@ export function projectState(state:GameState, viewer:string, revision:number, ga
 export class HostAuthority {
  private revision=0; private seen=new Set<string>();
  private gameId:string; private state:GameState; private random:()=>number;
- constructor(gameId:string,state:GameState,random:()=>number){if(!idPattern.test(gameId))throw new Error('Invalid game ID.');this.gameId=gameId;this.state=state;this.random=random;}
+ constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;}
+ static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
+  if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
+  return new HostAuthority(value.gameId,value.state,random,value.revision);
+ }
+ checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state)};}
+ currentRevision():number{return this.revision;}
  snapshot(playerId:string){return structuredClone(projectState(this.state,playerId,this.revision,this.gameId));}
  receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number} {
   const reject=(code:string)=>({ok:false,code,revision:this.revision});

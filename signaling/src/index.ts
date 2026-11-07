@@ -1,8 +1,10 @@
-import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
+import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
 
 interface Env { ROOMS: DurableObjectNamespace }
 type Member = { id: string; role: Role };
 type RoomInfo = { hostHash: string; guestHash: string; expires: number };
+type SavedCheckpoint = { id:string; revision:number; round:number; savedAt:number; data:string };
+type SavedCheckpointMeta = Omit<SavedCheckpoint,'data'> & { latest:boolean };
 
 const json = (value: unknown, status=200) => Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const cors = (r: Response, origin: string) => {
@@ -137,6 +139,14 @@ export class Room {
       return;
     }
 
+    const control=parseRoomControl(message);
+    if(control){
+      if(member.role!=='host'){ws.close(1008,'invalid');return;}
+      if(control.type==='checkpoint-save'){await this.saveCheckpoint(ws,control.revision,control.round,control.replace,control.data);return;}
+      if(control.type==='checkpoint-list'){await this.listCheckpoints(ws);return;}
+      if(control.type==='checkpoint-load'){await this.loadCheckpoint(ws,control.id);return;}
+    }
+
     const routed=parseRoutedMessage(message);
     const guests=this.members().filter(x=>x.member.role==='guest').map(x=>x.member.id);
     if(!routed || !canRoute(member.role,routed.to,guests)){
@@ -145,6 +155,53 @@ export class Room {
     }
 
     this.sendTo(routed.to,{type:'relay',from:member.id,data:routed.data});
+  }
+
+  private async history():Promise<SavedCheckpoint[]> {
+    const values=await Promise.all([0,1,2].map(index=>this.state.storage.get<SavedCheckpoint>(`checkpoint:history:${index}`)));
+    return values.filter((value):value is SavedCheckpoint=>!!value);
+  }
+
+  private async writeHistory(values:SavedCheckpoint[]):Promise<void> {
+    for(let index=0;index<3;index++){
+      const key=`checkpoint:history:${index}`;
+      const value=values[index];
+      if(value)await this.state.storage.put(key,value);else await this.state.storage.delete(key);
+    }
+  }
+
+  private async saveCheckpoint(ws:WebSocket,revision:number,round:number,replace:boolean,data:string):Promise<void> {
+    const latest=await this.state.storage.get<SavedCheckpoint>('checkpoint:latest');
+    if(latest&&!replace&&revision<latest.revision){ws.send(JSON.stringify({type:'checkpoint-error',code:'stale'}));return;}
+    let history=await this.history();
+    if(latest&&latest.round>0&&latest.round!==round){
+      history=[latest,...history.filter(item=>item.round!==latest.round&&item.round!==round)].slice(0,3);
+    } else {
+      history=history.filter(item=>item.round!==round);
+    }
+    const saved:SavedCheckpoint={id:`cp_${Date.now().toString(36)}_${revision}_${randomToken().slice(0,8)}`,revision,round,savedAt:Date.now(),data};
+    await this.state.storage.put('checkpoint:latest',saved);
+    await this.writeHistory(history);
+    ws.send(JSON.stringify({type:'checkpoint-saved',checkpoint:this.meta(saved,true)}));
+  }
+
+  private meta(value:SavedCheckpoint,latest:boolean):SavedCheckpointMeta {
+    const {data:_data,...rest}=value;return {...rest,latest};
+  }
+
+  private async listCheckpoints(ws:WebSocket):Promise<void> {
+    const latest=await this.state.storage.get<SavedCheckpoint>('checkpoint:latest');
+    const history=await this.history();
+    const checkpoints:SavedCheckpointMeta[]=[...(latest?[this.meta(latest,true)]:[]),...history.map(value=>this.meta(value,false))];
+    ws.send(JSON.stringify({type:'checkpoint-list',checkpoints}));
+  }
+
+  private async loadCheckpoint(ws:WebSocket,id:string):Promise<void> {
+    const latest=await this.state.storage.get<SavedCheckpoint>('checkpoint:latest');
+    const history=await this.history();
+    const checkpoint=[...(latest?[latest]:[]),...history].find(value=>value.id===id);
+    if(!checkpoint){ws.send(JSON.stringify({type:'checkpoint-error',code:'not-found'}));return;}
+    ws.send(JSON.stringify({type:'checkpoint-data',checkpoint}));
   }
 
   private members(): {socket:WebSocket;member:Member}[] {

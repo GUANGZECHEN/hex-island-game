@@ -7,9 +7,11 @@ import {
   authorize,
   canRoute,
   parseRoutedMessage,
+  parseRoomControl,
   allowedOrigin,
   MAX_MESSAGE,
   MAX_RELAY_DATA,
+  MAX_CHECKPOINT_DATA,
 } from '../src/protocol.ts';
 
 test('tokens are random, correctly formatted and hashed', async()=>{
@@ -59,4 +61,22 @@ test('routes only through host',()=>{
   assert.equal(canRoute('host','one',['one','two']),true);
   assert.equal(canRoute('host','host',['one']),false);
   assert.equal(canRoute('host','unknown',['one']),false);
+});
+
+
+test('host checkpoint controls are strict and bounded',()=>{
+  assert.deepEqual(parseRoomControl(JSON.stringify({type:'checkpoint-list'})),{type:'checkpoint-list'});
+  assert.deepEqual(parseRoomControl(JSON.stringify({type:'checkpoint-load',id:'cp_abc_1'})),{type:'checkpoint-load',id:'cp_abc_1'});
+  assert.deepEqual(
+    parseRoomControl(JSON.stringify({type:'checkpoint-save',revision:7,round:2,replace:false,data:'{"ok":true}'})),
+    {type:'checkpoint-save',revision:7,round:2,replace:false,data:'{"ok":true}'},
+  );
+  for(const invalid of [
+    JSON.stringify({type:'checkpoint-load',id:'bad id'}),
+    JSON.stringify({type:'checkpoint-save',revision:-1,round:0,replace:false,data:'x'}),
+    JSON.stringify({type:'checkpoint-save',revision:1,round:-1,replace:false,data:'x'}),
+    JSON.stringify({type:'checkpoint-save',revision:1,round:1,replace:'no',data:'x'}),
+    JSON.stringify({type:'checkpoint-save',revision:1,round:1,replace:false,data:'x'.repeat(MAX_CHECKPOINT_DATA+1)}),
+    JSON.stringify({type:'checkpoint-list',extra:true}),
+  ]) assert.equal(parseRoomControl(invalid),null);
 });
