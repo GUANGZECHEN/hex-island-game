@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reconnectDelay } from '../src/rooms.ts';
+import { reconnectDelay } from '../src/reconnect-policy.ts';
 
 test('reconnect stays fast first, then continues indefinitely at low frequency',()=>{
   assert.equal(reconnectDelay(1),500);

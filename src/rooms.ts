@@ -1,4 +1,5 @@
 import { requestRoom, RoomError } from './room-request';
+import { reconnectDelay } from './reconnect-policy';
 export { RoomError } from './room-request';
 
 type Role = 'host' | 'guest';
@@ -20,11 +21,6 @@ const MAX_CHECKPOINT_DATA = 49152;
 const validPeerId = (value:unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 const validRoomToken=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
-export const reconnectDelay = (attempt:number) => {
-  if(attempt<=10)return Math.min(500 * 2 ** Math.max(0,attempt-1),8000);
-  if(attempt<=30)return 30000;
-  return 60000;
-};
 const validMeta=(value:unknown):value is CheckpointMeta=>{
   const x=value as Partial<CheckpointMeta>|null;
   return !!x&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id)&&Number.isSafeInteger(x.revision)&&Number(x.revision)>=0&&Number.isSafeInteger(x.round)&&Number(x.round)>=0&&Number.isSafeInteger(x.savedAt)&&Number(x.savedAt)>0&&typeof x.latest==='boolean';

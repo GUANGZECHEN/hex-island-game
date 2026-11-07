@@ -41,8 +41,13 @@ test('manual QA Pages uses the deployed origin while Wrangler output is captured
  assert.ok(pages.includes('needs.signaling.outputs.worker_origin || vars.SIGNALING_URL'));
  assert.ok(pages.includes("github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/game/mvp'"));
  assert.ok(workflow.includes('bash ../scripts/deploy-signaling.sh'));
- assert.ok(script.includes('wrangler deploy --temporary --config wrangler.jsonc >"$temporary_dir/wrangler.log" 2>&1')); 
+ assert.ok(script.includes('wrangler_config="${WRANGLER_CONFIG:-wrangler.jsonc}"'));
+ assert.ok(script.includes('wrangler deploy --temporary --config "$wrangler_config" >"$temporary_dir/wrangler.log" 2>&1'));
+ assert.ok(script.includes('wrangler deploy --config "$wrangler_config" >"$temporary_dir/wrangler.log" 2>&1'));
  assert.ok(script.includes("trap 'rm -rf -- \"$temporary_dir\"' EXIT"));
+ const qa=readFileSync('.github/workflows/qa-pages.yml','utf8');
+ assert.ok(qa.includes('WRANGLER_CONFIG: wrangler.qa.jsonc'));
+ assert.ok(qa.includes('hex-island-signaling-qa'));
  assert.ok(!workflow.includes('upload-artifact'));
 });
 
