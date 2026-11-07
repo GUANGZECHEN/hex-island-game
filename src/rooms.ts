@@ -1,4 +1,5 @@
 import { requestRoom, RoomError } from './room-request';
+import { buildGuestInvite } from './game/network/launch';
 export { RoomError } from './room-request';
 
 type Role = 'host' | 'guest';
@@ -30,7 +31,7 @@ export class RoomClient {
     if(endpoints.length===0)throw new RoomError('Signaling service is unreachable.');
   }
 
-  async create(): Promise<string> {
+  async create(creatorCapability:string): Promise<string> {
     this.reset();
     const generation=this.generation;
     let roomData: Awaited<ReturnType<typeof requestRoom>> | null=null;
@@ -39,7 +40,7 @@ export class RoomClient {
 
     for(let i=0;i<this.endpoints.length;i++){
       try{
-        roomData=await requestRoom(this.endpoints[i]);
+        roomData=await requestRoom(this.endpoints[i],creatorCapability);
         usedIndex=i;
         break;
       }catch(error){
@@ -53,9 +54,7 @@ export class RoomClient {
     this.connection={room:roomData.room,token:roomData.host,role:'host',endpointIndex:usedIndex};
     await this.openInitial(this.connection,generation);
 
-    const link=new URL(location.href);
-    link.hash=`join=${roomData.room}.${roomData.guest}`;
-    return link.toString();
+    return buildGuestInvite(location.href,roomData.room,roomData.guest);
   }
 
   async join(room:string,token:string):Promise<void> {
