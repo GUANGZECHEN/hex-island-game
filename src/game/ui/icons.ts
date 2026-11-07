@@ -1,4 +1,4 @@
-import type { Resource } from '../rules/state.ts';
+import type { Development, Resource } from '../rules/state.ts';
 
 /** Original, small line icons shared by the board, hand, ports and costs. */
 export const RESOURCE_PATHS: Readonly<Record<Resource, string>> = {
@@ -19,9 +19,24 @@ export const ACTION_PATHS = {
   card: 'M6 3h12v18H6zM9 7h6m-6 4h6m-6 4h4',
   hand: 'M5 5h12v15H5zM8 2h11v15',
   trade: 'M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4',
+  victory: 'M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z',
   end: 'M4 12h14m-5-5 5 5-5 5M20 5v14',
 } as const;
 export type ActionIcon = keyof typeof ACTION_PATHS;
+export const DEVELOPMENT_LABELS: Readonly<Record<Development,string>> = {
+  knight:'Knight',
+  'road-building':'Road Building',
+  invention:'Year of Plenty',
+  monopoly:'Monopoly',
+  'victory-point':'Victory Point',
+};
+export const DEVELOPMENT_PATHS: Readonly<Record<Development,string>> = {
+  knight:'M7 21h10M8 18h8l-1-7 3-3-4-5-6 3-2 5 3 3-1 7Z',
+  'road-building':ACTION_PATHS.road,
+  invention:'M9 18h6m-5 3h4m-6-9a4 4 0 1 1 8 0c0 2-2 3-2 5h-4c0-2-2-3-2-5Z',
+  monopoly:'M4 8l4 4 4-7 4 7 4-4-2 11H6L4 8Z',
+  'victory-point':ACTION_PATHS.victory,
+};
 const NS='http://www.w3.org/2000/svg';
 export function icon(path:string, className='icon'):SVGSVGElement {
   const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class',className);svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
@@ -29,6 +44,14 @@ export function icon(path:string, className='icon'):SVGSVGElement {
 }
 export function resourceIcon(resource:Resource):SVGSVGElement {const svg=icon(RESOURCE_PATHS[resource],`icon resource-icon resource-${resource}`);svg.setAttribute('data-resource-icon',resource);return svg;}
 export function desertIcon():SVGSVGElement {const svg=icon(DESERT_PATH,'icon desert-icon');svg.setAttribute('data-terrain-icon','desert');return svg;}
+export function developmentIcon(card:Development):SVGSVGElement {const svg=icon(DEVELOPMENT_PATHS[card],`icon development-icon development-${card}`);svg.setAttribute('data-development-icon',card);return svg;}
+export function developmentChip(card:Development,count:number,newCount=0):HTMLElement {
+  const chip=document.createElement('span');chip.className='development-chip';chip.setAttribute('role','img');
+  chip.setAttribute('aria-label',`${DEVELOPMENT_LABELS[card]}: ${count}${newCount?`, ${newCount} new this turn`:''}`);
+  const number=document.createElement('span');number.className='development-count';number.textContent=String(count);chip.append(developmentIcon(card),number);
+  if(newCount){const badge=document.createElement('span');badge.className='development-new';badge.textContent=newCount===count?'new':`${newCount} new`;chip.append(badge);}
+  return chip;
+}
 export function resourceChip(resource:Resource,count:number):HTMLElement {
   const chip=document.createElement('span');chip.className='resource-chip';chip.setAttribute('role','img');chip.setAttribute('aria-label',`${resource}: ${count}`);
   const number=document.createElement('span');number.className='resource-count';number.textContent=String(count);chip.append(resourceIcon(resource),number);return chip;

@@ -13,6 +13,8 @@ const guest=await guestContext.newPage();
 
 try{
   await host.goto(qaUrl,{waitUntil:'networkidle'});
+  await host.locator('#room-seed').fill('24680');
+  await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
   await host.getByRole('button',{name:'Create room'}).click();
   await host.locator('#room-invite').waitFor({state:'visible'});
   await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
@@ -30,11 +32,15 @@ try{
 
   await host.locator('#game').waitFor({state:'visible'});
   await guest.locator('#game').waitFor({state:'visible'});
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Seed 24680'));
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
 
   const placeSetupPair=async(actor,observer,startRevision)=>{
     await actor.getByRole('button',{name:'Place settlement'}).click();
     if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
+    await actor.getByRole('button',{name:'Cancel selection'}).click();
+    if(await actor.locator('[data-legal-target="settlement"]').count()!==0)throw new Error('Cancel selection left settlement targets active.');
+    await actor.getByRole('button',{name:'Place settlement'}).click();
     await actor.locator('#targets select').first().selectOption({index:0});
     await actor.getByRole('button',{name:'Use target'}).click();
     await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+1,{timeout:15000});
@@ -99,6 +105,8 @@ try{
     if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
     if(await actor.locator('#player-strip .player-summary').count()!==2)throw new Error(`Player summary missing at ${width}px.`);
     if(await actor.locator('#player-strip .active-player').count()!==1)throw new Error(`Active player highlight missing at ${width}px.`);
+    if(await actor.locator('#player-strip .player-dev-count').count()!==2)throw new Error(`Development-card counts missing at ${width}px.`);
+    if(await actor.locator('#player-strip .player-vp-count').count()!==2)throw new Error(`Public victory points missing at ${width}px.`);
     if(await actor.locator('[data-port-type] .port-connector').count()!==18)throw new Error(`Port connector lines missing at ${width}px.`);
     if(await actor.locator('[data-port-type]:not([data-port-type="generic"]) [data-resource-icon]').count()!==5)throw new Error(`Resource port icons missing at ${width}px.`);
     if(await actor.locator('[data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);

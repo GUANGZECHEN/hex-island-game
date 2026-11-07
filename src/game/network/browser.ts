@@ -99,11 +99,11 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   qaWindow.__hexQaReconnectCount=()=>client.qaReconnects();
  }
  el<HTMLButtonElement>('room-create').disabled=!allowed;
- el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
+ el('room-create').onclick=async()=>{try{const mapSeed=el<HTMLInputElement>('room-seed');if(!mapSeed.value||!mapSeed.validity.valid)throw new Error('Choose a valid board map seed.');el('room-map-controls').hidden=false;role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
  el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
  el('room-start').onclick=()=>{
   try{
-   const seed=el<HTMLInputElement>('seed');
+   const seed=el<HTMLInputElement>('room-seed');
    if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid board seed.');
    if(role!=='host'||!host)throw new Error('Only the host can start the game.');
    host.start(seed.valueAsNumber);
@@ -114,7 +114,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   }catch(e){status(e instanceof Error?e.message:'Could not start.');}
  };
  async function join(roomId:string,capability:string,rejoining=false){
-  role='guest';room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
+  role='guest';el('room-map-controls').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
   if(!rejoining){acceptedGameId='';acceptedRevision=-1;gameId='';setSynchronizing(false);}
   else{
    try{

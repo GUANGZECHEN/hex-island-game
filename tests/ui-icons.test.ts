@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTION_PATHS, DESERT_PATH, RESOURCE_PATHS, affordable, desertIcon, resourceChip } from '../src/game/ui/icons.ts';
+import { ACTION_PATHS, DESERT_PATH, DEVELOPMENT_PATHS, RESOURCE_PATHS, affordable, desertIcon, developmentChip, resourceChip } from '../src/game/ui/icons.ts';
 
 test('the five resources and common actions have distinct local SVG paths',()=>{
  assert.deepEqual(Object.keys(RESOURCE_PATHS).sort(),['brick','grain','lumber','ore','wool']);
  assert.equal(new Set(Object.values(RESOURCE_PATHS)).size,5);assert.ok(DESERT_PATH.length>10);
- for(const name of ['dice','road','settlement','city','card','hand','trade','end'] as const)assert.ok(ACTION_PATHS[name]);
+ for(const name of ['dice','road','settlement','city','card','hand','trade','victory','end'] as const)assert.ok(ACTION_PATHS[name]);
+ assert.deepEqual(Object.keys(DEVELOPMENT_PATHS).sort(),['invention','knight','monopoly','road-building','victory-point']);assert.equal(new Set(Object.values(DEVELOPMENT_PATHS)).size,5);
 });
 test('desert uses a local SVG icon',()=>{
  class Element { attributes=new Map<string,string>();children:Element[]=[];className='';setAttribute(k:string,v:string){this.attributes.set(k,v);}append(...items:Element[]){this.children.push(...items);} }
@@ -22,4 +23,11 @@ test('resource chips provide an accessible resource and count',()=>{
 test('affordability checks all required resource quantities',()=>{
  const hand={lumber:1,brick:1,wool:0,grain:2,ore:3};
  assert.equal(affordable(hand,{lumber:1,brick:1}),true);assert.equal(affordable(hand,{wool:1}),false);assert.equal(affordable(hand,{grain:2,ore:3}),true);assert.equal(affordable(hand,{grain:3}),false);
+});
+
+test('development chips expose card type, count and new-card state',()=>{
+ class Element { attributes=new Map<string,string>();children:Element[]=[];textContent='';className='';tag:string;constructor(tag:string){this.tag=tag;}setAttribute(key:string,value:string){this.attributes.set(key,value);}append(...items:Element[]){this.children.push(...items);} }
+ const previous=globalThis.document;Object.assign(globalThis,{document:{createElement:(tag:string)=>new Element(tag),createElementNS:(_ns:string,tag:string)=>new Element(tag)}});
+ try{const chip=developmentChip('knight',2,1) as unknown as Element;assert.equal(chip.attributes.get('role'),'img');assert.match(chip.attributes.get('aria-label')??'',/Knight: 2/);assert.equal(chip.children[0].attributes.get('data-development-icon'),'knight');assert.equal(chip.children[1].textContent,'2');assert.equal(chip.children[2].textContent,'1 new');}
+ finally{Object.assign(globalThis,{document:previous});}
 });

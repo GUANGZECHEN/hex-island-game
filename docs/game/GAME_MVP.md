@@ -6,13 +6,13 @@ The setup reducer validates settlement distance and a connected road in clockwis
 
 ## Gameplay interface
 
-The board remains the primary surface. On desktop, the adjacent panel keeps the turn, connection status, private hand and current actions together; on narrow screens the same panel is a compact bottom control surface. Actions, cards, trade and status/log are grouped into client-side tabs. Board targets also have a keyboard-accessible selector. Players may scroll the board itself sideways on very narrow screens to preserve readable cells.
+The board remains the primary surface. On desktop, the adjacent panel keeps the turn, connection status, private hand and current actions together; on narrow screens the same panel is a compact bottom control surface. Actions, cards, trade and status/log are grouped into client-side tabs. Board targets also have a keyboard-accessible selector and an explicit cancel action. Players may scroll the board itself sideways on very narrow screens to preserve readable cells. The public player strip shows resource-card count, development-card count and public victory points; a player's own development cards use local icons and newly bought cards are marked until they become playable.
 
 A shared set of local SVG resource icons is used on tiles, the private hand, bank, trade quantities and build costs; each hand and cost icon has an accessible text equivalent. Action icons accompany short labels. Unaffordable build actions are disabled with an explanation. Switching tabs, rendering icons and changing layout are local UI operations and send no gameplay or relay messages.
 
 ## Multiplayer
 
-Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests.
+Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses a board map seed or randomizes a visual map preview; that selected seed is used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests.
 
 Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest and keeps the authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. The Durable Object does not evaluate game rules and does not store the authoritative game state.
 
@@ -35,7 +35,7 @@ Local validation is:
 The opt-in `?qaPlayers=2` mode tests the real room transport and UI with two people. Standard games still require three or four players.
 
 1. Open the host page with `?qaPlayers=2` and confirm the QA indicator.
-2. Create a private room and copy the invitation.
+2. Choose or randomize the host map seed, create a private room and copy the invitation.
 3. Open that invitation in a second independent browser/profile.
 4. Confirm both browsers report the Cloudflare room/relay as connected.
 5. Mark both players ready and start from the host.
