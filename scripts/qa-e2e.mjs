@@ -55,10 +55,19 @@ try{
   // the same room and seat from sessionStorage while the old leave may still race in.
   await guest.reload({waitUntil:'domcontentloaded'});
   await guest.getByRole('button',{name:'Rejoin previous room'}).click();
-  await guest.waitForFunction(()=>{
-    const status=document.querySelector('#network-status')?.textContent??'';
-    return status.includes('Connected as Player 2');
-  },null,{timeout:20000});
+  try {
+    await guest.waitForFunction(()=>{
+      const status=document.querySelector('#network-status')?.textContent??'';
+      return status.includes('Connected as Player 2');
+    },null,{timeout:20000});
+  } catch {
+    const info=await guest.evaluate(()=>{
+      const text=(document.querySelector('#network-status')?.textContent??'').toLowerCase();
+      return {reconnecting:text.includes('reconnect'),connected:text.includes('connected'),paused:text.includes('paused'),failed:text.includes('fail'),unavailable:text.includes('unavailable'),gameVisible:!(document.querySelector('#game')?.hidden)};
+    });
+    console.error('Manual rejoin status categories:',JSON.stringify(info));
+    throw new Error('Manual rejoin did not restore the guest seat.');
+  }
   await guest.locator('#game').waitFor({state:'visible'});
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
 
