@@ -61,9 +61,7 @@ try{
     return true;
   });
   if(!injected)throw new Error('QA reconnect hook was unavailable.');
-  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.toLowerCase().includes('reconnect'),null,{timeout:10000});
-
-  // Race a manual Rejoin against automatic reconnect, matching the reported real-world path.
+  // Race a manual Rejoin immediately against automatic reconnect, matching the reported real-world path.
   await guest.getByRole('button',{name:'Rejoin previous room'}).click();
   await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2'),null,{timeout:20000});
   await guest.waitForFunction(()=>document.querySelector('#game')?.getAttribute('aria-busy')==='false',null,{timeout:20000});
