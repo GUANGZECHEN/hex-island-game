@@ -1,5 +1,7 @@
 # Private-room signaling experiment
 
+> Historical Task 00-03 document. The current GAME-MVP WebSocket/Durable Object architecture supersedes the WebRTC-specific protocol below. Current room creation also requires the owner creator capability documented in `docs/game/GAME_MVP.md`; a guest invitation can join its room but cannot create another room.
+
 The static Vite site stays on GitHub Pages. A Cloudflare Worker creates a random room ID and separate 256-bit random host and guest capabilities. A SQLite-backed Durable Object per room stores SHA-256 hashes of the capabilities and an absolute 12-hour expiration, and uses hibernating WebSockets for temporary coordination. The host is the WebRTC hub: one peer connection and one data channel per guest, up to three guests. SDP and trickle ICE are routed by the Worker; diagnostic messages travel over the DataChannel, not the signaling socket. No game state, migration, persistence, accounts, reconnection, or TURN is implemented.
 
 ## Security and limitations
