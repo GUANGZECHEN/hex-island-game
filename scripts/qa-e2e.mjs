@@ -45,6 +45,17 @@ try{
   await guest.locator('#game').waitFor({state:'visible'});
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
 
+  // Cover the Product Owner's manual fallback too. Reload immediately, then reclaim
+  // the same room and seat from sessionStorage while the old leave may still race in.
+  await guest.reload({waitUntil:'domcontentloaded'});
+  await guest.getByRole('button',{name:'Rejoin previous room'}).click();
+  await guest.waitForFunction(()=>{
+    const status=document.querySelector('#network-status')?.textContent??'';
+    return status.includes('Connected as Player 2');
+  },null,{timeout:20000});
+  await guest.locator('#game').waitFor({state:'visible'});
+  await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
+
   // Starting seat is game data, so act from whichever browser owns the current turn.
   const hostTurn=(await host.locator('#game-status').textContent())?.includes("Player 1's turn")??false;
   const guestTurn=(await guest.locator('#game-status').textContent())?.includes("Player 2's turn")??false;
@@ -57,7 +68,7 @@ try{
   await actor.getByRole('button',{name:'Use target'}).click();
   await observer.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
 
-  console.log('E2E passed: create/join/ready/start, forced guest disconnect, automatic reconnect, seat resync and post-reconnect revision update.');
+  console.log('E2E passed: create/join/ready/start, forced guest disconnect, automatic reconnect, manual rejoin, seat resync and post-recovery revision update.');
 } finally {
   await guestContext.close();
   await hostContext.close();
