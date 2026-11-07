@@ -12,9 +12,10 @@ export function parseRoomLaunch(hash:string):RoomLaunch {
  const params=new URLSearchParams(text);
  const creators=params.getAll('create');
  const joins=params.getAll('join');
+ const keys:string[]=[];params.forEach((_value,key)=>keys.push(key));
  if(creators.length===0&&joins.length===0)return {kind:'public'};
- if(creators.length===1&&joins.length===0&&[...params.keys()].every(key=>key==='create')&&TOKEN.test(creators[0]))return {kind:'creator',capability:creators[0]};
- if(joins.length===1&&creators.length===0&&[...params.keys()].every(key=>key==='join')){
+ if(creators.length===1&&joins.length===0&&keys.every(key=>key==='create')&&TOKEN.test(creators[0]))return {kind:'creator',capability:creators[0]};
+ if(joins.length===1&&creators.length===0&&keys.every(key=>key==='join')){
   const parts=joins[0].split('.');
   if(parts.length===2&&parts.every(value=>TOKEN.test(value)))return {kind:'invite',room:parts[0],capability:parts[1]};
  }
