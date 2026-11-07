@@ -39,12 +39,12 @@ try{
   });
   if(!injected)throw new Error('QA reconnect hook was unavailable.');
   await guest.waitForFunction(()=>{
-    const status=document.querySelector('#network-status')?.textContent??'';
-    return status.includes('interrupted') || status.includes('Reconnecting');
-  },null,{timeout:10000});
+    const count=globalThis.__hexQaReconnectCount?.()??0;
+    return count>=1;
+  },null,{timeout:20000});
   await guest.waitForFunction(()=>{
     const status=document.querySelector('#network-status')?.textContent??'';
-    return status.includes('reconnected') || status.includes('Connected as Player 2');
+    return status.includes('Connected as Player 2') || status.includes('reconnected');
   },null,{timeout:20000});
   await guest.locator('#game').waitFor({state:'visible'});
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));

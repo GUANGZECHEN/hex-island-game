@@ -24,6 +24,7 @@ export class RoomClient {
   private connection: Connection | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
+  private qaReconnectCount = 0;
 
   constructor(private endpoints:string[],private events:Events) {
     if(endpoints.length===0)throw new RoomError('Signaling service is unreachable.');
@@ -160,6 +161,7 @@ export class RoomClient {
           authenticated=true;
           settled=true;
           this.reconnectAttempt=0;
+          if(reconnecting)this.qaReconnectCount++;
           this.clearReconnect();
           if(connection.role==='guest')this.ensurePeer('host');
           this.events.status(reconnecting?'Cloudflare room reconnected.':'Cloudflare room connected.');
@@ -233,6 +235,10 @@ export class RoomClient {
     if(ws?.readyState===WebSocket.OPEN)ws.close(4000,'qa-reconnect');
   }
 
+  qaReconnects():number {
+    return this.qaReconnectCount;
+  }
+
   send(id:string,text:string):void {
     const ws=this.ws;
     if(!ws || ws.readyState!==WebSocket.OPEN || !this.peers.has(id)){
@@ -253,6 +259,7 @@ export class RoomClient {
     this.generation++;
     this.clearReconnect();
     this.reconnectAttempt=0;
+    this.qaReconnectCount=0;
     this.connection=null;
     const ws=this.ws;
     this.ws=null;

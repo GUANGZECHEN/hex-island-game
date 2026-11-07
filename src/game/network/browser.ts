@@ -48,7 +48,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   else if(message.type==='error'||message.type==='rejection')status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);
  }});
  if(isTwoPlayerQa(location.search)){
-  (window as Window & {__hexQaDropRoomConnection?:()=>void}).__hexQaDropRoomConnection=()=>client.qaDropConnection();
+  const qaWindow=window as Window & {__hexQaDropRoomConnection?:()=>void;__hexQaReconnectCount?:()=>number};
+  qaWindow.__hexQaDropRoomConnection=()=>client.qaDropConnection();
+  qaWindow.__hexQaReconnectCount=()=>client.qaReconnects();
  }
  el<HTMLButtonElement>('room-create').disabled=!allowed;
  el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
