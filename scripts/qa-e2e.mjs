@@ -100,6 +100,10 @@ try{
     if(await actor.locator('[data-port-type] .port-connector').count()!==18)throw new Error(`Port connector lines missing at ${width}px.`);
     if(await actor.locator('[data-port-type]:not([data-port-type="generic"]) [data-resource-icon]').count()!==5)throw new Error(`Resource port icons missing at ${width}px.`);
     if(await actor.locator('[data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);
+    if(await actor.locator('[data-terrain-icon="desert"]').count()!==1)throw new Error(`Desert icon missing at ${width}px.`);
+    if(await actor.locator('[data-robber-marker="true"]').count()!==1)throw new Error(`Robber prohibition marker missing at ${width}px.`);
+    const robberOpacity=await actor.locator('.robber-occupied .island-cell').evaluate(node=>getComputedStyle(node).opacity);
+    if(Number(robberOpacity)>=0.7)throw new Error(`Robber tile was not visibly dimmed at ${width}px.`);
     if(await actor.locator('[data-hex-id][data-resource]:not([data-resource="none"]) text.island-label').count()!==0)throw new Error(`Resource tiles still show terrain labels at ${width}px.`);
     if(await actor.locator('#board ul[aria-label="Island terrain and number tokens"] li').count()!==19)throw new Error('Accessible tile descriptions are missing.');
     if(await actor.getByRole('button',{name:'Place road',exact:true}).count()!==1)throw new Error('Expected one primary setup action.');

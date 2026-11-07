@@ -105,11 +105,11 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
         assert.ok(list.children[index].textContent.toLowerCase().includes(hex.terrain));
         assert.ok(list.children[index].textContent.toLowerCase().includes(hex.resource));
       }
-      else { assert.equal(hex.terrain,'desert'); assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'Desert')); assert.ok(!group.children.some(child => child.tag === 'text' && child.textContent === 'None')); } 
+      else { assert.equal(hex.terrain,'desert'); assert.ok(group.children.some(child => child.tag === 'svg' && child.attributes.get('data-terrain-icon') === 'desert')); assert.ok(!group.children.some(child => child.tag === 'text' && ['Desert','None'].includes(child.textContent))); } 
       if (hex.token !== null) {
         assert.ok(group.children.some(child => child.tag === 'circle'));
         assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === String(hex.token)));
-      } else assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'Robber'));
+      } else assert.ok(group.children.some(child => child.tag === 'g' && child.attributes.get('data-robber-marker') === 'true'));
       assert.ok(list.children[index].textContent.includes(hex.hexId));
     }
     const portGroups=svg.children.slice(19);
@@ -130,6 +130,11 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     const occupied = setup.hexes.find(hex => hex.token !== null)!;
     renderIslandBoard(container as unknown as HTMLElement, { ...setup, robberHexId: occupied.hexId });
     const moved = container.children[0].children.find(group => group.attributes.get('data-hex-id') === occupied.hexId)!;
-    assert.ok(moved.children.some(child => child.tag === 'text' && child.textContent === 'Robber'));
+    const marker=moved.children.find(child => child.tag === 'g' && child.attributes.get('data-robber-marker') === 'true')!;
+    assert.ok(marker);
+    const token=moved.children.find(child=>child.tag==='circle'&&child.attributes.get('class')?.includes('island-token'))!;
+    const markerCircle=marker.children.find(child=>child.tag==='circle')!;
+    assert.equal(markerCircle.attributes.get('cy'),token.attributes.get('cy'));
+    assert.equal(moved.attributes.get('class'),'robber-occupied');
   } finally { Object.assign(globalThis, { document: previous }); }
 });

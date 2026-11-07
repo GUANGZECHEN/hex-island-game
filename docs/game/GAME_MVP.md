@@ -55,3 +55,10 @@ The gameplay control surface includes a compact public player strip showing ever
 Board target modes reuse the deterministic local rules reducers to calculate legal settlement, road, city and robber candidates. These candidates are highlighted directly on the SVG board and target-mode changes remain client-only; they do not generate WebSocket messages.
 
 Resource-specific ports use the same local resource SVG vocabulary as hands and build costs. Each port is connected to its two coastal vertices by visible connector lines; generic ports retain a 3:1 label and resource ports show the resource icon plus 2:1. Full port descriptions remain available to assistive technology.
+
+
+## Trade and robber presentation
+
+Incoming domestic trade offers are displayed from the recipient's perspective: the proposer is named, resources the recipient would receive are shown separately from resources the recipient would give, and the existing Accept/Reject actions remain authoritative.
+
+The desert uses a local SVG terrain icon. The robber is represented by a white prohibition badge with a red ring and diagonal slash. On numbered tiles the badge is centered directly over the number token, and the occupied tile is visually dimmed while the robber marker remains fully visible.
