@@ -14,13 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  signaling:
-    uses: ./.github/workflows/deploy-signaling.yml
-    permissions:
-      contents: read
-
   qa:
-    needs: signaling
     runs-on: ubuntu-latest
     timeout-minutes: 65
     environment:
@@ -33,72 +27,47 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            signaling/package-lock.json
 
       - name: Install and validate
         run: |
           npm ci
           npm run typecheck
           npm test
+          (cd signaling && npm ci && npm run typecheck && npm test)
+
+      - name: Start one shared local Worker and Durable Object backend
+        run: |
+          set -euo pipefail
+          setsid bash -c 'cd signaling && exec npm exec -- wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.jsonc' >"$RUNNER_TEMP/wrangler-qa.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/wrangler-qa.pid"
+
+          for attempt in {1..30}; do
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}'               --request OPTIONS               --header 'Origin: https://guangzechen.github.io'               --header 'Access-Control-Request-Method: POST'               --header 'Access-Control-Request-Headers: content-type'               --max-time 5               http://127.0.0.1:8787/rooms || true)
+            if [[ "$status" == "204" ]]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo '::error::Shared QA Worker did not become ready.'
+          exit 1
 
       - name: Install pinned cloudflared
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.10.6/cloudflared-linux-amd64 \
-            --output "$RUNNER_TEMP/cloudflared"
+          curl --fail --silent --show-error --location             https://github.com/cloudflare/cloudflared/releases/download/2026.10.6/cloudflared-linux-amd64             --output "$RUNNER_TEMP/cloudflared"
           echo '1d356dac769d0dbf62ebe588c4034824bbff98d5790c2f844cc99e0e2f57462d  '"$RUNNER_TEMP"'/cloudflared' | sha256sum --check -
           chmod 700 "$RUNNER_TEMP/cloudflared"
 
-      - name: Start local Worker reverse proxy
-        env:
-          WORKER_ORIGIN: ${{ needs.signaling.outputs.worker_origin }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/worker-proxy"
-          cp scripts/qa-worker-proxy.cjs "$RUNNER_TEMP/worker-proxy/proxy.cjs"
-          cd "$RUNNER_TEMP/worker-proxy"
-          npm init -y >/dev/null 2>&1
-          npm install --silent http-proxy@1.18.1
-          setsid env WORKER_ORIGIN="$WORKER_ORIGIN" node proxy.cjs >"$RUNNER_TEMP/worker-proxy.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/worker-proxy.pid"
-          for attempt in {1..20}; do
-            if grep -q 'proxy-ready' "$RUNNER_TEMP/worker-proxy.log"; then
-              exit 0
-            fi
-            if ! kill -0 "$(cat "$RUNNER_TEMP/worker-proxy.pid")" 2>/dev/null; then
-              echo '::error::Local Worker reverse proxy exited.'
-              exit 1
-            fi
-            sleep 1
-          done
-          echo '::error::Local Worker reverse proxy did not become ready.'
-          exit 1
-
-      - name: Verify local Worker reverse proxy
-        run: |
-          set -euo pipefail
-          status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            --request POST \
-            --header 'Origin: https://guangzechen.github.io' \
-            --header 'Content-Type: application/json' \
-            --max-time 15 \
-            http://127.0.0.1:8788/rooms || true)
-          if [[ "$status" != "201" ]]; then
-            echo "::error::Local Worker reverse proxy failed room creation (HTTP $status)."
-            exit 1
-          fi
-
-      - name: Start two public QA ingress tunnels
+      - name: Start two independent public ingress tunnels
         run: |
           set -euo pipefail
 
           start_tunnel() {
             label="$1"
-            setsid "$RUNNER_TEMP/cloudflared" tunnel \
-              --url http://127.0.0.1:8788 \
-              --no-autoupdate \
-              --loglevel info \
-              >"$RUNNER_TEMP/cloudflared-$label.log" 2>&1 &
+            setsid "$RUNNER_TEMP/cloudflared" tunnel               --url http://127.0.0.1:8787               --no-autoupdate               --loglevel info               >"$RUNNER_TEMP/cloudflared-$label.log" 2>&1 &
             echo $! > "$RUNNER_TEMP/cloudflared-$label.pid"
           }
 
@@ -131,10 +100,23 @@ jobs:
           echo "QA_TUNNEL_A=$a" >> "$GITHUB_ENV"
           echo "QA_TUNNEL_B=$b" >> "$GITHUB_ENV"
 
-      - name: Verify both public ingress paths
+      - name: Verify both ingress paths reach the same relay implementation
         run: |
-          node signaling/scripts/smoke.mjs "$QA_TUNNEL_A"
-          node signaling/scripts/smoke.mjs "$QA_TUNNEL_B"
+          set -euo pipefail
+          for url in "$QA_TUNNEL_A" "$QA_TUNNEL_B"; do
+            passed=0
+            for attempt in 1 2 3; do
+              if node signaling/scripts/smoke.mjs "$url"; then
+                passed=1
+                break
+              fi
+              sleep 3
+            done
+            if [[ "$passed" -ne 1 ]]; then
+              echo '::error::A QA ingress path failed the complete relay smoke.'
+              exit 1
+            fi
+          done
 
       - name: Build QA frontend with automatic ingress failover
         env:
@@ -152,7 +134,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Run real Chromium multiplayer/reconnect E2E
+      - name: Run real Chromium multiplayer and reconnect E2E
         env:
           QA_URL: ${{ steps.deployment.outputs.page_url }}?qaPlayers=2
         run: |
@@ -170,30 +152,25 @@ jobs:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           {
-            echo '## Cloudflare Durable Object QA'
+            echo '## Resilient two-browser QA'
             echo
             echo "QA page: ${PAGE_URL}?qaPlayers=2"
             echo
-            echo 'Backend: Cloudflare-hosted temporary Worker + SQLite Durable Object.'
-            echo 'Browser ingress: two independent trycloudflare.com tunnels with client failover.'
-            echo 'Automated Chromium E2E passed create/join/ready/start, guest disconnect/reconnect, seat resync and post-reconnect state update.'
-            echo 'The QA backend and ingress URLs are temporary and expected to remain available for roughly 50 minutes.'
+            echo 'Browser ingress: two independent trycloudflare.com tunnels.'
+            echo 'Both ingress paths terminate at one shared Worker/Durable Object-compatible QA backend, so room state survives ingress failover.'
+            echo 'A separate Cloudflare runtime workflow validates the same signaling code on real Cloudflare Workers + SQLite Durable Objects.'
+            echo 'Chromium E2E must pass create/join/ready/start, guest disconnect/reconnect, seat resync and a post-reconnect revision update.'
+            echo 'This live QA window is bounded to about 50 minutes.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Keep QA ingress online
+      - name: Keep redundant QA ingress online
         run: |
           set -euo pipefail
           for minute in {1..50}; do
             sleep 60
             alive=0
             for url in "$QA_TUNNEL_A" "$QA_TUNNEL_B"; do
-              status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-                --request OPTIONS \
-                --header 'Origin: https://guangzechen.github.io' \
-                --header 'Access-Control-Request-Method: POST' \
-                --header 'Access-Control-Request-Headers: content-type' \
-                --max-time 10 \
-                "$url/rooms" || true)
+              status=$(curl --silent --output /dev/null --write-out '%{http_code}'                 --request OPTIONS                 --header 'Origin: https://guangzechen.github.io'                 --header 'Access-Control-Request-Method: POST'                 --header 'Access-Control-Request-Headers: content-type'                 --max-time 10                 "$url/rooms" || true)
               if [[ "$status" == "204" ]]; then alive=$((alive+1)); fi
             done
             if [[ "$alive" -eq 0 ]]; then
@@ -201,7 +178,7 @@ jobs:
               exit 1
             fi
             if [[ "$alive" -eq 1 ]]; then
-              echo "::warning::One QA ingress tunnel is unavailable; browser failover remains available through the other."
+              echo "::warning::One QA ingress is unavailable; browser failover remains available through the other."
             fi
           done
 
@@ -214,9 +191,7 @@ jobs:
               kill -- -"$(cat "$RUNNER_TEMP/cloudflared-$label.pid")" 2>/dev/null || true
             fi
           done
-          if [[ -f "$RUNNER_TEMP/worker-proxy.pid" ]]; then
-            kill -- -"$(cat "$RUNNER_TEMP/worker-proxy.pid")" 2>/dev/null || true
+          if [[ -f "$RUNNER_TEMP/wrangler-qa.pid" ]]; then
+            kill -- -"$(cat "$RUNNER_TEMP/wrangler-qa.pid")" 2>/dev/null || true
           fi
-          rm -rf "$RUNNER_TEMP/worker-proxy"
-          rm -f "$RUNNER_TEMP/worker-proxy.log" "$RUNNER_TEMP/worker-proxy.pid" \
-            "$RUNNER_TEMP"/cloudflared-{a,b}.{log,pid} "$RUNNER_TEMP/cloudflared"
+          rm -f "$RUNNER_TEMP"/cloudflared-{a,b}.{log,pid}             "$RUNNER_TEMP/cloudflared" "$RUNNER_TEMP/wrangler-qa.log" "$RUNNER_TEMP/wrangler-qa.pid"
