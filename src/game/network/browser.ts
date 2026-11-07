@@ -2,6 +2,7 @@ import { RoomClient, RoomError } from '../../rooms';
 import { HostSession } from './session';
 import type { projectState } from './authority';
 import { isTwoPlayerQa } from './qa';
+import { parseRoomLaunch } from './launch';
 
 type Snapshot = ReturnType<typeof projectState>;
 type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void };
@@ -17,7 +18,18 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   .split(',').map(value=>value.trim().replace(/\/$/,'')).filter(Boolean);
  const endpoints=rawEndpoints.filter(value=>{try{const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{return false;}});
  const allowed=endpoints.length>0;
+ const launch=parseRoomLaunch(location.hash);
+ const creatorCapability=launch.kind==='creator'?launch.capability:'';
+ if(launch.kind!=='public')history.replaceState(null,'',location.pathname+location.search);
  const status=(s:string)=>{el('network-status').textContent=s;callbacks.status(s);};
+ const createButton=el<HTMLButtonElement>('room-create');
+ const inviteField=el<HTMLInputElement>('room-invite');
+ const inviteLabel=el<HTMLLabelElement>('room-invite-label');
+ const creatorMode=launch.kind==='creator';
+ createButton.hidden=!creatorMode;
+ inviteField.hidden=!creatorMode;
+ inviteLabel.hidden=!creatorMode;
+ if(launch.kind==='invite')el('new-game').hidden=true;
  const clearSyncTimer=()=>{if(syncTimer!==null){window.clearTimeout(syncTimer);syncTimer=null;}};
  const setSynchronizing=(value:boolean,message?:string)=>{
   awaitingSnapshot=value;
@@ -98,8 +110,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   qaWindow.__hexQaDropRoomConnection=()=>client.qaDropConnection();
   qaWindow.__hexQaReconnectCount=()=>client.qaReconnects();
  }
- el<HTMLButtonElement>('room-create').disabled=!allowed;
- el('room-create').onclick=async()=>{try{role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create();hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
+ createButton.disabled=!allowed||!creatorCapability;
+ createButton.onclick=async()=>{try{if(!creatorCapability)throw new RoomError('Private host link is required.');role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});const invite=await client.create(creatorCapability);hostReady=false;el('room-ready').textContent='Mark ready';inviteField.value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');}catch(error){status(error instanceof RoomError ? error.message : 'Signaling WebSocket connection or authentication failed.');}};
  el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
  el('room-start').onclick=()=>{
   try{
@@ -127,8 +139,11 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   try{await client.join(roomId,capability);}catch{clearSyncTimer();status('Could not join the room.');}
  }
  el('qa-indicator').hidden=!isTwoPlayerQa(location.search);
- const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
+ if(launch.kind==='invite')void join(launch.room,launch.capability);
+ else if(launch.kind==='invalid')status('Invalid private room link.');
  el('room-reconnect').onclick=()=>{try{const saved=JSON.parse(sessionStorage.getItem('hex-room')??'null') as {room:string;capability:string}|null;if(!saved)throw new Error('No room to rejoin.');void join(saved.room,saved.capability,true);}catch(e){status(e instanceof Error?e.message:'Could not rejoin.');}};
  if(!allowed)status('Automatic rooms unavailable: signaling endpoint is not configured.');
+ else if(launch.kind==='public')status('Open a private invitation to join, or use your private host link to create a room.');
+ else if(launch.kind==='creator')status('Private host access ready.');
  return {submit(command,revision){if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }
