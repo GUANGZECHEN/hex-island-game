@@ -4,6 +4,12 @@ The game supports three or four private-room players. The board and its seed are
 
 The setup reducer validates settlement distance and a connected road in clockwise then reverse order. Normal turns roll two dice, distribute resources (including bank shortages), resolve seven/discards/robber/theft when required, and enter the action phase. Roads, settlements and cities validate geometry, supply and costs. Domestic trades require explicit acceptance; bank trades use 4:1 or an owned 3:1/2:1 port. Development cards implement knight, road building, invention, monopoly and hidden victory points. A player may claim ten points on their turn. Longest route enumerates edge-disjoint trails, including cycles, and stops at an opponent's building; award ties retain an eligible incumbent. Largest army uses played knights and the same incumbent tie rule.
 
+## Gameplay interface
+
+The board remains the primary surface. On desktop, the adjacent panel keeps the turn, connection status, private hand and current actions together; on narrow screens the same panel is a compact bottom control surface. Actions, cards, trade and status/log are grouped into client-side tabs. Board targets also have a keyboard-accessible selector. Players may scroll the board itself sideways on very narrow screens to preserve readable cells.
+
+A shared set of local SVG resource icons is used on tiles, the private hand, bank, trade quantities and build costs; each hand and cost icon has an accessible text equivalent. Action icons accompany short labels. Unaffordable build actions are disabled with an explanation. Switching tabs, rendering icons and changing layout are local UI operations and send no gameplay or relay messages.
+
 ## Multiplayer
 
 Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests.

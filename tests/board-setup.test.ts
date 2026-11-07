@@ -97,7 +97,8 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       assert.equal(group.attributes.get('data-token'), String(hex.token ?? 'none'));
       assert.equal(group.attributes.get('data-robber'), String(hex.hexId === setup.robberHexId));
       assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class')?.includes(hex.terrain)));
-      assert.ok(group.children.some(child => child.tag === 'text' && child.textContent.toLowerCase() === (hex.resource ?? 'none')));
+      if (hex.resource) assert.ok(group.children.some(child => child.tag === 'svg' && child.attributes.get('data-resource-icon') === hex.resource));
+      else assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === 'None')); 
       if (hex.token !== null) {
         assert.ok(group.children.some(child => child.tag === 'circle'));
         assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === String(hex.token)));

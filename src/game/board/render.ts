@@ -1,6 +1,7 @@
 import { createIslandBoard } from './geometry.ts';
 import { createSetupView } from './presentation.ts';
 import type { BoardSetup, HexSetup } from './setup.ts';
+import { resourceIcon } from '../ui/icons.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const names: Record<HexSetup['terrain'], string> = { forest: 'Forest', hills: 'Hills', pasture: 'Pasture', fields: 'Fields', mountains: 'Mountains', desert: 'Desert' };
@@ -40,7 +41,9 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
       label.setAttribute('class', className); label.textContent = value; group.append(label);
     };
     text(hex.terrain === 'mountains' ? 'Mtns' : names[hex.terrain], -.45, 'island-label');
-    text(hex.resource ?? 'None', -.10, 'island-resource');
+    if (hex.resource) {
+      const symbol=resourceIcon(hex.resource);symbol.setAttribute('x',String(hex.center.x-.19));symbol.setAttribute('y',String(hex.center.y-.28));symbol.setAttribute('width','.38');symbol.setAttribute('height','.38');symbol.setAttribute('class','tile-resource');group.append(symbol);
+    } else text('None', -.10, 'island-resource');
     if (hex.token !== null) {
       const circle = document.createElementNS(SVG_NS, 'circle');
       circle.setAttribute('cx', String(hex.center.x)); circle.setAttribute('cy', String(hex.center.y + .4)); circle.setAttribute('r', '.29'); circle.setAttribute('class', `island-token${hex.token === 6 || hex.token === 8 ? ' island-token-high' : ''}`);

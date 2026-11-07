@@ -6,6 +6,8 @@ if(!qaUrl)throw new Error('QA_URL is required.');
 const browser=await chromium.launch({headless:true});
 const hostContext=await browser.newContext();
 const guestContext=await browser.newContext();
+for(const context of [hostContext,guestContext])await context.addInitScript(()=>{globalThis.__hexVisualMessageCount=0;const send=WebSocket.prototype.send;WebSocket.prototype.send=function(...args){globalThis.__hexVisualMessageCount++;return send.apply(this,args);};});
+
 const host=await hostContext.newPage();
 const guest=await guestContext.newPage();
 
@@ -71,6 +73,22 @@ try{
   await actor.locator('#targets select').first().selectOption({index:0});
   await actor.getByRole('button',{name:'Use target'}).click();
   await observer.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
+
+  // Client-only layout checks keep the established reconnect test above intact.
+  await actor.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 1'),null,{timeout:15000});
+  for(const width of [320,375,1280]){
+    await actor.setViewportSize({width,height:900});
+    if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
+    if(await actor.locator('[data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);
+    if(await actor.getByRole('button',{name:'Place road',exact:true}).count()!==1)throw new Error('Expected one primary setup action.');
+    if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error(`Page overflow at ${width}px.`);
+    const before=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
+    await actor.locator('[data-panel="cards"]').click();
+    await actor.locator('[data-panel="trade"]').click();
+    await actor.locator('[data-panel="status"]').click();
+    await actor.locator('[data-panel="actions"]').click();
+    if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Visual tabs sent a network message.');
+  }
 
   console.log('E2E passed: create/join/ready/start, forced guest WebSocket disconnect, automatic reconnect, manual rejoin, seat resync and post-recovery revision update.');
 } finally {
