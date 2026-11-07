@@ -55,10 +55,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          worker_host="${WORKER_ORIGIN#https://}"
+
           start_tunnel() {
             label="$1"
             setsid "$RUNNER_TEMP/cloudflared" tunnel \
               --url "$WORKER_ORIGIN" \
+              --http-host-header "$worker_host" \
+              --origin-server-name "$worker_host" \
               --no-autoupdate \
               --loglevel info \
               >"$RUNNER_TEMP/cloudflared-$label.log" 2>&1 &
