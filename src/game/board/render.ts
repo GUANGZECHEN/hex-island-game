@@ -40,9 +40,9 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
       label.setAttribute('text-anchor', 'middle'); label.setAttribute('dominant-baseline', 'central');
       label.setAttribute('class', className); label.textContent = value; group.append(label);
     };
-    text(hex.terrain === 'mountains' ? 'Mtns' : names[hex.terrain], -.45, 'island-label');
+    if (hex.terrain === 'desert') text('Desert', -.45, 'island-label');
     if (hex.resource) {
-      const symbol=resourceIcon(hex.resource);symbol.setAttribute('x',String(hex.center.x-.19));symbol.setAttribute('y',String(hex.center.y-.28));symbol.setAttribute('width','.38');symbol.setAttribute('height','.38');symbol.setAttribute('class','tile-resource');group.append(symbol);
+      const symbol=resourceIcon(hex.resource);symbol.setAttribute('x',String(hex.center.x-.26));symbol.setAttribute('y',String(hex.center.y-.4));symbol.setAttribute('width','.52');symbol.setAttribute('height','.52');symbol.setAttribute('class','tile-resource');group.append(symbol);
     } else text('None', -.10, 'island-resource');
     if (hex.token !== null) {
       const circle = document.createElementNS(SVG_NS, 'circle');
