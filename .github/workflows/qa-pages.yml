@@ -100,23 +100,30 @@ jobs:
           echo "QA_TUNNEL_A=$a" >> "$GITHUB_ENV"
           echo "QA_TUNNEL_B=$b" >> "$GITHUB_ENV"
 
-      - name: Verify both ingress paths reach the same relay implementation
+      - name: Wait for both ingress paths to become reachable
         run: |
           set -euo pipefail
           for url in "$QA_TUNNEL_A" "$QA_TUNNEL_B"; do
-            passed=0
-            for attempt in 1 2 3; do
-              if node signaling/scripts/smoke.mjs "$url"; then
-                passed=1
+            ready=0
+            for attempt in {1..30}; do
+              status=$(curl --silent --output /dev/null --write-out '%{http_code}'                 --request OPTIONS                 --header 'Origin: https://guangzechen.github.io'                 --header 'Access-Control-Request-Method: POST'                 --header 'Access-Control-Request-Headers: content-type'                 --max-time 8                 "$url/rooms" || true)
+              if [[ "$status" == "204" ]]; then
+                ready=1
                 break
               fi
-              sleep 3
+              sleep 2
             done
-            if [[ "$passed" -ne 1 ]]; then
-              echo '::error::A QA ingress path failed the complete relay smoke.'
+            if [[ "$ready" -ne 1 ]]; then
+              echo '::error::A QA ingress path did not become reachable within the propagation window.'
               exit 1
             fi
           done
+
+      - name: Verify both ingress paths reach the same relay implementation
+        run: |
+          set -euo pipefail
+          node signaling/scripts/smoke.mjs "$QA_TUNNEL_A"
+          node signaling/scripts/smoke.mjs "$QA_TUNNEL_B"
 
       - name: Build QA frontend with automatic ingress failover
         env:
