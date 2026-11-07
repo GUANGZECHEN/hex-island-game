@@ -43,5 +43,21 @@ else
   fi
 fi
 worker_origin=$(node ../scripts/signaling-deploy-origin.mjs "$WRANGLER_OUTPUT_FILE_PATH" "$DEPLOYMENT_MODE" --extract)
-node scripts/smoke.mjs "$worker_origin"
+
+smoke_ok=0
+for smoke_attempt in 1 2 3; do
+  if node scripts/smoke.mjs "$worker_origin" >"$temporary_dir/smoke.log" 2>&1; then
+    cat "$temporary_dir/smoke.log"
+    smoke_ok=1
+    break
+  fi
+  if [[ "$smoke_attempt" -lt 3 ]]; then
+    sleep 5
+  fi
+done
+if [[ "$smoke_ok" -ne 1 ]]; then
+  cat "$temporary_dir/smoke.log"
+  exit 1
+fi
+
 node ../scripts/signaling-deploy-origin.mjs "$WRANGLER_OUTPUT_FILE_PATH" "$DEPLOYMENT_MODE"
