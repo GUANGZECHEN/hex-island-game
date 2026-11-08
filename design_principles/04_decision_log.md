@@ -41,3 +41,8 @@ D013: Persist the host-produced latest authoritative game checkpoint plus the mo
 ## GAME-MVP QA availability decision
 
 D014: Give rooms a 48-hour lifetime. Keep automatic browser reconnection running for the room lifetime: fast retries first, then 30-second and 60-second background retries. Use a dedicated persistent `hex-island-signaling-qa` Cloudflare Worker and Durable Object namespace for unmerged QA when repository Cloudflare deployment credentials are configured; retain the existing ~50-minute Quick Tunnel path only as a credential-free fallback. The persistent QA Worker must remain separate from the production Worker name and storage.
+
+
+## GAME-MVP player-count and spectator decision
+
+D015: Standard remote games support 2–4 players. A game may start when all currently seated players are connected and ready and the seat count is between two and four. Before game start, a valid invitation may claim an available player seat up to four total seats. After game start, a valid invitation without an existing seat capability joins as a spectator. Spectators receive only the public projection, cannot ready or submit gameplay commands, do not occupy/recover seats, and do not block saved-game resume. The room transport remains bounded to 12 simultaneous WebSocket connections total.

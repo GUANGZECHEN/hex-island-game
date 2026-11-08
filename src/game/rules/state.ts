@@ -43,8 +43,8 @@ export function secureIndex(random: () => number, bound: number): { state?: unde
   throw new Error('Random index generation exhausted.');
 }
 export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean }): GameState {
-  const validCount = options?.qaTwoPlayers === true ? ids.length === 2 : ids.length >= 3 && ids.length <= 4;
-  if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(options?.qaTwoPlayers ? 'QA mode requires two distinct player IDs.' : 'A game requires three or four distinct player IDs.');
+  const validCount = ids.length >= 2 && ids.length <= 4;
+  if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error('A game requires two to four distinct player IDs.');
   const board = generateBoardSetup(seed);
   let randomState = seed;
   const deck: Development[] = [...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];

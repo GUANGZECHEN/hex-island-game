@@ -3,6 +3,7 @@ export const MAX_MESSAGE = 65536;
 export const MAX_RELAY_DATA = 16384;
 export const MAX_CHECKPOINT_DATA = 49152;
 export const ROOM_TTL_MS = 48 * 60 * 60 * 1000;
+export const MAX_ROOM_CONNECTIONS = 12;
 
 export const validToken = (s: unknown): s is string =>
   typeof s === 'string' && /^[A-Za-z0-9_-]{43}$/.test(s);
@@ -47,7 +48,7 @@ export function authorize(
   if (suppliedHash !== storedHash) return 'invalid';
   if (role === 'host' && hostConnected) return 'host-unavailable';
   if (role === 'guest' && !hostConnected) return 'host-unavailable';
-  if (count >= 4) return 'room-full';
+  if (count >= MAX_ROOM_CONNECTIONS) return 'room-full';
   return null;
 }
 

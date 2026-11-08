@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HostSession } from '../src/game/network/session.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
-for(const count of [3,4])test(`${count}-player lobby starts, projects private state and restores a guest seat`,()=>{
+for(const count of [2,3,4])test(`${count}-player lobby starts, projects private state and restores a guest seat`,()=>{
  const messages=new Map<string,unknown[]>(),published:unknown[]=[];let serial=0;
  const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>12345);
  const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
@@ -37,7 +37,7 @@ test('gameplay commands propagate to every connected peer with a new revision',(
  for(const key of ['two','three']){const snapshots=(messages.get(key) as any[]).filter(x=>x.type==='snapshot');assert.equal(snapshots.at(-1).data.revision,1);}
 });
 
-for(const count of [3,4])test(`${count}-player pre-game replacement reuses the lowest disconnected seat with a fresh credential`,()=>{
+for(const count of [2,3,4])test(`${count}-player pre-game replacement reuses the lowest disconnected seat with a fresh credential`,()=>{
  const messages=new Map<string,any[]>();let serial=0;
  const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),()=>{},()=>String(++serial).padStart(43,'a'),()=>1);
  const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
@@ -49,12 +49,33 @@ for(const count of [3,4])test(`${count}-player pre-game replacement reuses the l
  send('replacement-2',{type:'hello',token:replacement.token});send('replacement-2',{type:'ready',ready:true});host.setHostReady(true);assert.doesNotThrow(()=>host.start(1));
 });
 
-test('QA opt-in requires exactly two ready players, standard mode still requires 3 or 4',()=>{
- let serial=0;const make=(qaTwoPlayers=false)=>new HostSession(()=>{},()=>{},()=>String(++serial).padStart(43,'a'),()=>0,{qaTwoPlayers});
- const hello=(host:HostSession,id:string)=>host.receive(id,JSON.stringify({protocol:1,type:'hello'}));
- const ready=(host:HostSession,id:string)=>host.receive(id,JSON.stringify({protocol:1,type:'ready',ready:true}));
- const normal=make();hello(normal,'p2');ready(normal,'p2');normal.setHostReady(true);assert.throws(()=>normal.start(1));
- const qa=make(true);hello(qa,'p2');qa.setHostReady(true);assert.throws(()=>qa.start(1));ready(qa,'p2');hello(qa,'p3');assert.equal(qa.lobby().length,2);assert.doesNotThrow(()=>qa.start(1));
+test('standard rooms start with any fully-ready player count from 2 through 4',()=>{
+ let serial=0;
+ const make=()=>new HostSession(()=>{},()=>{},()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(host:HostSession,id:string,message:object)=>host.receive(id,JSON.stringify({protocol:1,...message}));
+ for(const count of [2,3,4]){
+  const host=make();
+  for(let i=2;i<=count;i++){send(host,`p${i}`,{type:'hello'});send(host,`p${i}`,{type:'ready',ready:true});}
+  host.setHostReady(true);assert.doesNotThrow(()=>host.start(count));
+ }
+ const host=make();host.setHostReady(true);assert.throws(()=>host.start(1),/Two to four/);
+});
+
+test('a fifth pre-game visitor gets no seat, while post-start visitors become public-only spectators',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ for(const peer of ['p2','p3','p4']){send(peer,{type:'hello'});send(peer,{type:'ready',ready:true});}
+ send('p5',{type:'hello'});assert.equal(messages.get('p5')!.at(-1).type,'error');assert.equal(host.lobby().length,4);
+ host.setHostReady(true);host.start(37);
+ send('watcher',{type:'hello'});
+ const watcher=messages.get('watcher')!;
+ assert.ok(watcher.some(x=>x.type==='spectator'));
+ const snapshot=watcher.find(x=>x.type==='snapshot').data;
+ assert.equal(snapshot.private,null);assert.equal(snapshot.public.players.length,4);assert.equal(host.spectatorCount(),1);
+ send('watcher',{type:'ready',ready:true});assert.equal(host.spectatorCount(),1);
+ send('watcher',{type:'command',command:'{}'});assert.equal(messages.get('watcher')!.at(-1).data.code,'spectator');
+ host.disconnect('watcher');assert.equal(host.spectatorCount(),0);
 });
 
 test('two-player QA uses normal authority, private projection, revision and credential-bound resync',()=>{
@@ -70,7 +91,7 @@ test('two-player QA uses normal authority, private projection, revision and cred
  for(const player of snapshot.public.players){assert.equal('hand' in player,false);assert.equal('cards' in player,false);}assert.ok(snapshot.private.hand);
  const command={protocol:1,gameId:snapshot.gameId,revision:2,commandId:'guest-place',sender:seat.id,command:{type:'place-settlement',playerId:seat.id,vertexId:createIslandBoard().vertices.find(v=>!createIslandBoard().edges.some(e=>e.vertexIds.includes(v.id)&&e.vertexIds.includes(createIslandBoard().vertices[0].id))&&v.id!==createIslandBoard().vertices[0].id)!.id}};
  send('guest',{type:'command',command:JSON.stringify(command)});assert.equal(published.at(-1).data.revision,3);
- host.disconnect('guest');send('stranger',{type:'hello'});assert.equal(messages.get('stranger')!.at(-1).type,'error');
+ host.disconnect('guest');send('stranger',{type:'hello'});assert.ok(messages.get('stranger')!.some(x=>x.type==='spectator'));assert.equal(messages.get('stranger')!.find(x=>x.type==='snapshot').data.private,null);
  send('resumed',{type:'hello',token:seat.token});const restored=messages.get('resumed')!.find(x=>x.type==='snapshot').data;assert.equal(restored.revision,3);assert.equal(messages.get('resumed')!.find(x=>x.type==='seat').data.id,seat.id);
  send('resumed',{type:'sync'});const synced=messages.get('resumed')!.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(synced.revision,3);assert.equal(synced.public.currentSeat,restored.public.currentSeat);
  send('resumed',{type:'command',command:JSON.stringify({...command,commandId:'stale'})});assert.equal(messages.get('resumed')!.at(-1).data.code,'stale');

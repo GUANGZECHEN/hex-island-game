@@ -12,6 +12,7 @@ import {
   MAX_MESSAGE,
   MAX_RELAY_DATA,
   MAX_CHECKPOINT_DATA,
+  MAX_ROOM_CONNECTIONS,
   ROOM_TTL_MS,
 } from '../src/protocol.ts';
 
@@ -29,7 +30,8 @@ test('authorization enforces credentials, expiry, host and capacity',()=>{
   assert.equal(authorize('guest','x','y',10,1,true,1),'invalid');
   assert.equal(authorize('guest','x','x',10,10,true,1),'expired');
   assert.equal(authorize('guest','x','x',10,1,false,0),'host-unavailable');
-  assert.equal(authorize('guest','x','x',10,1,true,4),'room-full');
+  assert.equal(authorize('guest','x','x',10,1,true,MAX_ROOM_CONNECTIONS-1),null);
+  assert.equal(authorize('guest','x','x',10,1,true,MAX_ROOM_CONNECTIONS),'room-full');
   assert.equal(authorize('host','x','x',10,1,true,1),'host-unavailable');
 });
 
@@ -85,4 +87,9 @@ test('host checkpoint controls are strict and bounded',()=>{
 
 test('rooms remain recoverable for 48 hours',()=>{
   assert.equal(ROOM_TTL_MS,48*60*60*1000);
+});
+
+
+test('room transport allows bounded spectator headroom',()=>{
+  assert.equal(MAX_ROOM_CONNECTIONS,12);
 });

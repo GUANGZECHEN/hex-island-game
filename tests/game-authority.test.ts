@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from '../src/game/rules/state.ts';
-import { HostAuthority, projectState } from '../src/game/network/authority.ts';
+import { HostAuthority, projectSpectatorState, projectState } from '../src/game/network/authority.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('projections hide other hands, shuffled deck and random state',()=>{
@@ -46,4 +46,26 @@ test('authority checkpoint round-trips full private state and revision',()=>{
  assert.equal(restored.snapshot('a').private.hand.brick,3);
  assert.equal(restored.snapshot('b').private.cards[0].type,'knight');
  assert.equal(restored.snapshot('c').revision,12);
+});
+
+
+test('spectator projection is public-only and hides private trade details',()=>{
+ const state=createGame(23,['a','b']);
+ state.players[0].hand.brick=2;state.players[0].cards=[{type:'monopoly',boughtTurn:1}];
+ state.offer={id:'offer1',proposer:'a',targets:['b'],give:{lumber:0,brick:1,wool:0,grain:0,ore:0},receive:{lumber:1,brick:0,wool:0,grain:0,ore:0}};
+ const view=projectSpectatorState(state,4,'spectate1');
+ assert.equal(view.private,null);
+ assert.equal(view.public.offer,null);
+ assert.equal(view.public.players[0].resources,2);
+ const text=JSON.stringify(view);
+ assert.ok(!text.includes('monopoly'));
+ assert.ok(!text.includes('randomState'));
+ assert.ok(!text.includes('"brick":2'));
+});
+
+test('standard authority supports two-player games',()=>{
+ const state=createGame(29,['a','b']);
+ assert.equal(state.players.length,2);
+ const host=new HostAuthority('twoplayer',state,()=>0);
+ assert.equal(host.snapshot('a').public.players.length,2);
 });

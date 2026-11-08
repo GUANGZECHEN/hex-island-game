@@ -1,4 +1,4 @@
-import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, ROOM_TTL_MS, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
+import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, MAX_ROOM_CONNECTIONS, ROOM_TTL_MS, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
 
 interface Env { ROOMS: DurableObjectNamespace }
 type Member = { id: string; role: Role };
@@ -72,7 +72,7 @@ export class Room {
 
     const info=await this.state.storage.get<RoomInfo>('info');
     if (!info || Date.now()>=info.expires) return json({error:'expired'},410);
-    if (this.state.getWebSockets().length>=12) return json({error:'busy'},429);
+    if (this.state.getWebSockets().length>=MAX_ROOM_CONNECTIONS) return json({error:'busy'},429);
 
     const pair=new WebSocketPair();
     const [client,server]=Object.values(pair);

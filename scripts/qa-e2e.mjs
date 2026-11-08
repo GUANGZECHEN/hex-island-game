@@ -6,10 +6,12 @@ if(!qaUrl)throw new Error('QA_URL is required.');
 const browser=await chromium.launch({headless:true});
 const hostContext=await browser.newContext();
 const guestContext=await browser.newContext();
-for(const context of [hostContext,guestContext])await context.addInitScript(()=>{globalThis.__hexVisualMessageCount=0;const send=WebSocket.prototype.send;WebSocket.prototype.send=function(...args){globalThis.__hexVisualMessageCount++;return send.apply(this,args);};});
+const spectatorContext=await browser.newContext();
+for(const context of [hostContext,guestContext,spectatorContext])await context.addInitScript(()=>{globalThis.__hexVisualMessageCount=0;const send=WebSocket.prototype.send;WebSocket.prototype.send=function(...args){globalThis.__hexVisualMessageCount++;return send.apply(this,args);};});
 
 const host=await hostContext.newPage();
 const guest=await guestContext.newPage();
+const spectator=await spectatorContext.newPage();
 
 try{
   await host.goto(qaUrl,{waitUntil:'networkidle'});
@@ -34,6 +36,15 @@ try{
   await guest.locator('#game').waitFor({state:'visible'});
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Seed 24680'));
   await guest.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'));
+
+  await spectator.goto(invite,{waitUntil:'domcontentloaded'});
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Watching live game as spectator'),null,{timeout:20000});
+  await spectator.locator('#game').waitFor({state:'visible',timeout:20000});
+  await spectator.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:20000});
+  if(!(await spectator.locator('#private-hand-card').getAttribute('hidden'))&&await spectator.locator('#private-hand-card').isVisible())throw new Error('Spectator private hand was visible.');
+  if(await spectator.locator('#game-tabs').isVisible())throw new Error('Spectator action tabs were visible.');
+  if(await spectator.locator('#room-ready').isVisible())throw new Error('Spectator ready control was visible.');
+  if(await spectator.locator('#player-strip .player-summary').count()!==2)throw new Error('Spectator did not receive public player state.');
 
   const placeSetupPair=async(actor,observer,startRevision)=>{
     await actor.getByRole('button',{name:'Place settlement'}).click();
@@ -95,6 +106,8 @@ try{
   await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#turn-banner')?.textContent?.includes('Player 2'),null,{timeout:15000});
+  await spectator.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
+  await spectator.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   const beforeRoadHighlight=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
   await actor.getByRole('button',{name:'Place road',exact:true}).click();
   if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
@@ -133,6 +146,7 @@ try{
   }
 
   const expectedRecoveryRevision=guestRevision+1;
+  await spectator.close();
   await guest.close();
   await host.close();
 
@@ -160,6 +174,7 @@ try{
 
   console.log('E2E passed: active-turn reconnect, persistent host+guest credentials, full-page shutdown, all-player rejoin and saved-game resume at the authoritative revision.');
 } finally {
+  await spectatorContext.close();
   await guestContext.close();
   await hostContext.close();
   await browser.close();

@@ -1,10 +1,10 @@
 import { RoomClient, RoomError, type CheckpointMeta, type StoredCheckpoint } from '../../rooms';
 import { HostSession } from './session';
-import type { projectState } from './authority';
+import type { projectState, projectSpectatorState } from './authority';
 import { parseSessionRecovery } from './recovery';
 import { isTwoPlayerQa } from './qa';
 
-type Snapshot = ReturnType<typeof projectState>;
+type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
 type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; reset?:()=>void };
 export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
@@ -30,7 +30,7 @@ const loadRoom=():SavedRoom|null=>{
 
 /** Bind a host-only authority to authenticated Cloudflare room relays. */
 export function initializeNetwork(callbacks:Callbacks):BrowserGame {
- let role:'host'|'guest'|null=null,host:HostSession|null=null,client:RoomClient,playerId='',room='',gameId='',counter=0,hostReady=false,open=false;
+ let role:'host'|'guest'|null=null,host:HostSession|null=null,client:RoomClient,playerId='',room='',gameId='',counter=0,hostReady=false,open=false,spectator=false;
  let acceptedGameId='',acceptedRevision=-1,awaitingSnapshot=false,syncAttempts=0,syncTimer:number|null=null;
  let recoveryMode=false,recoveryItems:CheckpointMeta[]=[],pendingResumeId='',bootstrapCheckpointId='',lastLobbySeats:Array<{id?:unknown;connected?:unknown;ready?:unknown}>=[];
  const pendingHostMessages:Array<{id:string;text:string}>=[];
@@ -48,7 +48,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
  const saveSyncPoint=(snapshot:Snapshot)=>{if(room)safeSet(gameKey(room),JSON.stringify({gameId:snapshot.gameId,revision:snapshot.revision}));};
  const requestSync=()=>{
-  if(role!=='guest'||!open||!playerId)return;
+  if(role!=='guest'||!open||(!playerId&&!spectator))return;
   try{send('host',JSON.stringify({protocol:1,type:'sync'}));}catch{return;}
   if(!awaitingSnapshot)return;
   clearSyncTimer();
@@ -74,19 +74,20 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  const showLobby=(data:unknown)=>{
-  const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;recovering?:unknown};
+  const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;recovering?:unknown;spectators?:unknown};
   if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean')return;
   const seats=lobby.seats as Array<{id?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
   el('qa-indicator').hidden=!lobby.qaTwoPlayers;
-  el('lobby').textContent=seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | ');
-  if(role==='guest'&&lobby.recovering===true&&playerId){
-   clearSyncTimer();syncAttempts=0;setSynchronizing(true,`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
+  const spectatorCount=Number.isSafeInteger(lobby.spectators)?Number(lobby.spectators):0;
+  el('lobby').textContent=[seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
+  if(role==='guest'&&lobby.recovering===true&&(playerId||spectator)){
+   clearSyncTimer();syncAttempts=0;setSynchronizing(true,spectator?'Spectating paused saved game. Waiting for host to resume.':`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
    el('room-ready').hidden=true;
   }
   if(role==='host'&&host){
    if(recoveryMode||lobby.recovering===true){el('room-ready').hidden=true;el('room-start').hidden=true;renderRecovery();return;}
-   const validCount=lobby.qaTwoPlayers?seats.length===2:seats.length>=3&&seats.length<=4;
+   const validCount=seats.length>=2&&seats.length<=4;
    const allReady=validCount&&seats.every(s=>s.connected===true&&s.ready===true);
    const start=el<HTMLButtonElement>('room-start');
    start.disabled=!allReady;
@@ -165,11 +166,15 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    if(message.type==='seat'){
     const value=message.data as {id?:unknown;token?:unknown};
     if(typeof value?.id==='string'&&typeof value.token==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.token)){
-     playerId=value.id;safeSet(seatKey(room),value.token);
+     spectator=false;playerId=value.id;safeSet(seatKey(room),value.token);
      if(awaitingSnapshot)status(`Seat restored as ${playerId}. Synchronizing game state…`);
      else status(`Connected as ${playerId}.`);
      requestSync();
     }
+   }
+   else if(message.type==='spectator'){
+    spectator=true;playerId='';hostReady=false;el('room-ready').hidden=true;el('room-start').hidden=true;
+    clearSyncTimer();syncAttempts=0;setSynchronizing(false);status('Watching live game as spectator.');
    }
    else if(message.type==='resume'){
     const value=message.data as {gameId?:unknown;revision?:unknown};
@@ -178,13 +183,13 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     }
    }
    else if(message.type==='lobby')showLobby(message.data);
-   else if(message.type==='snapshot'&&playerId){
+   else if(message.type==='snapshot'&&(playerId||spectator)){
     const snapshot=message.data as Snapshot;
     if(snapshot?.protocol===1&&typeof snapshot.gameId==='string'&&Number.isSafeInteger(snapshot.revision)){
      if(acceptedGameId&&snapshot.gameId!==acceptedGameId){if(awaitingSnapshot)requestSync();return;}
      if(snapshot.revision<acceptedRevision){if(awaitingSnapshot)requestSync();return;}
      acceptedGameId=snapshot.gameId;acceptedRevision=snapshot.revision;gameId=snapshot.gameId;saveSyncPoint(snapshot);
-     clearSyncTimer();syncAttempts=0;setSynchronizing(false);callbacks.snapshot(snapshot,playerId);status(`Connected as ${playerId}.`);
+     clearSyncTimer();syncAttempts=0;setSynchronizing(false);callbacks.snapshot(snapshot,spectator?'':playerId);status(spectator?'Watching live game as spectator.':`Connected as ${playerId}.`);
     }
    }
    else if(message.type==='error'||message.type==='rejection')status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);
@@ -202,7 +207,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  el('room-create').onclick=async()=>{
   try{
    const mapSeed=el<HTMLInputElement>('room-seed');if(!mapSeed.value||!mapSeed.validity.valid)throw new Error('Choose a valid board map seed.');
-   clearRecoveryUi();role='host';playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});
+   clearRecoveryUi();role='host';spectator=false;playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});
    const invite=await client.create();const info=client.connectionInfo();if(!info||info.role!=='host')throw new Error('Host room capability was unavailable.');
    room=info.room;saveRoom({version:1,role:'host',room:info.room,capability:info.token});
    hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');
@@ -223,7 +228,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  async function join(roomId:string,capability:string,rejoining=false){
-  clearRecoveryUi();role='guest';el('room-map-controls').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
+  clearRecoveryUi();role='guest';spectator=false;el('room-map-controls').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
   saveRoom({version:1,role:'guest',room:roomId,capability});
   if(!rejoining){acceptedGameId='';acceptedRevision=-1;gameId='';setSynchronizing(false);}
   else{
@@ -238,7 +243,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  }
 
  async function restoreHost(roomId:string,capability:string){
-  role='host';room=roomId;playerId='Player 1';open=false;hostReady=false;host=null;pendingHostMessages.splice(0);recoveryMode=true;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';callbacks.reset?.();
+  role='host';spectator=false;room=roomId;playerId='Player 1';open=false;hostReady=false;host=null;pendingHostMessages.splice(0);recoveryMode=true;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';callbacks.reset?.();
   el('room-map-controls').hidden=false;el('room-ready').hidden=true;el('room-start').hidden=true;el('room-recovery-panel').hidden=false;el('room-recovery-status').textContent='Reconnecting hosted room and looking for saved games…';el('room-recovery-options').replaceChildren();
   try{await client.restoreHost(roomId,capability);saveRoom({version:1,role:'host',room:roomId,capability});status('Hosted room reconnected. Looking for saved games…');client.requestCheckpoints();}
   catch{status('Could not rejoin the hosted room.');}
@@ -248,5 +253,5 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
  el('room-reconnect').onclick=()=>{const saved=loadRoom();if(!saved){status('No room to rejoin.');return;}if(saved.role==='host')void restoreHost(saved.room,saved.capability);else void join(saved.room,saved.capability,true);};
  if(!allowed)status('Automatic rooms unavailable: signaling endpoint is not configured.');
- return {submit(command,revision){if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
+ return {submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

@@ -33,7 +33,7 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   const authority=x.authority as Partial<AuthorityRecovery>;
   if(authority.version!==1||typeof authority.gameId!=='string'||!idPattern.test(authority.gameId)||!Number.isSafeInteger(authority.revision)||Number(authority.revision)<0||!authority.state||authority.state.version!==1)throw new Error('Invalid saved game.');
   const state=authority.state as GameState;
-  const validCount=x.qaTwoPlayers?state.players.length===2:state.players.length>=3&&state.players.length<=4;
+  const validCount=state.players.length>=2&&state.players.length<=4;
   if(!validCount||x.seats.length!==state.players.length)throw new Error('Saved game player count is invalid.');
   for(let i=0;i<x.seats.length;i++){
     const seat=x.seats[i] as RecoverySeat;

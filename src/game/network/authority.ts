@@ -17,10 +17,18 @@ const fields: Record<string,string[]> = {
  offer:['id','targets','give','receive'],'cancel-offer':['id'],'accept-offer':['id'],'reject-offer':['id'],'buy-card':[],
  'play-card':['card','resources','resource'],'free-road':['edgeId'],'stop-free-roads':[],'claim-victory':[]
 };
+/** Public state is shared with every player and spectator; private trade details remain viewer-scoped. */
+function publicProjection(state:GameState, viewer?:string) {
+ return {version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null};
+}
 /** Only public quantities and this viewer's own cards are serialized. */
 export function projectState(state:GameState, viewer:string, revision:number, gameId:string) {
  const self=state.players.find(p=>p.id===viewer);if(!self)throw new Error('Unknown viewer.');
- return { protocol:1,gameId,revision,public:{version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null},private:{hand:self.hand,cards:self.cards}};
+ return {protocol:1 as const,gameId,revision,public:publicProjection(state,viewer),private:{hand:self.hand,cards:self.cards}};
+}
+/** Spectators receive the same public board state but never a player's private hand/cards or private trade offer. */
+export function projectSpectatorState(state:GameState, revision:number, gameId:string) {
+ return {protocol:1 as const,gameId,revision,public:publicProjection(state),private:null};
 }
 /** Peer-to-seat binding is established by the room layer, never from the payload. */
 export class HostAuthority {
@@ -34,6 +42,7 @@ export class HostAuthority {
  checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state)};}
  currentRevision():number{return this.revision;}
  snapshot(playerId:string){return structuredClone(projectState(this.state,playerId,this.revision,this.gameId));}
+ spectatorSnapshot(){return structuredClone(projectSpectatorState(this.state,this.revision,this.gameId));}
  receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number} {
   const reject=(code:string)=>({ok:false,code,revision:this.revision});
   if(typeof text!=='string'||new TextEncoder().encode(text).length>MAX_MESSAGE_BYTES)return reject('malformed');

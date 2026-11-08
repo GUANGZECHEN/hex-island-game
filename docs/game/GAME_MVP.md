@@ -1,6 +1,6 @@
 # Hex Island MVP
 
-The game supports three or four private-room players. The board and its seed are described in [board setup](BOARD_SETUP.md); topology is described in [board geometry](BOARD_GEOMETRY.md). A separate deterministic game state contains seats, inventories, bank, development deck and played cards, pieces, building/road ownership, turn phase, robber, trade offer and award holders. Local hot-seat play uses a pass screen before a different player sees their hand.
+The game supports two to four private-room players. The board and its seed are described in [board setup](BOARD_SETUP.md); topology is described in [board geometry](BOARD_GEOMETRY.md). A separate deterministic game state contains seats, inventories, bank, development deck and played cards, pieces, building/road ownership, turn phase, robber, trade offer and award holders. Local hot-seat play uses a pass screen before a different player sees their hand.
 
 The setup reducer validates settlement distance and a connected road in clockwise then reverse order. Normal turns roll two dice, distribute resources (including bank shortages), resolve seven/discards/robber/theft when required, and enter the action phase. Roads, settlements and cities validate geometry, supply and costs. Domestic trades require explicit acceptance; bank trades use 4:1 or an owned 3:1/2:1 port. Development cards implement knight, road building, invention, monopoly and hidden victory points. A player may claim ten points on their turn. Longest route enumerates edge-disjoint trails, including cycles, and stops at an opponent's building; award ties retain an eligible incumbent. Largest army uses played knights and the same incumbent tie rule.
 
@@ -12,9 +12,9 @@ A shared set of local SVG resource icons is used on tiles, the private hand, ban
 
 ## Multiplayer
 
-Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses a board map seed or randomizes a visual map preview; that selected seed is used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests.
+Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses a board map seed or randomizes a visual map preview; that selected seed is used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests. Two through four connected players may start once every occupied player seat is ready. Before start, new invite holders claim available seats up to four total players. After start, an invite holder without an existing seat capability is attached as a spectator instead.
 
-Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest and keeps the live authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. For crash/page-close recovery, the host also writes bounded complete checkpoints to the room Durable Object. The Durable Object stores these checkpoint payloads but does not evaluate game rules, choose random outcomes, or advance the game.
+Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest player and keeps the live authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. Spectators receive a public-only projection with no private hand/cards and no private domestic-trade offer; spectator commands are rejected by the host session. Spectators do not appear in recovery seat credentials and do not block Resume. For crash/page-close recovery, the host also writes bounded complete checkpoints to the room Durable Object. The Durable Object stores these checkpoint payloads but does not evaluate game rules, choose random outcomes, or advance the game.
 
 This standard multiplayer path does not use WebRTC DataChannels, ICE, STUN or TURN. The networking API remains isolated from game rules so a future WebSocket backend can replace Cloudflare without rewriting the rules engine.
 
@@ -40,7 +40,7 @@ Local validation is:
 
 ## Two-browser QA checklist
 
-The opt-in `?qaPlayers=2` mode tests the real room transport and UI with two people. Standard games still require three or four players.
+The opt-in `?qaPlayers=2` mode remains available for focused transport QA. Standard games also support two players, and normal rooms allow 2–4 players.
 
 1. Open the host page with `?qaPlayers=2` and confirm the QA indicator.
 2. Choose or randomize the host map seed, create a private room and copy the invitation.
@@ -54,6 +54,7 @@ The opt-in `?qaPlayers=2` mode tests the real room transport and UI with two peo
 10. Confirm the same guest seat, board state and revision return, then perform one legal action and verify both browsers update.
 11. Close both host and guest pages, reopen the same browser profiles, rejoin the hosted room first and the guest second, then confirm the host sees saved-game choices only after the original seats are restored.
 12. Select **Resume latest** and confirm both browsers restore the same saved revision, private views and board seed.
+13. After game start, open the original invitation in a fresh third browser profile and confirm it enters spectator mode, hides all private/action controls, and follows later revisions/public events in real time.
 
 The invitation and seat capability are bearer capabilities. Keep them private and do not log or publish them.
 
