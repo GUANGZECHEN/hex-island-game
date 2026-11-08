@@ -21,6 +21,16 @@ const MAX_CHECKPOINT_DATA = 49152;
 const validPeerId = (value:unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 const validRoomToken=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
+class RoomAttemptError extends RoomError {
+  constructor(message:string, readonly retryable:boolean){super(message);}
+}
+const joinError=(code:unknown):RoomAttemptError=>{
+  if(code==='invalid')return new RoomAttemptError('Invitation is invalid.',false);
+  if(code==='expired')return new RoomAttemptError('This room has expired.',false);
+  if(code==='room-full')return new RoomAttemptError('Room is temporarily full.',true);
+  if(code==='host-unavailable')return new RoomAttemptError('Host is reconnecting.',true);
+  return new RoomAttemptError('Room connection was temporarily unavailable.',true);
+};
 const validMeta=(value:unknown):value is CheckpointMeta=>{
   const x=value as Partial<CheckpointMeta>|null;
   return !!x&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id)&&Number.isSafeInteger(x.revision)&&Number(x.revision)>=0&&Number.isSafeInteger(x.round)&&Number(x.round)>=0&&Number.isSafeInteger(x.savedAt)&&Number(x.savedAt)>0&&typeof x.latest==='boolean';
@@ -72,7 +82,24 @@ export class RoomClient {
     this.reset();
     const generation=this.generation;
     this.connection={room,token,role:'guest',endpointIndex:0};
-    await this.openInitial(this.connection,generation);
+    let attempt=0,lastError:unknown;
+    while(generation===this.generation && attempt<10){
+      try{
+        await this.openInitial(this.connection,generation);
+        return;
+      }catch(error){
+        lastError=error;
+        if(error instanceof RoomAttemptError && !error.retryable)throw error;
+        attempt++;
+        if(attempt>=10)break;
+        const delay=reconnectDelay(attempt);
+        this.events.status(`Room connection is temporarily unavailable. Retrying in ${Math.ceil(delay/1000)}s…`);
+        await new Promise(resolve=>window.setTimeout(resolve,delay));
+      }
+    }
+    if(generation!==this.generation)throw new RoomError('Room join was cancelled.');
+    if(lastError instanceof RoomError)throw new RoomError(`Could not join after automatic retries. ${lastError.message}`);
+    throw new RoomError('Could not join after automatic retries.');
   }
 
   async restoreHost(room:string,token:string):Promise<void> {
@@ -149,10 +176,10 @@ export class RoomClient {
       let settled=false;
       let authenticated=false;
 
-      const rejectInitial=(message:string)=>{
+      const rejectInitial=(message:string,retryable=true)=>{
         if(settled)return;
         settled=true;
-        reject(new RoomError(message));
+        reject(new RoomAttemptError(message,retryable));
       };
       const closeForRetry=()=>{
         try{ws.close();}catch{}
@@ -240,8 +267,10 @@ export class RoomClient {
         }
 
         if(msg.type==='error'){
-          if(!authenticated)rejectInitial('Room WebSocket connection or authentication failed.');
-          else this.events.error('Room WebSocket connection was interrupted.');
+          if(!authenticated){
+            const failure=joinError(msg.code);
+            rejectInitial(failure.message,failure.retryable);
+          } else this.events.error('Room WebSocket connection was interrupted.');
           closeForRetry();
           return;
         }

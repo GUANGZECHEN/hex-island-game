@@ -167,6 +167,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     const value=message.data as {id?:unknown;token?:unknown};
     if(typeof value?.id==='string'&&typeof value.token==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.token)){
      spectator=false;playerId=value.id;safeSet(seatKey(room),value.token);
+     el<HTMLButtonElement>('room-ready').disabled=false;
      if(awaitingSnapshot)status(`Seat restored as ${playerId}. Synchronizing game state…`);
      else status(`Connected as ${playerId}.`);
      requestSync();
@@ -238,8 +239,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    }catch{}
    if(acceptedRevision>=0)setSynchronizing(true,'Rejoining room. Synchronizing game state…');
   }
-  el('room-ready').textContent='Mark ready';el('room-ready').hidden=false;el('room-start').hidden=true;
-  try{await client.join(roomId,capability);}catch{clearSyncTimer();status('Could not join the room.');}
+  const ready=el<HTMLButtonElement>('room-ready');ready.textContent='Mark ready';ready.hidden=false;ready.disabled=true;el('room-start').hidden=true;
+  try{await client.join(roomId,capability);}
+  catch(error){clearSyncTimer();ready.disabled=true;status(error instanceof RoomError?error.message:'Could not join the room.');}
  }
 
  async function restoreHost(roomId:string,capability:string){
@@ -250,7 +252,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  }
 
  el('qa-indicator').hidden=!isTwoPlayerQa(location.search);
- const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
+ const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){document.documentElement.classList.add('invite-entry');history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
  el('room-reconnect').onclick=()=>{const saved=loadRoom();if(!saved){status('No room to rejoin.');return;}if(saved.role==='host')void restoreHost(saved.room,saved.capability);else void join(saved.room,saved.capability,true);};
  if(!allowed)status('Automatic rooms unavailable: signaling endpoint is not configured.');
  return {submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};

@@ -18,6 +18,8 @@ Gameplay remains host-authoritative. The host assigns a distinct random seat cap
 
 This standard multiplayer path does not use WebRTC DataChannels, ICE, STUN or TURN. The networking API remains isolated from game rules so a future WebSocket backend can replace Cloudflare without rewriting the rules engine.
 
+Invitation links open a minimal guest/spectator surface: host-only room creation, map selection, diagnostics, manual rejoin and local-game controls are hidden before first paint. A guest's first room connection automatically retries transient relay/network failures, including a brief `host-unavailable` window while the host WebSocket reconnects; permanent invitation errors are reported explicitly. Ready stays disabled until the host assigns a player seat.
+
 A returning guest can reclaim its seat with its locally stored seat capability while the room remains valid. A valid seat capability may replace a stale still-connected peer record, which prevents races between reconnect and delayed WebSocket leave detection. Transient WebSocket failures use fast exponential retries for the first ten attempts, then continue in the background every 30 seconds and eventually every 60 seconds instead of giving up. After reconnect, guests automatically present their existing seat capability and receive the latest snapshot/revision. The host room capability and guest seat capabilities are also retained in local browser storage so page closure does not by itself lose the rejoin identity.
 
 ### Saved-game recovery

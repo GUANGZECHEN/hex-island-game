@@ -22,9 +22,25 @@ try{
   await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
   const invite=await host.locator('#room-invite').inputValue();
 
+  // Reproduce a real first-join race: the invite opens while the host relay is temporarily offline.
+  await hostContext.setOffline(true);
+  const hostDrop=await host.evaluate(()=>{const hook=globalThis.__hexQaDropRoomConnection;if(typeof hook!=='function')return false;hook();return true;});
+  if(!hostDrop)throw new Error('QA host disconnect hook was unavailable.');
+  await host.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Automatic fast retry'),null,{timeout:5000});
+
   await guest.goto(invite,{waitUntil:'domcontentloaded'});
-  await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'));
-  await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'));
+  if(await guest.locator('#room-create').isVisible())throw new Error('Invite page exposed Create room.');
+  if(await guest.locator('#new-game').isVisible())throw new Error('Invite page exposed local game controls.');
+  if(await guest.locator('#home-intro').isVisible())throw new Error('Invite page exposed home/diagnostic links.');
+  if(await guest.locator('#room-reconnect').isVisible())throw new Error('Invite page exposed manual rejoin control.');
+  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('temporarily unavailable'),null,{timeout:10000});
+  if(!(await guest.locator('#room-ready').isDisabled()))throw new Error('Ready was enabled before a player seat was assigned.');
+
+  await hostContext.setOffline(false);
+  await host.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('reconnected'),null,{timeout:20000}).catch(()=>{});
+  await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
+  await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
+  if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
 
   await host.getByRole('button',{name:'Mark ready'}).click();
   await guest.getByRole('button',{name:'Mark ready'}).click();

@@ -88,3 +88,13 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .player-piece-stats .player-stat-icon,.player-public-stats .player-stat-icon{width:.72rem;height:.72rem}
  .piece-supply{gap:.25rem;margin-top:.3rem}
 }
+
+
+/* Invitation links open a minimal guest/spectator surface from the first paint. */
+.invite-entry #room-host-tools,
+.invite-entry #new-game,
+.invite-entry #home-intro,
+.invite-entry #room-reconnect,
+.invite-entry #qa-indicator{display:none!important}
+.invite-entry main{max-width:760px}
+.invite-entry #room-section{margin-top:.6rem}
