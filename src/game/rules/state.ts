@@ -1,4 +1,4 @@
-import { createIslandBoard } from '../board/geometry.ts';
+import { createIslandBoard, type BoardLayout } from '../board/geometry.ts';
 import { generateBoardSetup, type BoardSetup } from '../board/setup.ts';
 
 export const RESOURCES = ['lumber', 'brick', 'wool', 'grain', 'ore'] as const;
@@ -42,10 +42,11 @@ export function secureIndex(random: () => number, bound: number): { state?: unde
   for (let i=0; i<128; i++) { const value=random(); if (!Number.isInteger(value) || value<0 || value>0xffffffff) throw new Error('Invalid entropy.'); if (value<limit) return {index:value%bound}; }
   throw new Error('Random index generation exhausted.');
 }
-export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean }): GameState {
-  const validCount = ids.length >= 2 && ids.length <= 4;
-  if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error('A game requires two to four distinct player IDs.');
-  const board = generateBoardSetup(seed);
+export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout }): GameState {
+  const boardLayout=options?.boardLayout??'standard';
+  const validCount = boardLayout==='expanded-5-6' ? ids.length>=5&&ids.length<=6 : ids.length>=2&&ids.length<=4;
+  if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(boardLayout==='expanded-5-6'?'The 5–6 player board requires five or six distinct player IDs.':'The standard board requires two to four distinct player IDs.');
+  const board = generateBoardSetup(seed,boardLayout);
   let randomState = seed;
   const deck: Development[] = [...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
   for (let i = deck.length - 1; i > 0; i--) {
@@ -61,9 +62,9 @@ export function publicVictoryPoints(state: GameState, id: string): number {
 /** Validate and apply one setup command without changing the supplied state. */
 export function applySetupCommand(original: GameState, command: SetupCommand): GameState {
   if (!original || !command || original.players[original.currentSeat]?.id !== command.playerId) throw new Error('Not the active player.');
-  const state = structuredClone(original), board = createIslandBoard(), player = state.players[state.currentSeat];
+  const state = structuredClone(original), board = createIslandBoard(original.board.layout), player = state.players[state.currentSeat];
   if (command.type === 'place-settlement' && state.phase === 'setup-settlement') {
-    const vertex = board.vertices.find(v => v.id === command.vertexId);
+    const vertex = createIslandBoard(state.board.layout).vertices.find(v => v.id === command.vertexId);
     if (!vertex || state.buildings[vertex.id] || player.settlements <= 0) throw new Error('Invalid settlement location.');
     const adjoining = board.edges.filter(edge => edge.vertexIds.includes(vertex.id)).flatMap(edge => edge.vertexIds.filter(id => id !== vertex.id));
     if (adjoining.some(id => state.buildings[id])) throw new Error('Settlement violates distance rule.');
