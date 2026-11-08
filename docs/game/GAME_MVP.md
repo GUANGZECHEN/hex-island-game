@@ -1,6 +1,6 @@
 # Hex Island MVP
 
-The game supports two to four private-room players. The board and its seed are described in [board setup](BOARD_SETUP.md); topology is described in [board geometry](BOARD_GEOMETRY.md). A separate deterministic game state contains seats, inventories, bank, development deck and played cards, pieces, building/road ownership, turn phase, robber, trade offer and award holders. Local hot-seat play uses a pass screen before a different player sees their hand.
+The game supports two to six private-room players. The host chooses a standard 2–4 player board or the expanded 5–6 player board when creating the room. The board and its seed are described in [board setup](BOARD_SETUP.md); topology is described in [board geometry](BOARD_GEOMETRY.md). A separate deterministic game state contains seats, inventories, bank, development deck and played cards, pieces, building/road ownership, turn phase, robber, trade offer and award holders. Local hot-seat play uses a pass screen before a different player sees their hand.
 
 The setup reducer validates settlement distance and a connected road in clockwise then reverse order. Normal turns roll two dice, distribute resources (including bank shortages), resolve seven/discards/robber/theft when required, and enter the action phase. Roads, settlements and cities validate geometry, supply and costs. Domestic trades require explicit acceptance; bank trades use 4:1 or an owned 3:1/2:1 port. Development cards implement knight, road building, invention, monopoly and hidden victory points. A player may claim ten points on their turn. Longest route enumerates edge-disjoint trails, including cycles, and stops at an opponent's building; award ties retain an eligible incumbent. Largest army uses played knights and the same incumbent tie rule.
 
@@ -16,7 +16,7 @@ A shared set of local SVG resource icons is used on tiles, the private hand, ban
 
 ## Multiplayer
 
-Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses a board map seed or randomizes a visual map preview; that selected seed is used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests. Two through four connected players may start once every occupied player seat is ready. Before start, new invite holders claim available seats up to four total players. After start, an invite holder without an existing seat capability is attached as a spectator instead.
+Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses the board version plus a board map seed or randomizes a visual map preview; the selected version and seed are used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests. On the standard board, two through four connected players may start once every occupied player seat is ready. On the expanded board, five or six connected players may start. Before start, new invite holders claim available seats up to the selected board's capacity. After start, an invite holder without an existing seat capability is attached as a spectator instead.
 
 Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest player and keeps the live authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. Spectators receive a public-only projection with no private hand/cards and no private domestic-trade offer; spectator commands are rejected by the host session. Spectators do not appear in recovery seat credentials and do not block Resume. For crash/page-close recovery, the host also writes bounded complete checkpoints to the room Durable Object. The Durable Object stores these checkpoint payloads but does not evaluate game rules, choose random outcomes, or advance the game.
 
@@ -46,7 +46,7 @@ Local validation is:
 
 ## Two-browser QA checklist
 
-The opt-in `?qaPlayers=2` mode remains available for focused transport QA. Standard games also support two players, and normal rooms allow 2–4 players.
+The opt-in `?qaPlayers=2` mode remains available for focused transport QA. Standard games also support two players. Normal rooms allow 2–4 players on the standard board or 5–6 players on the expanded board.
 
 1. Open the host page with `?qaPlayers=2` and confirm the QA indicator.
 2. Choose or randomize the host map seed, create a private room and copy the invitation.
@@ -79,3 +79,10 @@ Resource-specific ports use the same local resource SVG vocabulary as hands and 
 Incoming domestic trade offers are displayed from the recipient's perspective: the proposer is named, resources the recipient would receive are shown separately from resources the recipient would give, and the existing Accept/Reject actions remain authoritative.
 
 The desert uses a local SVG terrain icon. The robber is represented by a white prohibition badge with a red ring and diagonal slash. On numbered tiles the badge is centered directly over the number token, and the occupied tile is visually dimmed while the robber marker remains fully visible.
+
+
+## 5–6 player board
+
+The host may select an expanded 5–6 player board before room creation. Its horizontal column sizes are 3–4–5–5–4–3, adding one complete five-hex column to the standard 3–4–5–4–3 island for 24 total hexes. The expanded setup contains two deserts; both deserts have no number token and one of them starts with the robber. The selected layout is serialized in authoritative snapshots and saved-game recovery data, so every player and spectator renders the same geometry after reconnect or resume.
+
+The expanded table admits up to six player seats before game start and uses the same host-authoritative rules engine, turn structure, build/trade/development-card behavior and victory rules as the current standard game. Additional expansion-specific turn phases are outside this approved change.
