@@ -14,3 +14,15 @@ test('nickname field, target focus styling and development-card purchase placeme
   assert.ok(css.includes('.game-target{')&&css.includes('outline:none'));
   assert.ok(css.includes('.game-target-city{')&&css.includes('outline:none'));
 });
+
+
+test('board buildings render semantic B3 SVG pieces instead of circle/rect ownership markers',()=>{
+  const ui=readFileSync('src/game-ui.ts','utf8');
+  const css=readFileSync('src/style.css','utf8');
+  assert.ok(ui.includes("data-building-kind"));
+  assert.ok(ui.includes("BOARD_BUILDING_PATHS[owner.kind]"));
+  assert.ok(ui.includes("game-building-piece game-building-"));
+  assert.ok(css.includes('.game-building-shell'));
+  assert.ok(css.includes('.game-building-city'));
+  assert.ok(!ui.includes("owner.kind==='city'?'rect':'circle'"));
+});

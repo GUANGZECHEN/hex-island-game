@@ -4,11 +4,23 @@ import type { Development, Resource } from '../rules/state.ts';
 export const RESOURCE_PATHS: Readonly<Record<Resource, string>> = {
   lumber: 'M12 2 5 10h3l-4 5h6v5h4v-5h6l-4-5h3L12 2Z',
   brick: 'M3 6h18v12H3zM3 12h18M9 6v6m6 0v6',
-  // Sheep silhouette: woolly body, small head/ear and two legs.
-  wool: 'M7 15c-2.2 0-4-1.7-4-3.8S4.8 7.5 7 7.5c.6-2 2.3-3.4 4.4-3.4 2.2 0 4 1.5 4.5 3.6 2.2-.1 4.1 1.5 4.1 3.6 0 2.1-1.7 3.7-3.9 3.7H7Zm9-5 2-1 2 1-1 2h-2l-1-2ZM8 15v4m7-4v4m-7 0h2m5 0h2',
+  // S4: minimalist side-view sheep outline with a fluffy body, distinct head/ear and short legs.
+  wool: 'M4.5 15.5c-1.8 0-3.3-1.5-3.3-3.3 0-1.7 1.2-3.1 2.8-3.4.3-1.9 1.9-3.3 3.8-3.3 1.3 0 2.5.6 3.2 1.6.9-.9 2.1-1.4 3.4-1.4 2.5 0 4.7 1.8 5.2 4.2 1.7.2 3 1.7 3 3.4 0 1.9-1.5 3.4-3.4 3.4h-2.2M15.8 8.5c1 .4 1.7 1.2 2.1 2.2M20.2 12.2h.01M7 15.5V20m4-4.5V20m6-3.8V20m3-3.8V20',
   grain: 'M12 21V3m0 14-4-3m4 0 4-3m-4 0L8 8m4 0 4-3',
   ore: 'm4 17 3-9 5-4 5 3 3 10-4 3H8Zm3-9 5 3 5-4m-5 4v9',
 };
+export const BOARD_BUILDING_PATHS = {
+  settlement: {
+    shell: 'M3 11 12 4l9 7v10H3V11Z',
+    accent: 'M2 11 12 3l10 8M17 8V5h3v6',
+    detail: 'M9 21v-6h6v6M6.5 12.5h2.5v2.5H6.5zM15 12.5h2.5v2.5H15z',
+  },
+  city: {
+    shell: 'M3 12h18v9H3v-9ZM7 12V8h10v4M9 8V4h6v4',
+    accent: 'M2 12l4-4h2M16 8h2l4 4M12 4V2m0 0 2 1M12 2l-2 1',
+    detail: 'M10.2 6h3.6M12 6v1.3M8 15h2v2H8zM14 15h2v2h-2zM11 21v-4h2v4',
+  },
+} as const;
 export const DESERT_PATH = 'M3 18c3-4 6-4 9 0 2-3 5-4 9-1M3 21c3-3 6-3 9 0 2-2 5-3 9-1M7 7a2 2 0 1 0 4 0 2 2 0 1 0-4 0M9 2v2M9 10v2M4 7H2m14 0h-2M5.5 3.5 4 4m3-4-4 4';
 
 export const ACTION_PATHS = {

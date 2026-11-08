@@ -1,5 +1,5 @@
 import './style.css';
-import { ACTION_PATHS, DEVELOPMENT_LABELS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
+import { ACTION_PATHS, BOARD_BUILDING_PATHS, DEVELOPMENT_LABELS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
@@ -150,14 +150,17 @@ function drawBoard(){
  for(const vertex of view.vertices){
   const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
   if(owner){
-   const node=document.createElementNS(NS,owner.kind==='city'?'rect':'circle');
-   if(owner.kind==='city'){node.setAttribute('x',String(vertex.point.x-.15));node.setAttribute('y',String(vertex.point.y-.15));node.setAttribute('width','.3');node.setAttribute('height','.3');}
-   else{node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.15');}
-   node.setAttribute('class',`game-building player-${byId(owner.playerId).seat+1}${cityTarget?' game-target-city':''}`);
-   const title=document.createElementNS(NS,'title');title.textContent=`${owner.playerId} ${owner.kind}, ${vertex.id}`;node.append(title);
-   if(cityTarget){node.setAttribute('data-legal-target','city');node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
-   svg.append(node);
-   const mark=document.createElementNS(NS,'text');mark.setAttribute('x',String(vertex.point.x));mark.setAttribute('y',String(vertex.point.y));mark.setAttribute('text-anchor','middle');mark.setAttribute('dominant-baseline','central');mark.setAttribute('class','piece-label');mark.textContent=String(byId(owner.playerId).seat+1);svg.append(mark);continue;
+   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1;
+   piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}`);
+   const size=owner.kind==='city'?.5:.43,scale=size/24;
+   piece.setAttribute('transform',`translate(${vertex.point.x-size/2} ${vertex.point.y-size/2}) scale(${scale})`);
+   piece.setAttribute('data-building-kind',owner.kind);
+   const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner.playerId)} ${owner.kind}, ${vertex.id}`;piece.append(title);
+   const shell=document.createElementNS(NS,'path');shell.setAttribute('d',paths.shell);shell.setAttribute('class','game-building-shell');piece.append(shell);
+   const accent=document.createElementNS(NS,'path');accent.setAttribute('d',paths.accent);accent.setAttribute('class','game-building-accent');piece.append(accent);
+   const detail=document.createElementNS(NS,'path');detail.setAttribute('d',paths.detail);detail.setAttribute('class','game-building-detail');piece.append(detail);
+   if(cityTarget){piece.setAttribute('data-legal-target','city');piece.setAttribute('tabindex','0');piece.setAttribute('role','button');piece.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);piece.onclick=()=>attempt(()=>moveTarget(vertex.id));piece.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
+   svg.append(piece);continue;
   }
   if(targetMode!=='settlement'||!legal.has(vertex.id))continue;
   const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target','settlement');node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal settlement target ${vertex.id}`);

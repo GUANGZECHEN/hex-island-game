@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTION_PATHS, DESERT_PATH, DEVELOPMENT_PATHS, RESOURCE_PATHS, affordable, desertIcon, developmentChip, resourceChip } from '../src/game/ui/icons.ts';
+import { ACTION_PATHS, BOARD_BUILDING_PATHS, DESERT_PATH, DEVELOPMENT_PATHS, RESOURCE_PATHS, affordable, desertIcon, developmentChip, resourceChip } from '../src/game/ui/icons.ts';
 
 test('the five resources and common actions have distinct local SVG paths',()=>{
  assert.deepEqual(Object.keys(RESOURCE_PATHS).sort(),['brick','grain','lumber','ore','wool']);
@@ -30,4 +30,17 @@ test('development chips expose card type, count and new-card state',()=>{
  const previous=globalThis.document;Object.assign(globalThis,{document:{createElement:(tag:string)=>new Element(tag),createElementNS:(_ns:string,tag:string)=>new Element(tag)}});
  try{const chip=developmentChip('knight',2,1) as unknown as Element;assert.equal(chip.attributes.get('role'),'img');assert.match(chip.attributes.get('aria-label')??'',/Knight: 2/);assert.equal(chip.children[0].attributes.get('data-development-icon'),'knight');assert.equal(chip.children[1].textContent,'2');assert.equal(chip.children[2].textContent,'1 new');}
  finally{Object.assign(globalThis,{document:previous});}
+});
+
+
+test('selected S4 sheep and B3 settlement/city artwork are local SVG path data',()=>{
+ assert.match(RESOURCE_PATHS.wool,/M4\.5 15\.5/);
+ assert.ok(RESOURCE_PATHS.wool.length>100);
+ assert.deepEqual(Object.keys(BOARD_BUILDING_PATHS).sort(),['city','settlement']);
+ for(const kind of ['settlement','city'] as const){
+  assert.ok(BOARD_BUILDING_PATHS[kind].shell.length>10);
+  assert.ok(BOARD_BUILDING_PATHS[kind].accent.length>5);
+  assert.ok(BOARD_BUILDING_PATHS[kind].detail.length>5);
+ }
+ assert.notEqual(BOARD_BUILDING_PATHS.settlement.shell,BOARD_BUILDING_PATHS.city.shell);
 });
