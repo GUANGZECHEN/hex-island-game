@@ -57,6 +57,13 @@ jobs:
             exit 1
           fi
 
+      - name: Diagnose persistent Cloudflare access safely
+        if: steps.signaling_mode.outputs.mode == 'permanent'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-safe-diagnostic.mjs
+
       - name: Deploy persistent QA Worker
         id: deploy_qa_signaling
         if: steps.signaling_mode.outputs.mode == 'permanent'
