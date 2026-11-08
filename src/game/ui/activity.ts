@@ -2,6 +2,7 @@ export interface PublicActivityPlayer {
   id: string;
   name?: string;
   resources: number;
+  developmentCards: number;
 }
 
 export interface PublicActivityState {
@@ -15,12 +16,16 @@ export interface PublicActivityState {
   roads: Readonly<Record<string,string>>;
   buildings: Readonly<Record<string,{playerId:string;kind:'settlement'|'city'}>>;
   playedCards: readonly string[];
+  bank: Readonly<Record<string,number>>;
+  deckCount: number;
 }
 
 const activePlayer=(state:PublicActivityState)=>state.players[state.currentSeat];
 const activeId=(state:PublicActivityState)=>activePlayer(state)?.id ?? 'Unknown player';
 const label=(state:PublicActivityState,id:string)=>state.players.find(player=>player.id===id)?.name ?? id;
 const resources=(state:PublicActivityState,id:string)=>state.players.find(player=>player.id===id)?.resources ?? 0;
+const developmentCards=(state:PublicActivityState,id:string)=>state.players.find(player=>player.id===id)?.developmentCards ?? 0;
+const bankSize=(state:PublicActivityState)=>Object.values(state.bank).reduce((sum,count)=>sum+count,0);
 
 export function turnAnnouncement(state:PublicActivityState):string {
   const id=activeId(state);return state.phase==='finished' ? 'Game finished.' : `It’s ${label(state,id)}’s turn.`;
@@ -28,7 +33,7 @@ export function turnAnnouncement(state:PublicActivityState):string {
 
 export function derivePublicActivity(previous:PublicActivityState|null,next:PublicActivityState):string|null {
   if(!previous)return null;
-  const actorId=activeId(previous),actor=label(previous,activeId(previous));
+  const actorId=activeId(previous),actor=label(previous,actorId);
 
   if(next.dice && (!previous.dice || previous.dice[0]!==next.dice[0] || previous.dice[1]!==next.dice[1])){
     const [first,second]=next.dice;
@@ -54,9 +59,24 @@ export function derivePublicActivity(previous:PublicActivityState|null,next:Publ
     if(before?.playerId===actorId&&before.kind==='settlement'&&building.playerId===actorId&&building.kind==='city')return `${actor} upgraded a settlement to a city.`;
   }
 
+  if(previous.phase==='action'&&next.phase==='action'&&next.deckCount===previous.deckCount-1&&developmentCards(next,actorId)===developmentCards(previous,actorId)+1){
+    return `${actor} bought a development card.`;
+  }
+
   if(next.playedCards.length>previous.playedCards.length){
     const card=next.playedCards.at(-1);
     if(card)return `${actor} played ${card.replaceAll('-',' ')}.`;
+  }
+
+  if(previous.phase==='action'&&next.phase==='action'){
+    const bankGain=bankSize(next)-bankSize(previous);
+    const actorLoss=resources(previous,actorId)-resources(next,actorId);
+    if(bankGain===actorLoss && (bankGain===1||bankGain===2||bankGain===3)){
+      const rate=bankGain+1;
+      if(rate===2)return `${actor} traded 2:1 at a resource port.`;
+      if(rate===3)return `${actor} traded 3:1 at a generic port.`;
+      return `${actor} traded 4:1 with the bank.`;
+    }
   }
 
   if(previous.phase==='action'&&next.phase==='roll'&&previous.currentSeat!==next.currentSeat){
