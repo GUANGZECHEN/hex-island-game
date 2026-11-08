@@ -33,9 +33,10 @@ test('development chips expose card type, count and new-card state',()=>{
 });
 
 
-test('selected S4 sheep and B3 settlement/city artwork are local SVG path data',()=>{
- assert.match(RESOURCE_PATHS.wool,/M4\.5 15\.5/);
- assert.ok(RESOURCE_PATHS.wool.length>100);
+test('wool uses a fleece bundle glyph and B3 settlement/city artwork stays local SVG path data',()=>{
+ assert.match(RESOURCE_PATHS.wool,/M7 18\.5/);
+ assert.ok(RESOURCE_PATHS.wool.length>120);
+ assert.ok(!RESOURCE_PATHS.wool.includes('M20.2 12.2h.01'));
  assert.deepEqual(Object.keys(BOARD_BUILDING_PATHS).sort(),['city','settlement']);
  for(const kind of ['settlement','city'] as const){
   assert.ok(BOARD_BUILDING_PATHS[kind].shell.length>10);

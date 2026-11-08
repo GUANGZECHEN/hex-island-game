@@ -178,7 +178,7 @@ try{
 
   // Client-only layout checks keep the established reconnect test above intact.
   await actor.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
-  for(const width of [320,375,1280]){
+  for(const width of [320,375,900,1024,1280,1600]){
     await actor.setViewportSize({width,height:900});
     if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
     if(await actor.locator('#player-strip .player-summary').count()!==2)throw new Error(`Player summary missing at ${width}px.`);
@@ -200,6 +200,31 @@ try{
     if(await actor.locator('#board ul[aria-label="Island terrain and number tokens"] li').count()!==19)throw new Error('Accessible tile descriptions are missing.');
     if(await actor.getByRole('button',{name:'Place road',exact:true}).count()!==1)throw new Error('Expected one primary setup action.');
     if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error(`Page overflow at ${width}px.`);
+    const responsive=await actor.evaluate(()=>{
+      const main=document.querySelector('main')?.getBoundingClientRect();
+      const board=document.querySelector('.board-panel')?.getBoundingClientRect();
+      const controls=document.querySelector('.control-panel')?.getBoundingClientRect();
+      const strip=document.querySelector('.board-stage #player-strip');
+      return {
+        mainWidth:main?.width??0,
+        boardWidth:board?.width??0,
+        boardTop:board?.top??0,
+        boardBottom:board?.bottom??0,
+        controlWidth:controls?.width??0,
+        controlTop:controls?.top??0,
+        stripPosition:strip?getComputedStyle(strip).position:'',
+      };
+    });
+    if(width>=1200){
+      if(responsive.mainWidth<1000)throw new Error(`Invite game stayed artificially narrow at ${width}px: main ${responsive.mainWidth}.`);
+      if(responsive.boardWidth<520)throw new Error(`Desktop board column is too narrow at ${width}px: ${responsive.boardWidth}.`);
+      if(Math.abs(responsive.boardTop-responsive.controlTop)>40)throw new Error(`Desktop panels did not stay side-by-side at ${width}px.`);
+      if(responsive.stripPosition!=='absolute')throw new Error(`Desktop player HUD did not use board-corner layout at ${width}px.`);
+    } else {
+      if(responsive.controlTop<responsive.boardBottom-4)throw new Error(`Stacked control panel overlapped the board at ${width}px.`);
+      if(Math.abs(responsive.boardWidth-responsive.controlWidth)>12)throw new Error(`Stacked panels have mismatched widths at ${width}px.`);
+      if(responsive.stripPosition!=='static')throw new Error(`Player HUD did not move above the board at ${width}px.`);
+    }
     const before=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
     await actor.locator('[data-panel="cards"]').click();
     await actor.locator('[data-panel="trade"]').click();

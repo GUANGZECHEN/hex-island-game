@@ -26,3 +26,13 @@ test('board buildings render semantic B3 SVG pieces instead of circle/rect owner
   assert.ok(css.includes('.game-building-city'));
   assert.ok(!ui.includes("owner.kind==='city'?'rect':'circle'"));
 });
+
+
+test('invite entry width restriction ends when gameplay begins and responsive game breakpoints are present',()=>{
+  const css=readFileSync('src/style.css','utf8');
+  assert.ok(css.includes('.invite-entry body:not(.playing) main{max-width:760px}'));
+  assert.ok(!css.includes('.invite-entry main{max-width:760px}'));
+  assert.ok(css.includes('@media(max-width:1100px)'));
+  assert.ok(css.includes('.game-layout:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr)'));
+  assert.ok(css.includes('.island-board{width:100%;min-width:0;max-width:none}'));
+});

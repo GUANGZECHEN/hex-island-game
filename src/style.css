@@ -97,7 +97,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .invite-entry #home-intro,
 .invite-entry #qa-indicator{display:none!important}
 .invite-entry body:not(.playing) #room-reconnect{display:none!important}
-.invite-entry main{max-width:760px}
+.invite-entry body:not(.playing) main{max-width:760px}
 .invite-entry #room-section{margin-top:.6rem}
 
 .room-identity{margin:.55rem 0 .75rem}
@@ -105,3 +105,44 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .room-identity-row{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
 .room-identity-row input{flex:1 1 12rem;min-width:0}
 .room-identity-row button{flex:0 0 auto}
+
+
+/* Responsive gameplay shell: wide desktop, stacked tablet/laptop, compact phone. */
+.playing main{width:min(100%,1420px);max-width:1420px}
+.game-layout:not([hidden]){grid-template-columns:minmax(560px,1fr) minmax(320px,390px)}
+.board-panel,.control-panel{min-width:0}
+.board-stage{width:100%}
+.board-stage #board{min-width:0}
+@media(max-width:1100px){
+ .game-layout:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr);gap:.65rem}
+ .board-panel,.control-panel{width:100%}
+ .control-panel{position:static;top:auto;bottom:auto;max-height:none;overflow:visible;box-shadow:0 8px 28px #1838290c}
+ .board-stage{max-width:52rem}
+ .board-stage .player-strip{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem;margin:.25rem 0 .45rem;pointer-events:auto}
+ .board-stage .player-summary{position:static;width:auto;display:block;padding:.35rem .42rem;backdrop-filter:none}
+ .board-stage #board{padding:.25rem 0}
+ .island-board{max-width:46rem}
+}
+@media(max-width:760px){
+ .playing main{width:100%;max-width:none;padding:.45rem}
+ .playing .site-header{align-items:flex-start}
+ .board-panel,.control-panel{border-radius:.75rem}
+ .board-panel{padding:.5rem}
+ .board-heading{align-items:flex-start;flex-direction:column;gap:.2rem}
+ .board-key{text-align:left;max-width:none}
+ .board-stage .player-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:.22rem}
+ .board-stage .player-summary{padding:.28rem .32rem}
+ #board{margin:0;overflow:visible}
+ .island-board{width:100%;min-width:0;max-width:none}
+ .control-panel{padding:.5rem .6rem}
+ .action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:420px){
+ .site-header{display:block}
+ .site-header h1{font-size:1.35rem}
+ .board-stage .player-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .player-summary{font-size:.62rem}
+ .player-public-stats,.player-piece-stats{gap:.16rem}
+ .action-grid{grid-template-columns:1fr}
+ .panel-tabs button{font-size:.64rem}
+}
