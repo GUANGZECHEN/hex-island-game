@@ -11,7 +11,7 @@ const size = (hand: Hand) => RESOURCES.reduce((sum, resource) => sum + hand[reso
 
 /** Resolve production by resource, including the single-recipient shortage exception. */
 export function produce(state: GameState, total: number): void {
-  const geometry = createIslandBoard();
+  const geometry = createIslandBoard(state.board.layout);
   for (const resource of RESOURCES) {
     const owes = new Map<string, number>();
     for (const hex of geometry.hexes) {
@@ -47,7 +47,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
     for (const r of RESOURCES) { player.hand[r] -= command.cards[r]; state.bank[r] += command.cards[r]; }
     delete state.discards[player.id]; if (!Object.keys(state.discards).length) state.phase = 'robber';
   } else if (command.type === 'move-robber' && state.phase === 'robber' && active.id === command.playerId) {
-    const hex = createIslandBoard().hexes.find(hex => hex.id === command.hexId);
+    const hex = createIslandBoard(state.board.layout).hexes.find(hex => hex.id === command.hexId);
     if (!hex || hex.id === state.board.robberHexId) throw new Error('Robber must move to a different hex.');
     state.board = { ...state.board, robberHexId: hex.id };
     state.victims = [...new Set(hex.vertexIds.map(id => state.buildings[id]?.playerId).filter((id): id is string => !!id && id !== active.id && size(state.players.find(p => p.id === id)!.hand) > 0))];
