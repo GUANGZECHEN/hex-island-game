@@ -19,7 +19,7 @@ import { applyEconomyCommand as localEconomy } from './game/rules/economy';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let activePanel:'actions'|'cards'|'trade'|'status'='actions';
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='';
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='';
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
@@ -27,7 +27,7 @@ const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) 
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
- return {players:s.players.map(player=>({id:player.id,name:playerName(player.id),resources:RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0)})),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards};
+ return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;const message=derivePublicActivity(activityState(old),activityState(next))??description;if(message){log.unshift(message);publicActivity=message;}targetMode=null;if(old.currentSeat!==next.currentSeat)handoff(next.players[next.currentSeat].id);render();}
@@ -97,6 +97,7 @@ function moveTarget(id:string){if(!state)return;const current=state.players[stat
  else if(targetMode==='road')commit(state.phase==='setup-road'?applySetupCommand(state,{type:'place-road',playerId:viewer,edgeId:id}):state.phase==='free-road'?applyEconomyCommand(state,{type:'free-road',playerId:viewer,edgeId:id}):applyBuildCommand(state,{type:'build-road',playerId:viewer,edgeId:id}),`${viewer} placed a road.`);
  else if(targetMode==='robber')commit(applyTurnCommand(state,{type:'move-robber',playerId:viewer,hexId:id}),`${viewer} moved the robber.`);
 }
+function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase==='finished')return;const key=`${s.turn}:${s.currentSeat}`;if(key===lastTurnCue)return;lastTurnCue=key;const banner=el('turn-banner'),card=el('player-strip').querySelector<HTMLElement>('.active-player');for(const target of [banner,card]){if(!target)continue;target.classList.remove('turn-cue-flash');void target.offsetWidth;target.classList.add('turn-cue-flash');target.addEventListener('animationend',()=>target.classList.remove('turn-cue-flash'),{once:true});}}
 function renderPlayerStrip(s:GameState,activeId:string){
  const strip=el('player-strip');strip.replaceChildren();
  for(const player of s.players){
@@ -175,7 +176,7 @@ function drawBoard(){
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=turnAnnouncement(activityState(s));
  el('public-action').textContent=publicActivity||'Game ready.';
- renderPlayerStrip(s,active.id);
+ renderPlayerStrip(s,active.id);flashTurnCue(s);
  const handCard=el('private-hand-card'),tabs=el('game-tabs');handCard.hidden=spectating;tabs.hidden=spectating;
  if(actor)renderPieceSupply(actor);else el('piece-supply').replaceChildren();
  el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
@@ -225,7 +226,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];publicActivity='Game started.';activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];publicActivity='Game started.';lastTurnCue='';activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
@@ -234,7 +235,7 @@ const roomSeed=el<HTMLInputElement>('room-seed');roomSeed.addEventListener('inpu
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';el('game').hidden=true;
+  projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
