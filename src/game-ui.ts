@@ -89,7 +89,8 @@ function renderPieceSupply(player:GameState['players'][number]){
 }
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
- renderIslandBoard(preview,generateBoardSetup(input.valueAsNumber));const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
+ const boardVersion=el<HTMLSelectElement>('room-board-version').value;
+ renderIslandBoard(preview,generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard'));const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
 }
 function moveTarget(id:string){if(!state)return;const current=state.players[state.currentSeat].id;if(viewer!==current)return;
  if(targetMode==='settlement')commit(state.phase==='setup-settlement'?applySetupCommand(state,{type:'place-settlement',playerId:viewer,vertexId:id}):applyBuildCommand(state,{type:'build-settlement',playerId:viewer,vertexId:id}),`${viewer} placed a settlement.`);
@@ -99,7 +100,7 @@ function moveTarget(id:string){if(!state)return;const current=state.players[stat
 }
 function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase==='finished')return;const key=`${s.turn}:${s.currentSeat}`;if(key===lastTurnCue)return;lastTurnCue=key;const banner=el('turn-banner'),card=el('player-strip').querySelector<HTMLElement>('.active-player');for(const target of [banner,card]){if(!target)continue;target.classList.remove('turn-cue-flash');void target.offsetWidth;target.classList.add('turn-cue-flash');target.addEventListener('animationend',()=>target.classList.remove('turn-cue-flash'),{once:true});}}
 function renderPlayerStrip(s:GameState,activeId:string){
- const strip=el('player-strip');strip.replaceChildren();
+ const strip=el('player-strip');strip.replaceChildren();strip.dataset.playerCount=String(s.players.length);
  for(const player of s.players){
   const publicPlayer=projection?.public.players.find(p=>p.id===player.id);
   const handCount=publicPlayer?.resources ?? RESOURCES.reduce((sum,r)=>sum+player.hand[r],0);
@@ -135,7 +136,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
  }
 }
 function drawBoard(){
- const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard());const NS='http://www.w3.org/2000/svg';
+ const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
  const legal=targetMode?new Set(legalTargetIds(s,viewer,targetMode)):new Set<string>();
  for(const edge of view.edges){
   const owner=s.roads[edge.id];
@@ -226,12 +227,12 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`));log=[];publicActivity='Game started.';lastTurnCue='';activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const n=Number(el<HTMLSelectElement>('seats').value);remote=null;projection=null;el('switch-player').hidden=false;state=createGame(input.valueAsNumber,Array.from({length:n},(_,i)=>`Player ${i+1}`),undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';activePanel='actions';enterGame();handoff(state.players[state.currentSeat].id);render();});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
 for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]'))){if(tab.dataset.panel==='trade')tab.prepend(icon(ACTION_PATHS.trade));if(tab.dataset.panel==='cards')tab.prepend(icon(ACTION_PATHS.card));tab.onclick=()=>setPanel(tab.dataset.panel as 'actions'|'cards'|'trade'|'status');}
-const roomSeed=el<HTMLInputElement>('room-seed');roomSeed.addEventListener('input',renderRoomMapPreview);
+const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
