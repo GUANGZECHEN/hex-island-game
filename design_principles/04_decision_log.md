@@ -45,4 +45,8 @@ D014: Give rooms a 48-hour lifetime. Keep automatic browser reconnection running
 
 ## GAME-MVP player-count and spectator decision
 
-D015: Standard remote games support 2–4 players. A game may start when all currently seated players are connected and ready and the seat count is between two and four. Before game start, a valid invitation may claim an available player seat up to four total seats. After game start, a valid invitation without an existing seat capability joins as a spectator. Spectators receive only the public projection, cannot ready or submit gameplay commands, do not occupy/recover seats, and do not block saved-game resume. The room transport remains bounded to 12 simultaneous WebSocket connections total.
+D015: Standard remote games support 2–4 players. A game may start when all currently seated players are connected and ready and the seat count is between two and four. Before game start, a valid invitation may claim an available player seat up to four total seats. After game start, a valid invitation without an existing seat capability joins as a spectator. Spectators receive only the public projection, cannot ready or submit gameplay commands, do not occupy/recover seats, and do not block saved-game resume. The room transport remains bounded to 12 simultaneous WebSocket connections total. **Superseded for player-count/board-version scope by D016.**
+
+## GAME-MVP 5–6 player board decision
+
+D016: At room creation the host chooses either the standard board for 2–4 players or an expanded board for 5–6 players. The expanded board inserts one five-hex column in the horizontal direction, producing column sizes 3–4–5–5–4–3 (24 hexes total), and contains two deserts. The selected board version is part of authoritative game/recovery state and determines pre-game seat capacity. Existing base-game turn, build, trade, development-card, victory and spectator rules continue unless separately changed.
