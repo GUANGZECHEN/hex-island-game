@@ -14,7 +14,7 @@ function pay(state: GameState, id: string, cost: Hand) {
 }
 /** Longest trail, not simple path: edge reuse is forbidden, vertex revisits are allowed. */
 export function longestRoute(state: GameState, playerId: string): number {
-  const edges = createIslandBoard().edges.filter(edge => state.roads[edge.id] === playerId);
+  const edges = createIslandBoard(state.board.layout).edges.filter(edge => state.roads[edge.id] === playerId);
   const incident = new Map<string, typeof edges>();
   for (const edge of edges) for (const vertex of edge.vertexIds) incident.set(vertex, [...(incident.get(vertex) ?? []), edge]);
   const walk = (vertex: string, used: Set<string>): number => {
@@ -40,7 +40,7 @@ export function updateLongestRoute(state: GameState): void {
 }
 /** Apply a normal build; free roads must be authorized by an internal card effect. */
 export function applyBuildCommand(original: GameState, command: BuildCommand, allowFreeRoad = false): GameState {
-  const state = structuredClone(original), player = state.players[state.currentSeat], board = createIslandBoard();
+  const state = structuredClone(original), player = state.players[state.currentSeat], board = createIslandBoard(original.board.layout);
   if (state.phase !== 'action' || command.playerId !== player.id) throw new Error('Not the active action phase.');
   if (command.type === 'build-road') {
     const edge = board.edges.find(edge => edge.id === command.edgeId);
