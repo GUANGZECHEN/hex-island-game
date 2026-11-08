@@ -38,7 +38,7 @@ test('development chips expose card type, count and new-card state',()=>{
 test('selected S4 sheep is the exact pinned image asset and B3 buildings remain local SVG artwork',()=>{
  assert.equal(WOOL_ASSET,'assets/wool-s4.png');
  const bytes=readFileSync(`public/${WOOL_ASSET}`);
- assert.equal(createHash('sha256').update(bytes).digest('hex'),'1097ce6853f8c69c65b007d56eb0623c2b5fa27cf601bfa96bec05a3efcc2efa');
+ assert.equal(createHash('sha256').update(bytes).digest('hex'),'730f04eab45abe0532562dd4829b2c0719e9ff316516d2dcf594c9ba9768be8d');
  assert.deepEqual(Object.keys(BOARD_BUILDING_PATHS).sort(),['city','settlement']);
  for(const kind of ['settlement','city'] as const){
   assert.ok(BOARD_BUILDING_PATHS[kind].shell.length>10);
@@ -53,7 +53,7 @@ test('wool icon embeds the S4 image asset instead of a hand-drawn path',()=>{
  const previous=globalThis.document;Object.assign(globalThis,{document:{createElementNS:()=>new Element()}});
  try{
   const svg=resourceIcon('wool') as unknown as Element;
-  assert.equal(svg.attributes.get('viewBox'),'0 0 96 88');
+  assert.equal(svg.attributes.get('viewBox'),'0 0 56 51');
   assert.equal(svg.attributes.get('data-resource-icon'),'wool');
   assert.equal(svg.children.length,1);
   assert.equal(svg.children[0].attributes.get('href'),'assets/wool-s4.png');

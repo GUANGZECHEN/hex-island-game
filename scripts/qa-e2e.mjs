@@ -198,7 +198,7 @@ try{
       if(!href.endsWith('assets/wool-s4.png'))return false;
       const response=await fetch(href);
       const bytes=await response.arrayBuffer();
-      return response.ok&&bytes.byteLength>10000;
+      return response.ok&&bytes.byteLength>5000;
     });
     if(!woolAssetOk)throw new Error(`Exact S4 wool asset was not loaded at ${width}px.`);
     if(await actor.locator('#board [data-terrain-icon="desert"]').count()!==1)throw new Error(`Desert icon missing at ${width}px.`);

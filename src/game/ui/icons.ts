@@ -55,8 +55,8 @@ export function icon(path:string, className='icon'):SVGSVGElement {
 }
 export function resourceIcon(resource:Resource):SVGSVGElement {
   if(resource==='wool'){
-    const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 96 88');svg.setAttribute('class','icon resource-icon resource-wool');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('data-resource-icon','wool');
-    const image=document.createElementNS(NS,'image');image.setAttribute('href',WOOL_ASSET);image.setAttribute('x','0');image.setAttribute('y','0');image.setAttribute('width','96');image.setAttribute('height','88');image.setAttribute('preserveAspectRatio','xMidYMid meet');svg.append(image);return svg;
+    const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 56 51');svg.setAttribute('class','icon resource-icon resource-wool');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('data-resource-icon','wool');
+    const image=document.createElementNS(NS,'image');image.setAttribute('href',WOOL_ASSET);image.setAttribute('x','0');image.setAttribute('y','0');image.setAttribute('width','56');image.setAttribute('height','51');image.setAttribute('preserveAspectRatio','xMidYMid meet');svg.append(image);return svg;
   }
   const path=RESOURCE_PATHS[resource];if(!path)throw new Error(`Missing vector resource icon for ${resource}.`);
   const svg=icon(path,`icon resource-icon resource-${resource}`);svg.setAttribute('data-resource-icon',resource);return svg;
