@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { createGame, applySetupCommand, publicVictoryPoints, RESOURCES } from '../src/game/rules/state.ts';
 
-for (const count of [3, 4]) test(`${count}-player setup follows snake order with legal placement and conserved pieces/resources`, () => {
+for (const count of [2, 3, 4]) test(`${count}-player setup follows snake order with legal placement and conserved pieces/resources`, () => {
   let state = createGame(123, Array.from({ length: count }, (_, i) => `p${i}`));
   const initial = structuredClone(state), geometry = createIslandBoard(), order: number[] = [];
   assert.equal(state.deck.length, 25);
@@ -39,5 +39,5 @@ for (const count of [3, 4]) test(`${count}-player setup follows snake order with
 });
 
 test('game setup validates player counts and identity', () => {
-  for (const ids of [[], ['a', 'b'], ['a', 'b', 'c', 'd', 'e'], ['a', 'a', 'b'], ['a', 'b', '']]) assert.throws(() => createGame(1, ids));
+  for (const ids of [[], ['a'], ['a', 'b', 'c', 'd', 'e'], ['a', 'a'], ['a', 'b', '']]) assert.throws(() => createGame(1, ids));
 });
