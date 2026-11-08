@@ -8,7 +8,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const names: Record<HexSetup['terrain'], string> = { forest: 'Forest', hills: 'Hills', pasture: 'Pasture', fields: 'Fields', mountains: 'Mountains', desert: 'Desert' };
 
 export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): void {
-  const view = createSetupView(createIslandBoard(), setup);
+  const view = createSetupView(createIslandBoard(setup.layout), setup);
   const svg = document.createElementNS(SVG_NS, 'svg');
   const [x, y, width, height] = view.viewBox.split(' ').map(Number);
   svg.setAttribute('viewBox', `${x - 1.05} ${y - 1.05} ${width + 2.1} ${height + 2.1}`);
@@ -97,6 +97,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   }
 
   const vertices = new Map(view.vertices.map(vertex => [vertex.id, vertex.point]));
+  const islandCenter={x:view.hexes.reduce((sum,hex)=>sum+hex.center.x,0)/view.hexes.length,y:view.hexes.reduce((sum,hex)=>sum+hex.center.y,0)/view.hexes.length};
   const ports = document.createElement('ul');
   ports.className = 'sr-only';
   ports.setAttribute('aria-label', 'Coastal ports');
@@ -104,8 +105,8 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   for (const port of setup.ports) {
     const a = vertices.get(port.vertexIds[0])!, b = vertices.get(port.vertexIds[1])!;
     const mid = {x:(a.x+b.x)/2, y:(a.y+b.y)/2};
-    const length = Math.hypot(mid.x, mid.y);
-    const ux=mid.x/length,uy=mid.y/length;
+    const dx=mid.x-islandCenter.x,dy=mid.y-islandCenter.y,length=Math.hypot(dx,dy);
+    const ux=dx/length,uy=dy/length;
     const px = mid.x + ux * .72, py = mid.y + uy * .72;
     const endpoint={x:px-ux*.36,y:py-uy*.36};
     const group = document.createElementNS(SVG_NS, 'g');
