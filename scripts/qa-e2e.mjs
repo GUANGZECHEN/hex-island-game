@@ -23,10 +23,10 @@ try{
   const invite=await host.locator('#room-invite').inputValue();
 
   // Reproduce a real first-join race: the invite opens while the host relay is temporarily offline.
-  await hostContext.setOffline(true);
   const hostDrop=await host.evaluate(()=>{const hook=globalThis.__hexQaDropRoomConnection;if(typeof hook!=='function')return false;hook();return true;});
   if(!hostDrop)throw new Error('QA host disconnect hook was unavailable.');
   await host.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Automatic fast retry'),null,{timeout:5000});
+  await hostContext.setOffline(true);
 
   await guest.goto(invite,{waitUntil:'domcontentloaded'});
   if(await guest.locator('#room-create').isVisible())throw new Error('Invite page exposed Create room.');
