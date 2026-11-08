@@ -36,3 +36,14 @@ test('invite entry width restriction ends when gameplay begins and responsive ga
   assert.ok(css.includes('.game-layout:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr)'));
   assert.ok(css.includes('.island-board{width:100%;min-width:0;max-width:none}'));
 });
+
+
+test('turn changes flash the central cue and active player card exactly three times',()=>{
+  const ui=readFileSync('src/game-ui.ts','utf8');
+  const css=readFileSync('src/style.css','utf8');
+  assert.ok(ui.includes("function flashTurnCue"));
+  assert.ok(ui.includes("renderPlayerStrip(s,active.id);flashTurnCue(s);"));
+  assert.ok(css.includes('.turn-banner.turn-cue-flash'));
+  assert.ok(css.includes('.player-summary.active-player.turn-cue-flash'));
+  assert.ok(css.includes('animation:turn-cue-pulse .55s ease-in-out 3'));
+});
