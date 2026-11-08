@@ -47,3 +47,18 @@ test('turn changes flash the central cue and active player card exactly three ti
   assert.ok(css.includes('.player-summary.active-player.turn-cue-flash'));
   assert.ok(css.includes('animation:turn-cue-pulse .55s ease-in-out 3'));
 });
+
+
+test('room creation exposes standard and 5-6 player board versions and six-player UI capacity',()=>{
+ const html=readFileSync('index.html','utf8');
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const browser=readFileSync('src/game/network/browser.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(html.includes('id="room-board-version"'));
+ assert.ok(html.includes('value="expanded-5-6"'));
+ assert.ok(html.includes('<option value="5">5</option>'));
+ assert.ok(html.includes('<option value="6">6</option>'));
+ assert.ok(ui.includes("generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard')"));
+ assert.ok(browser.includes("boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6"));
+ assert.ok(css.includes('.player-strip[data-player-count="6"]'));
+});
