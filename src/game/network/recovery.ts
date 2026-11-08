@@ -1,4 +1,5 @@
 import type { GameState } from '../rules/state.ts';
+import type { BoardLayout } from '../board/geometry.ts';
 
 export interface AuthorityRecovery {
   version: 1;
@@ -18,6 +19,7 @@ export interface SessionRecovery {
   authority: AuthorityRecovery;
   seats: RecoverySeat[];
   qaTwoPlayers: boolean;
+  boardLayout: BoardLayout;
 }
 
 const idPattern=/^[A-Za-z0-9_-]{1,80}$/;
@@ -34,7 +36,9 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   const authority=x.authority as Partial<AuthorityRecovery>;
   if(authority.version!==1||typeof authority.gameId!=='string'||!idPattern.test(authority.gameId)||!Number.isSafeInteger(authority.revision)||Number(authority.revision)<0||!authority.state||authority.state.version!==1)throw new Error('Invalid saved game.');
   const state=authority.state as GameState;
-  const validCount=state.players.length>=2&&state.players.length<=4;
+  const boardLayout=(x.boardLayout??state.board?.layout??'standard') as BoardLayout;
+  if(boardLayout!=='standard'&&boardLayout!=='expanded-5-6')throw new Error('Saved game board layout is invalid.');
+  const validCount=boardLayout==='expanded-5-6'?state.players.length>=5&&state.players.length<=6:state.players.length>=2&&state.players.length<=4;
   if(!validCount||x.seats.length!==state.players.length)throw new Error('Saved game player count is invalid.');
   for(let i=0;i<x.seats.length;i++){
     const seat=x.seats[i] as RecoverySeat;
@@ -43,5 +47,5 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
     if(i===0){if(seat.token!=='')throw new Error('Saved host seat is invalid.');}
     else if(!tokenPattern.test(seat.token))throw new Error('Saved guest seat is invalid.');
   }
-  return structuredClone(x as SessionRecovery);
+  const result=structuredClone(x as SessionRecovery);result.boardLayout=boardLayout;result.authority.state.board.layout=boardLayout;return result;
 }
