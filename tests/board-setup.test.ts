@@ -41,7 +41,7 @@ test('a thousand seeds produce complete, legal setups linked to geometry', () =>
 test('seeded output is deterministic and versioned, including boundary seeds', () => {
   for (const seed of [0, 1, 42, 0xffffffff]) assert.deepEqual(generateBoardSetup(seed), generateBoardSetup(seed));
   const hash = createHash('sha256').update(JSON.stringify(generateBoardSetup(1))).digest('hex');
-  assert.equal(hash, 'caf86878cbda18815b9ebce3c80960396c74d4ab955fcdfd56d999f82de8c19c');
+  assert.equal(hash, '15601e8bdda2f38a1a26a01a5da8ae4c4df921bb8efaf088ae4b7a1b97aa9708');
 });
 
 test('invalid seeds fail explicitly', () => {
@@ -137,4 +137,28 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     assert.equal(markerCircle.attributes.get('cy'),token.attributes.get('cy'));
     assert.equal(moved.attributes.get('class'),'robber-occupied');
   } finally { Object.assign(globalThis, { document: previous }); }
+});
+
+
+test('expanded 5-6 player setup has 24 hexes, two deserts and eleven ports',()=>{
+ const expanded=createIslandBoard('expanded-5-6');
+ for(let seed=0;seed<300;seed++){
+  const setup=generateBoardSetup(seed,'expanded-5-6');
+  assert.equal(setup.layout,'expanded-5-6');
+  assert.equal(setup.hexes.length,24);
+  assert.deepEqual(setup.hexes.map(hex=>hex.hexId),expanded.hexes.map(hex=>hex.id));
+  assert.deepEqual(counts(setup.hexes.map(hex=>hex.terrain)),{forest:5,hills:4,pasture:5,fields:4,mountains:4,desert:2});
+  assert.deepEqual(counts(setup.hexes.map(hex=>hex.token)),{2:1,3:2,4:3,5:3,6:3,8:2,9:3,10:2,11:2,12:1,null:2});
+  const deserts=setup.hexes.filter(hex=>hex.terrain==='desert');
+  assert.equal(deserts.length,2);assert.ok(deserts.some(hex=>hex.hexId===setup.robberHexId));
+  assert.ok(deserts.every(hex=>hex.token===null&&hex.resource===null));
+  const byId=new Map(setup.hexes.map(hex=>[hex.hexId,hex]));
+  for(const hex of expanded.hexes){
+   const token=byId.get(hex.id)!.token;
+   if(token===6||token===8)for(const neighbor of hex.neighborIds)assert.ok(![6,8].includes(byId.get(neighbor)!.token as number));
+  }
+  assert.deepEqual(counts(setup.ports.map(port=>port.type)),{generic:6,lumber:1,brick:1,wool:1,grain:1,ore:1});
+  assert.deepEqual(setup.ports.map(port=>port.edgeId),coastalPortSlots('expanded-5-6').map(edge=>edge.id));
+ }
+ assert.deepEqual(generateBoardSetup(42,'expanded-5-6'),generateBoardSetup(42,'expanded-5-6'));
 });
