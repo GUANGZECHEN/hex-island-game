@@ -194,3 +194,52 @@ test('nicknames are display-only, propagate in lobby/snapshots and survive recov
  assert.deepEqual(restored.lobby().map(seat=>[seat.id,seat.name]),[['Player 1','Alice'],['Player 2','Bobby']]);
  assert.equal(seat.id,'Player 2');
 });
+
+
+for(const count of [5,6])test(`expanded room starts with ${count} connected ready players and advertises its board version`,()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession(
+  (peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),
+  value=>published.push(value),
+  ()=>String(++serial).padStart(43,'a'),
+  ()=>0,
+  {boardLayout:'expanded-5-6'},
+ );
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ for(let i=2;i<=count;i++){send(`p${i}`,{type:'hello'});send(`p${i}`,{type:'ready',ready:true});}
+ assert.equal(host.lobby().length,count);
+ host.setHostReady(true);host.start(71);
+ const snapshot=published.filter(x=>x.type==='snapshot').at(-1).data;
+ assert.equal(snapshot.public.players.length,count);
+ assert.equal(snapshot.public.board.layout,'expanded-5-6');
+ assert.equal(snapshot.public.board.hexes.length,24);
+ assert.equal(snapshot.public.board.hexes.filter((hex:any)=>hex.terrain==='desert').length,2);
+ const lobby=published.filter(x=>x.type==='lobby').at(-1).lobby;
+ assert.equal(lobby.boardLayout,'expanded-5-6');
+});
+
+test('expanded room admits six seats and rejects a seventh before start',()=>{
+ const messages=new Map<string,any[]>();let serial=0;
+ const host=new HostSession(
+  (peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),
+  ()=>{},
+  ()=>String(++serial).padStart(43,'a'),
+  ()=>0,
+  {boardLayout:'expanded-5-6'},
+ );
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ for(let i=2;i<=6;i++)send(`p${i}`,{type:'hello'});
+ assert.equal(host.lobby().length,6);
+ send('p7',{type:'hello'});
+ assert.equal(messages.get('p7')!.at(-1).type,'error');
+ assert.equal(host.lobby().length,6);
+});
+
+test('expanded room cannot start until it has at least five players',()=>{
+ let serial=0;
+ const host=new HostSession(()=>{},()=>{},()=>String(++serial).padStart(43,'a'),()=>0,{boardLayout:'expanded-5-6'});
+ const send=(id:string,message:object)=>host.receive(id,JSON.stringify({protocol:1,...message}));
+ for(let i=2;i<=4;i++){send(`p${i}`,{type:'hello'});send(`p${i}`,{type:'ready',ready:true});}
+ host.setHostReady(true);
+ assert.throws(()=>host.start(1),/Five to six/);
+});
