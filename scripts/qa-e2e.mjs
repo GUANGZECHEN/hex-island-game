@@ -210,15 +210,17 @@ try{
         boardWidth:board?.width??0,
         boardTop:board?.top??0,
         boardBottom:board?.bottom??0,
+        boardRight:board?.right??0,
         controlWidth:controls?.width??0,
         controlTop:controls?.top??0,
+        controlLeft:controls?.left??0,
         stripPosition:strip?getComputedStyle(strip).position:'',
       };
     });
     if(width>=1200){
       if(responsive.mainWidth<1000)throw new Error(`Invite game stayed artificially narrow at ${width}px: main ${responsive.mainWidth}.`);
       if(responsive.boardWidth<520)throw new Error(`Desktop board column is too narrow at ${width}px: ${responsive.boardWidth}.`);
-      if(Math.abs(responsive.boardTop-responsive.controlTop)>40)throw new Error(`Desktop panels did not stay side-by-side at ${width}px.`);
+      if(responsive.controlLeft<responsive.boardRight-8)throw new Error(`Desktop controls did not sit to the right of the board at ${width}px.`);
       if(responsive.stripPosition!=='absolute')throw new Error(`Desktop player HUD did not use board-corner layout at ${width}px.`);
     } else {
       if(responsive.controlTop<responsive.boardBottom-4)throw new Error(`Stacked control panel overlapped the board at ${width}px.`);
