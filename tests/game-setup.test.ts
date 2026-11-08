@@ -41,3 +41,30 @@ for (const count of [2, 3, 4]) test(`${count}-player setup follows snake order w
 test('game setup validates player counts and identity', () => {
   for (const ids of [[], ['a'], ['a', 'b', 'c', 'd', 'e'], ['a', 'a'], ['a', 'b', '']]) assert.throws(() => createGame(1, ids));
 });
+
+
+for (const count of [5,6]) test(`${count}-player expanded setup uses the 24-hex board and normal snake placement`,()=>{
+ let state=createGame(321,Array.from({length:count},(_,i)=>`p${i}`),undefined,{boardLayout:'expanded-5-6'});
+ const initial=structuredClone(state),geometry=createIslandBoard('expanded-5-6'),order:number[]=[];
+ assert.equal(state.board.layout,'expanded-5-6');assert.equal(state.board.hexes.length,24);assert.equal(state.board.hexes.filter(hex=>hex.terrain==='desert').length,2);
+ for(let step=0;step<count*2;step++){
+  order.push(state.currentSeat);const id=state.players[state.currentSeat].id;
+  const vertex=geometry.vertices.find(candidate=>{
+   try{applySetupCommand(state,{type:'place-settlement',playerId:id,vertexId:candidate.id});return true;}catch{return false;}
+  })!;
+  state=applySetupCommand(state,{type:'place-settlement',playerId:id,vertexId:vertex.id});
+  const edge=geometry.edges.find(candidate=>candidate.vertexIds.includes(state.pendingSettlement!)&&!state.roads[candidate.id])!;
+  state=applySetupCommand(state,{type:'place-road',playerId:id,edgeId:edge.id});
+ }
+ assert.deepEqual(order,[...Array(count)].map((_,i)=>(initial.startingSeat+i)%count).concat([...Array(count)].map((_,i)=>(initial.startingSeat+count-1-i)%count)));
+ assert.equal(state.phase,'roll');assert.equal(state.currentSeat,initial.startingSeat);
+ for(const player of state.players){assert.equal(player.roads,13);assert.equal(player.settlements,3);assert.equal(publicVictoryPoints(state,player.id),2);}
+});
+
+test('expanded and standard player-count limits are enforced separately',()=>{
+ assert.throws(()=>createGame(1,['a','b','c','d','e']));
+ assert.throws(()=>createGame(1,['a','b','c','d'],undefined,{boardLayout:'expanded-5-6'}));
+ assert.doesNotThrow(()=>createGame(1,['a','b','c','d','e'],undefined,{boardLayout:'expanded-5-6'}));
+ assert.doesNotThrow(()=>createGame(1,['a','b','c','d','e','f'],undefined,{boardLayout:'expanded-5-6'}));
+ assert.throws(()=>createGame(1,['a','b','c','d','e','f','g'],undefined,{boardLayout:'expanded-5-6'}));
+});
