@@ -1,7 +1,9 @@
 import { chromium } from 'playwright';
 
 const qaUrl=process.env.QA_URL;
+const signalingUrl=process.env.QA_SIGNALING_URL;
 if(!qaUrl)throw new Error('QA_URL is required.');
+if(!signalingUrl)throw new Error('QA_SIGNALING_URL is required.');
 
 const browser=await chromium.launch({headless:true});
 const hostContext=await browser.newContext();
@@ -14,6 +16,47 @@ const guest=await guestContext.newPage();
 const spectator=await spectatorContext.newPage();
 
 try{
+  // First prove that an invite survives the host-unavailable window instead of failing once.
+  await host.goto(qaUrl,{waitUntil:'networkidle'});
+  await host.getByRole('button',{name:'Create room'}).click();
+  await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
+  const retryInvite=await host.locator('#room-invite').inputValue();
+  const retryHost=await host.evaluate(()=>{
+    try{return JSON.parse(localStorage.getItem('hex-room-recovery-v1')??'null');}catch{return null;}
+  });
+  if(!retryHost||retryHost.role!=='host'||typeof retryHost.room!=='string'||typeof retryHost.capability!=='string')throw new Error('Could not read host recovery capability for first-join QA.');
+
+  await host.goto('about:blank');
+  await new Promise(resolve=>setTimeout(resolve,750));
+  await spectator.goto(retryInvite,{waitUntil:'domcontentloaded'});
+  if(await spectator.locator('#room-create').isVisible())throw new Error('Invite page exposed Create room.');
+  if(await spectator.locator('#new-game').isVisible())throw new Error('Invite page exposed local game controls.');
+  if(await spectator.locator('#home-intro').isVisible())throw new Error('Invite page exposed home/diagnostic links.');
+  if(await spectator.locator('#room-reconnect').isVisible())throw new Error('Invite page exposed manual rejoin control.');
+  if(await spectator.locator('#qa-indicator').isVisible())throw new Error('Invite page exposed QA-only copy.');
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('temporarily unavailable'),null,{timeout:15000});
+  if(!(await spectator.locator('#room-ready').isDisabled()))throw new Error('Ready was enabled before a player seat was assigned.');
+
+  const rawHostPage=await hostContext.newPage();
+  await rawHostPage.goto(qaUrl,{waitUntil:'domcontentloaded'});
+  await rawHostPage.evaluate(({endpoint,room,token})=>new Promise((resolve,reject)=>{
+    const url=new URL(`${endpoint}/rooms/${room}/socket`);url.protocol=url.protocol==='https:'?'wss:':'ws:';
+    const ws=new WebSocket(url);
+    const timer=setTimeout(()=>reject(new Error('Raw host reconnect timed out.')),10000);
+    ws.onerror=()=>{clearTimeout(timer);reject(new Error('Raw host reconnect failed.'));};
+    ws.onmessage=event=>{
+      let msg;try{msg=JSON.parse(String(event.data));}catch{return;}
+      if(msg.type==='authenticate')ws.send(JSON.stringify({type:'auth',role:'host',token}));
+      else if(msg.type==='ready'){clearTimeout(timer);globalThis.__hexRawHost=ws;resolve(true);}
+      else if(msg.type==='error'){clearTimeout(timer);reject(new Error(`Raw host rejected: ${String(msg.code)}`));}
+    };
+  }),{endpoint:signalingUrl,room:retryHost.room,token:retryHost.capability});
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Cloudflare room connected'),null,{timeout:30000});
+  if(!(await spectator.locator('#room-ready').isDisabled()))throw new Error('Retry probe unexpectedly assigned a game seat without a host session.');
+  await spectator.goto('about:blank');
+  await rawHostPage.close();
+
+  // Create the real game after the retry probe.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
   await host.locator('#room-seed').fill('24680');
   await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
@@ -22,22 +65,11 @@ try{
   await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
   const invite=await host.locator('#room-invite').inputValue();
 
-  // Reproduce a real first-join race: the invite opens while the host relay is temporarily offline.
-  const hostDrop=await host.evaluate(()=>{const hook=globalThis.__hexQaDropRoomConnection;if(typeof hook!=='function')return false;hook();return true;});
-  if(!hostDrop)throw new Error('QA host disconnect hook was unavailable.');
-  await host.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Automatic fast retry'),null,{timeout:5000});
-  await hostContext.setOffline(true);
-
   await guest.goto(invite,{waitUntil:'domcontentloaded'});
   if(await guest.locator('#room-create').isVisible())throw new Error('Invite page exposed Create room.');
   if(await guest.locator('#new-game').isVisible())throw new Error('Invite page exposed local game controls.');
   if(await guest.locator('#home-intro').isVisible())throw new Error('Invite page exposed home/diagnostic links.');
   if(await guest.locator('#room-reconnect').isVisible())throw new Error('Invite page exposed manual rejoin control.');
-  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('temporarily unavailable'),null,{timeout:10000});
-  if(!(await guest.locator('#room-ready').isDisabled()))throw new Error('Ready was enabled before a player seat was assigned.');
-
-  await hostContext.setOffline(false);
-  await host.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('reconnected'),null,{timeout:20000}).catch(()=>{});
   await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
