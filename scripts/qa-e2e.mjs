@@ -74,6 +74,19 @@ try{
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
 
+  // Nicknames are display-only and can be changed before start.
+  await host.locator('#room-nickname').fill('Alice');
+  await host.getByRole('button',{name:'Use nickname'}).click();
+  await guest.locator('#room-nickname').fill('Bob');
+  await guest.getByRole('button',{name:'Use nickname'}).click();
+  await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Alice: connected')&&document.querySelector('#lobby')?.textContent?.includes('Bob: connected'),null,{timeout:10000});
+  await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Alice: connected')&&document.querySelector('#lobby')?.textContent?.includes('Bob: connected'),null,{timeout:10000});
+  await host.locator('#room-nickname').fill('Player 1');
+  await host.getByRole('button',{name:'Use nickname'}).click();
+  await guest.locator('#room-nickname').fill('Player 2');
+  await guest.getByRole('button',{name:'Use nickname'}).click();
+  await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 1: connected')&&document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:10000});
+
   await host.getByRole('button',{name:'Mark ready'}).click();
   await guest.getByRole('button',{name:'Mark ready'}).click();
   await host.getByRole('button',{name:'Start multiplayer game'}).waitFor({state:'visible'});

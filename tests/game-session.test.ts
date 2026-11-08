@@ -167,3 +167,30 @@ test('saved session restores original seats and waits for everyone before resume
  assert.equal(snapshot.public.board.seed,31);
  assert.equal(recoveredPublished.filter(x=>x.type==='checkpoint').at(-1).replace,true);
 });
+
+
+test('nicknames are display-only, propagate in lobby/snapshots and survive recovery',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession(
+  (peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),
+  value=>published.push(value),
+  ()=>String(++serial).padStart(43,'a'),
+  ()=>0,
+ );
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ host.setHostName('Alice');
+ send('guest',{type:'hello',name:'Bob'});
+ assert.deepEqual(host.lobby().map(seat=>[seat.id,seat.name]),[['Player 1','Alice'],['Player 2','Bob']]);
+ send('guest',{type:'name',name:'Bobby'});
+ assert.equal(host.lobby()[1].name,'Bobby');
+ const seat=messages.get('guest')!.find(x=>x.type==='seat').data;
+ send('guest',{type:'ready',ready:true});host.setHostReady(true);host.start(41);
+ const snapshot=published.filter(x=>x.type==='snapshot').at(-1).data;
+ assert.deepEqual(snapshot.public.players.map((player:any)=>[player.id,player.name]),[['Player 1','Alice'],['Player 2','Bobby']]);
+ assert.equal(snapshot.private.hand!==undefined,true);
+ const checkpoint=published.filter(x=>x.type==='checkpoint').at(-1).data;
+ assert.deepEqual(checkpoint.seats.map((item:any)=>[item.id,item.name]),[['Player 1','Alice'],['Player 2','Bobby']]);
+ const restored=HostSession.fromRecovery(()=>{},()=>{},()=>String(++serial).padStart(43,'a'),()=>0,checkpoint);
+ assert.deepEqual(restored.lobby().map(seat=>[seat.id,seat.name]),[['Player 1','Alice'],['Player 2','Bobby']]);
+ assert.equal(seat.id,'Player 2');
+});

@@ -13,6 +13,7 @@ const token=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return b
 const random=()=>crypto.getRandomValues(new Uint32Array(1))[0];
 const el=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const ROOM_STORAGE='hex-room-recovery-v1';
+const NICKNAME_STORAGE='hex-nickname-v1';
 const safeGet=(key:string)=>{try{return localStorage.getItem(key)??sessionStorage.getItem(key)}catch{return null}};
 const safeSet=(key:string,value:string)=>{try{localStorage.setItem(key,value)}catch{}try{sessionStorage.setItem(key,value)}catch{}};
 const seatKey=(room:string)=>`hex-seat:${room}`;
@@ -32,13 +33,17 @@ const loadRoom=():SavedRoom|null=>{
 export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  let role:'host'|'guest'|null=null,host:HostSession|null=null,client:RoomClient,playerId='',room='',gameId='',counter=0,hostReady=false,open=false,spectator=false;
  let acceptedGameId='',acceptedRevision=-1,awaitingSnapshot=false,syncAttempts=0,syncTimer:number|null=null;
- let recoveryMode=false,recoveryItems:CheckpointMeta[]=[],pendingResumeId='',bootstrapCheckpointId='',lastLobbySeats:Array<{id?:unknown;connected?:unknown;ready?:unknown}>=[];
+ let recoveryMode=false,recoveryItems:CheckpointMeta[]=[],pendingResumeId='',bootstrapCheckpointId='',lastLobbySeats:Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>=[];
  const pendingHostMessages:Array<{id:string;text:string}>=[];
  const rawEndpoints=((import.meta.env.VITE_SIGNALING_URLS as string|undefined)??(import.meta.env.VITE_SIGNALING_URL as string|undefined)??'')
   .split(',').map(value=>value.trim().replace(/\/$/,'')).filter(Boolean);
  const endpoints=rawEndpoints.filter(value=>{try{const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{return false;}});
  const allowed=endpoints.length>0;
  const status=(s:string)=>{el('network-status').textContent=s;callbacks.status(s);};
+ const cleanNickname=(value:string)=>value.replace(/\s+/g,' ').trim().slice(0,20);
+ const nicknameInput=el<HTMLInputElement>('room-nickname');
+ nicknameInput.value=cleanNickname(safeGet(NICKNAME_STORAGE)??'');
+ const nickname=()=>cleanNickname(nicknameInput.value);
  const clearSyncTimer=()=>{if(syncTimer!==null){window.clearTimeout(syncTimer);syncTimer=null;}};
  const setSynchronizing=(value:boolean,message?:string)=>{
   awaitingSnapshot=value;
@@ -76,11 +81,11 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const showLobby=(data:unknown)=>{
   const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;recovering?:unknown;spectators?:unknown};
   if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean')return;
-  const seats=lobby.seats as Array<{id?:unknown;connected?:unknown;ready?:unknown}>;
+  const seats=lobby.seats as Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
   el('qa-indicator').hidden=!lobby.qaTwoPlayers;
   const spectatorCount=Number.isSafeInteger(lobby.spectators)?Number(lobby.spectators):0;
-  el('lobby').textContent=[seats.map(s=>`${String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
+  el('lobby').textContent=[seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
   if(role==='guest'&&lobby.recovering===true&&(playerId||spectator)){
    clearSyncTimer();syncAttempts=0;setSynchronizing(true,spectator?'Spectating paused saved game. Waiting for host to resume.':`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
    el('room-ready').hidden=true;
@@ -145,7 +150,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
      open=true;
      if(acceptedRevision>=0)setSynchronizing(true,'Room connection restored. Synchronizing game state…');
      const credential=safeGet(seatKey(room))??'';
-     send('host',JSON.stringify({protocol:1,type:'hello',token:credential}));
+     send('host',JSON.stringify({protocol:1,type:'hello',token:credential,name:nickname()}));
     }else if(!isOpen&&open){
      open=false;clearSyncTimer();
      if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');
@@ -208,13 +213,20 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  el('room-create').onclick=async()=>{
   try{
    const mapSeed=el<HTMLInputElement>('room-seed');if(!mapSeed.value||!mapSeed.validity.valid)throw new Error('Choose a valid board map seed.');
-   clearRecoveryUi();role='host';spectator=false;playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});
+   clearRecoveryUi();role='host';spectator=false;playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search)});host.setHostName(nickname()||'Player 1');
    const invite=await client.create();const info=client.connectionInfo();if(!info||info.role!=='host')throw new Error('Host room capability was unavailable.');
    room=info.room;saveRoom({version:1,role:'host',room:info.room,capability:info.token});
    hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');
   }catch(error){status(error instanceof RoomError ? error.message : error instanceof Error?error.message:'Signaling WebSocket connection or authentication failed.');}
  };
- el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
+ el('room-save-nickname').onclick=()=>{try{
+   const name=nickname();if(!name)throw new Error('Enter a nickname first.');
+   nicknameInput.value=name;safeSet(NICKNAME_STORAGE,name);
+   if(role==='host'&&host)host.setHostName(name);
+   else if(role==='guest'&&playerId&&!spectator)send('host',JSON.stringify({protocol:1,type:'name',name}));
+   status(role?'Nickname updated.':'Nickname saved.');
+  }catch(error){status(error instanceof Error?error.message:'Could not update nickname.');}};
+  el('room-ready').onclick=()=>{try{const nextReady=!hostReady;if(role==='host'&&host)host.setHostReady(nextReady);else if(role==='guest')send('host',JSON.stringify({protocol:1,type:'ready',ready:nextReady}));else throw new Error('No room.');hostReady=nextReady;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}catch{status('Could not update readiness.');}};
  el('room-start').onclick=()=>{
   try{
    const seed=el<HTMLInputElement>('room-seed');

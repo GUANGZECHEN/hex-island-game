@@ -10,6 +10,7 @@ export interface AuthorityRecovery {
 export interface RecoverySeat {
   id: string;
   token: string;
+  name?: string;
 }
 
 export interface SessionRecovery {
@@ -38,6 +39,7 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   for(let i=0;i<x.seats.length;i++){
     const seat=x.seats[i] as RecoverySeat;
     if(!seat||seat.id!==state.players[i].id||typeof seat.token!=='string')throw new Error('Saved game seat mapping is invalid.');
+    if(seat.name!==undefined&&(typeof seat.name!=='string'||seat.name.trim().length<1||seat.name.trim().length>20))throw new Error('Saved player nickname is invalid.');
     if(i===0){if(seat.token!=='')throw new Error('Saved host seat is invalid.');}
     else if(!tokenPattern.test(seat.token))throw new Error('Saved guest seat is invalid.');
   }
