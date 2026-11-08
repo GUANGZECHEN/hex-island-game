@@ -159,3 +159,28 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .turn-banner.turn-cue-flash,
  .player-summary.active-player.turn-cue-flash{animation:none;outline:3px solid #d89b24;outline-offset:2px}
 }
+
+
+/* Expanded 5–6 player tables keep all public player cards visible without covering the wider board. */
+.board-stage .player-strip[data-player-count="5"],
+.board-stage .player-strip[data-player-count="6"]{
+  position:static;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.35rem;
+  margin:.25rem 0 .5rem;
+  pointer-events:auto;
+}
+.board-stage .player-strip[data-player-count="5"] .player-summary,
+.board-stage .player-strip[data-player-count="6"] .player-summary{
+  position:static;
+  width:auto;
+  display:block;
+  backdrop-filter:none;
+}
+.board-stage:has(.player-strip[data-player-count="5"]) #board,
+.board-stage:has(.player-strip[data-player-count="6"]) #board{padding:.25rem 0}
+@media(max-width:760px){
+ .board-stage .player-strip[data-player-count="5"],
+ .board-stage .player-strip[data-player-count="6"]{grid-template-columns:repeat(2,minmax(0,1fr));gap:.22rem}
+}
