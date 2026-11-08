@@ -146,3 +146,16 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .action-grid{grid-template-columns:1fr}
  .panel-tabs button{font-size:.64rem}
 }
+
+
+/* Turn ownership cue: central banner and active player card pulse exactly three times. */
+@keyframes turn-cue-pulse{
+  0%,100%{transform:scale(1);filter:none}
+  50%{transform:scale(1.045);filter:brightness(1.12);box-shadow:0 0 0 .22rem #f2c94c66}
+}
+.turn-banner.turn-cue-flash,
+.player-summary.active-player.turn-cue-flash{animation:turn-cue-pulse .55s ease-in-out 3}
+@media(prefers-reduced-motion:reduce){
+ .turn-banner.turn-cue-flash,
+ .player-summary.active-player.turn-cue-flash{animation:none;outline:3px solid #d89b24;outline-offset:2px}
+}
