@@ -1,11 +1,10 @@
 import type { Development, Resource } from '../rules/state.ts';
 
 /** Original, small line icons shared by the board, hand, ports and costs. */
-export const RESOURCE_PATHS: Readonly<Record<Resource, string>> = {
+export const WOOL_ASSET = 'assets/wool-s4.png';
+export const RESOURCE_PATHS: Readonly<Partial<Record<Resource, string>>> = {
   lumber: 'M12 2 5 10h3l-4 5h6v5h4v-5h6l-4-5h3L12 2Z',
   brick: 'M3 6h18v12H3zM3 12h18M9 6v6m6 0v6',
-  // S4: minimalist side-view sheep outline with a fluffy body, distinct head/ear and short legs.
-  wool: 'M4.5 15.5c-1.8 0-3.3-1.5-3.3-3.3 0-1.7 1.2-3.1 2.8-3.4.3-1.9 1.9-3.3 3.8-3.3 1.3 0 2.5.6 3.2 1.6.9-.9 2.1-1.4 3.4-1.4 2.5 0 4.7 1.8 5.2 4.2 1.7.2 3 1.7 3 3.4 0 1.9-1.5 3.4-3.4 3.4h-2.2M15.8 8.5c1 .4 1.7 1.2 2.1 2.2M20.2 12.2h.01M7 15.5V20m4-4.5V20m6-3.8V20m3-3.8V20',
   grain: 'M12 21V3m0 14-4-3m4 0 4-3m-4 0L8 8m4 0 4-3',
   ore: 'm4 17 3-9 5-4 5 3 3 10-4 3H8Zm3-9 5 3 5-4m-5 4v9',
 };
@@ -54,7 +53,14 @@ export function icon(path:string, className='icon'):SVGSVGElement {
   const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class',className);svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
   const shape=document.createElementNS(NS,'path');shape.setAttribute('d',path);shape.setAttribute('fill','none');shape.setAttribute('stroke','currentColor');shape.setAttribute('stroke-width','2');shape.setAttribute('stroke-linecap','round');shape.setAttribute('stroke-linejoin','round');svg.append(shape);return svg;
 }
-export function resourceIcon(resource:Resource):SVGSVGElement {const svg=icon(RESOURCE_PATHS[resource],`icon resource-icon resource-${resource}`);svg.setAttribute('data-resource-icon',resource);return svg;}
+export function resourceIcon(resource:Resource):SVGSVGElement {
+  if(resource==='wool'){
+    const svg=document.createElementNS(NS,'svg');svg.setAttribute('viewBox','0 0 96 88');svg.setAttribute('class','icon resource-icon resource-wool');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('data-resource-icon','wool');
+    const image=document.createElementNS(NS,'image');image.setAttribute('href',WOOL_ASSET);image.setAttribute('x','0');image.setAttribute('y','0');image.setAttribute('width','96');image.setAttribute('height','88');image.setAttribute('preserveAspectRatio','xMidYMid meet');svg.append(image);return svg;
+  }
+  const path=RESOURCE_PATHS[resource];if(!path)throw new Error(`Missing vector resource icon for ${resource}.`);
+  const svg=icon(path,`icon resource-icon resource-${resource}`);svg.setAttribute('data-resource-icon',resource);return svg;
+}
 export function desertIcon():SVGSVGElement {const svg=icon(DESERT_PATH,'icon desert-icon');svg.setAttribute('data-terrain-icon','desert');return svg;}
 export function developmentIcon(card:Development):SVGSVGElement {const svg=icon(DEVELOPMENT_PATHS[card],`icon development-icon development-${card}`);svg.setAttribute('data-development-icon',card);return svg;}
 export function developmentChip(card:Development,count:number,newCount=0):HTMLElement {

@@ -192,6 +192,15 @@ try{
     if(await actor.locator('#board [data-port-type] .port-connector').count()!==18)throw new Error(`Port connector lines missing at ${width}px.`);
     if(await actor.locator('#board [data-port-type]:not([data-port-type="generic"]) [data-resource-icon]').count()!==5)throw new Error(`Resource port icons missing at ${width}px.`);
     if(await actor.locator('#board [data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);
+    const woolAssetOk=await actor.evaluate(async()=>{
+      const image=document.querySelector('#board [data-resource-icon="wool"] image');
+      const href=image?.getAttribute('href')??'';
+      if(!href.endsWith('assets/wool-s4.png'))return false;
+      const response=await fetch(href);
+      const bytes=await response.arrayBuffer();
+      return response.ok&&bytes.byteLength>10000;
+    });
+    if(!woolAssetOk)throw new Error(`Exact S4 wool asset was not loaded at ${width}px.`);
     if(await actor.locator('#board [data-terrain-icon="desert"]').count()!==1)throw new Error(`Desert icon missing at ${width}px.`);
     if(await actor.locator('#board [data-robber-marker="true"]').count()!==1)throw new Error(`Robber prohibition marker missing at ${width}px.`);
     const robberOpacity=await actor.locator('#board .robber-occupied .island-cell').evaluate(node=>getComputedStyle(node).opacity);
