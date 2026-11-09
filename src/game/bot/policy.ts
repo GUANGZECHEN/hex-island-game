@@ -1,6 +1,5 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { bankTradeRate } from '../ui/interactions.ts';
-import { legalTargetIds } from '../ui/targets.ts';
+import { bankTradeRate, legalTargetIds } from '../rules/legal.ts';
 import { publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type SetupCommand } from '../rules/state.ts';
 import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
