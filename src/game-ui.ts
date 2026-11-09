@@ -21,7 +21,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let activePanel:'actions'|'cards'|'trade'|'status'='actions';
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, localBotId:string|null=null, botTimer:number|null=null, botTurnKey='', botActionCount=0;
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
@@ -34,24 +34,29 @@ function activityState(s:GameState):PublicActivityState {
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /rolled dice|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
-function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;const message=derivePublicActivity(activityState(old),activityState(next))??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}targetMode=null;if(old.currentSeat!==next.currentSeat&&!localBotId)handoff(next.players[next.currentSeat].id);render();}
+function commit(next:GameState | null, description:string){if(!next)return;const old=state!;state=next;const message=derivePublicActivity(activityState(old),activityState(next))??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff(next.players[next.currentSeat].id);render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
+function pendingLocalBot(s:GameState):string|null{
+ for(const botId of localBotIds)if(s.discards[botId])return botId;
+ const tradeBot=[...localBotIds].find(botId=>s.offer?.targets.includes(botId));if(tradeBot)return tradeBot;
+ const active=s.players[s.currentSeat]?.id;return active&&localBotIds.has(active)?active:null;
+}
 function runLocalBotStep(){
- botTimer=null;if(remote||!localBotId||!state||state.phase==='finished')return;
- const key=`${state.turn}:${state.currentSeat}`;if(key!==botTurnKey){botTurnKey=key;botActionCount=0;}
- let command=chooseBotCommand(state,localBotId);if(!command)return;
+ botTimer=null;if(remote||localBotIds.size===0||!state||state.phase==='finished')return;
+ const botId=pendingLocalBot(state);if(!botId)return;
+ const key=`${state.turn}:${state.currentSeat}:${botId}`;if(key!==botTurnKey){botTurnKey=key;botActionCount=0;}
+ let command=chooseBotCommand(state,botId);if(!command)return;
  if(botActionCount>=BOT_ACTION_LIMIT){
-  if(state.players[state.currentSeat]?.id===localBotId&&state.phase==='action')command={type:'end-turn',playerId:localBotId};
-  else{log.unshift('Bot action limit reached; automation paused.');publicActivity='Bot automation paused.';render();return;}
+  if(state.players[state.currentSeat]?.id===botId&&state.phase==='action')command={type:'end-turn',playerId:botId};
+  else{log.unshift(`${playerName(botId)} action limit reached; automation paused.`);publicActivity=`${playerName(botId)} automation paused.`;render();return;}
  }
  botActionCount++;const before=state,description=botDescription(command,before);commit(applyBotCommand(before,command),description);
 }
 function scheduleLocalBot(){
- if(remote||!localBotId||!state||state.phase==='finished'||botTimer!==null)return;
- const needsDiscard=!!state.discards[localBotId],needsTrade=!!state.offer?.targets.includes(localBotId),active=state.players[state.currentSeat]?.id===localBotId;
- if(!needsDiscard&&!needsTrade&&!active)return;
+ if(remote||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null)return;
+ if(!pendingLocalBot(state))return;
  botTimer=window.setTimeout(runLocalBotStep,BOT_DELAY_MS);
 }
 function button(parent:HTMLElement,label:string,action:()=>void){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>attempt(action);parent.append(b);return b;}
@@ -91,7 +96,7 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function setPanel(panel:'actions'|'cards'|'trade'|'status') {activePanel=panel;for(const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]')))button.setAttribute('aria-pressed',String(button.dataset.panel===panel));el('actions').hidden=panel!=='actions';el('card-actions').hidden=panel!=='cards';el('trade-actions').hidden=panel!=='trade';el('status-panel').hidden=panel!=='status';}
-function enterGame(){document.body.classList.add('playing');if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}else el('connection-summary').textContent=localBotId?'Local game · test bot enabled':'Local game';}
+function enterGame(){document.body.classList.add('playing');if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}else el('connection-summary').textContent=localBotIds.size?`Local game · ${localBotIds.size} test bot${localBotIds.size===1?'':'s'} enabled`:'Local game';}
 function connectionStatus(value:string){const lower=value.toLowerCase();el('connection-summary').textContent=lower.includes('watching')?'Spectating':lower.includes('paused')||lower.includes('unavailable')||lower.includes('failed')?'Disconnected · rejoin may be required':lower.includes('reconnected')?'Reconnected':lower.includes('reconnect')||lower.includes('interrupted')?'Reconnecting…':lower.includes('connected')||lower.includes('started')?'Connected':lower.includes('connecting')?'Connecting…':'';}
 function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
  const field=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent=label;field.append(legend);field.className='resource-stepper-grid';
@@ -237,7 +242,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
- el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?'Choose cards to discard.':s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotId===active.id?'Bot is acting…':`Waiting for ${playerName(active.id)}.`;
+ el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?'Choose cards to discard.':s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  drawBoard();flashTurnCue(s);showActivityAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions'),cards=el('card-actions');actions.replaceChildren();trade.replaceChildren();cards.replaceChildren();const targets=el('targets');targets.replaceChildren();
  if(spectating){activePanel='status';el('actions').hidden=true;el('card-actions').hidden=true;el('trade-actions').hidden=true;el('status-panel').hidden=false;return;}
  if(!actor)return;
@@ -278,17 +283,17 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const bot=el<HTMLInputElement>('local-bot').checked,n=bot?2:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;localBotId=bot?'Bot':null;botTurnKey='';botActionCount=0;el('switch-player').hidden=bot;state=createGame(input.valueAsNumber,bot?['Player 1','Bot']:Array.from({length:n},(_,i)=>`Player ${i+1}`),undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';activePanel='actions';enterGame();if(bot){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[]);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount===1?['Player 1','Bot']:botCount===2?['Player 1','Bot 1','Bot 2']:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
-el('switch-player').onclick=()=>{if(!state||remote||localBotId)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
+el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
 for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]'))){if(tab.dataset.panel==='trade')tab.prepend(icon(ACTION_PATHS.trade));if(tab.dataset.panel==='cards')tab.prepend(icon(ACTION_PATHS.card));tab.onclick=()=>setPanel(tab.dataset.panel as 'actions'|'cards'|'trade'|'status');}
-const localBot=el<HTMLInputElement>('local-bot'),localSeats=el<HTMLSelectElement>('seats');localBot.onchange=()=>{if(localBot.checked){localSeats.value='2';localSeats.disabled=true;}else localSeats.disabled=false;};
+const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;}else localSeats.disabled=false;};
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  clearBotTimer();localBotId=null;botTurnKey='';botActionCount=0;projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();el('game').hidden=true;
+  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
