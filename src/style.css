@@ -270,3 +270,40 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .turn-alert{animation:none;transform:translate(-50%,-50%)}
  .turn-alert.turn-alert-out{transition:none}
 }
+
+
+/* Public table actions use the same board-centered visual language, but shorter and smaller than turn handoffs. */
+.activity-alert{
+ --turn-alert-color:#d89b24;
+ position:absolute;
+ left:50%;
+ top:50%;
+ z-index:11;
+ transform:translate(-50%,-50%) scale(.9);
+ width:min(72%,30rem);
+ padding:.8rem 1rem;
+ border:3px solid var(--turn-alert-color);
+ border-radius:.85rem;
+ background:#fffdf2f2;
+ box-shadow:0 14px 42px #14223736,0 0 0 .3rem #ffffff99;
+ text-align:center;
+ pointer-events:none;
+ animation:turn-alert-pop .2s ease-out forwards;
+}
+.activity-alert.player-1{--turn-alert-color:#1f5aa6}
+.activity-alert.player-2{--turn-alert-color:#b3261e}
+.activity-alert.player-3{--turn-alert-color:#33733b}
+.activity-alert.player-4{--turn-alert-color:#7b3f91}
+.activity-alert.player-5{--turn-alert-color:#b66b00}
+.activity-alert.player-6{--turn-alert-color:#167b7f}
+.activity-alert-lead{display:block;margin-bottom:.12rem;font-size:.68rem;font-weight:950;letter-spacing:.14em;color:#52655b}
+.activity-alert-message{display:block;font-size:clamp(1.15rem,2.7vw,2rem);line-height:1.12;color:var(--turn-alert-color);overflow-wrap:anywhere}
+.activity-alert.activity-alert-out{opacity:0;transform:translate(-50%,-50%) scale(.98);transition:opacity .22s ease,transform .22s ease}
+@media(max-width:760px){
+ .activity-alert{width:min(90%,26rem);padding:.65rem .75rem}
+ .activity-alert-message{font-size:clamp(1rem,5.5vw,1.55rem)}
+}
+@media(prefers-reduced-motion:reduce){
+ .activity-alert{animation:none;transform:translate(-50%,-50%)}
+ .activity-alert.activity-alert-out{transition:none}
+}
