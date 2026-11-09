@@ -62,3 +62,43 @@ test('room creation exposes standard and 5-6 player board versions and six-playe
  assert.ok(browser.includes("boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6"));
  assert.ok(css.includes('.player-strip[data-player-count="6"]'));
 });
+
+
+test('turn handoff shows a large board-centered alert in addition to the three-pulse cue',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes("alert.className=`turn-alert player-${active.seat+1}`"));
+ assert.ok(ui.includes("alert.setAttribute('role','alert')"));
+ assert.ok(ui.includes("lead.textContent=active.id===viewer?'YOUR TURN':'NEXT TURN'"));
+ assert.ok(css.includes('.turn-alert{'));
+ assert.ok(css.includes('left:50%'));
+ assert.ok(css.includes('top:50%'));
+ assert.ok(css.includes('.turn-alert-name{'));
+});
+
+test('bank and port trading uses direct resource-icon buttons with live port rates',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('function bankTradeButtons'));
+ assert.ok(ui.includes('const rate=bankTradeRate(s,viewer,give)'));
+ assert.ok(ui.includes('tradeButton.append(from,arrow,to)'));
+ assert.ok(ui.includes('tradeButton.disabled=actor.hand[give]<rate||s.bank[receive]<1'));
+ assert.ok(!ui.includes("select(trade,'Bank trade: give'"));
+ assert.ok(!ui.includes("select(trade,'Receive'"));
+ assert.ok(css.includes('.bank-trade-grid{'));
+ assert.ok(css.includes('.bank-trade-button{'));
+});
+
+test('monopoly and invention resource choices use icon buttons instead of resource dropdowns',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('function resourceChoice'));
+ assert.ok(ui.includes('choice.append(resourceIcon(resource))'));
+ assert.ok(ui.includes("resourceChoice(box,'Choose Monopoly resource')"));
+ assert.ok(ui.includes("resourceChoice(box,'First resource')"));
+ assert.ok(ui.includes("resourceChoice(box,'Second resource')"));
+ assert.ok(!ui.includes("select(box,'Monopoly resource'"));
+ assert.ok(!ui.includes("select(box,'First resource'"));
+ assert.ok(!ui.includes("select(box,'Second resource'"));
+ assert.ok(css.includes('.resource-choice-button[aria-pressed="true"]'));
+});
