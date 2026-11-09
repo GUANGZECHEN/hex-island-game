@@ -50,3 +50,8 @@ D015: Standard remote games support 2–4 players. A game may start when all cur
 ## GAME-MVP 5–6 player board decision
 
 D016: At room creation the host chooses either the standard board for 2–4 players or an expanded board for 5–6 players. The expanded board inserts one five-hex column in the horizontal direction, producing column sizes 3–4–5–5–4–3 (24 hexes total), and contains two deserts. The selected board version is part of authoritative game/recovery state and determines pre-game seat capacity. Existing base-game turn, build, trade, development-card, victory and spectator rules continue unless separately changed.
+
+
+## Local test-bot decision
+
+D017: Offline/local play may optionally run a deterministic test bot only in a fixed two-player configuration: Player 1 is the human viewer and Player 2 is the bot. The bot exists to exercise gameplay and UI flows without a second person. It must use the same deterministic game-rule reducers as human actions, use no external AI/model/API service, incur no model cost, and must not be connected to private-room multiplayer, WebSocket transport, spectator access or recovery authority. Remote multiplayer continues to have no AI opponents.
