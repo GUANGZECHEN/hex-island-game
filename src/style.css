@@ -278,7 +278,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  position:absolute;
  left:50%;
  top:50%;
- z-index:11;
+ z-index:13;
  transform:translate(-50%,-50%) scale(.9);
  width:min(72%,30rem);
  padding:.8rem 1rem;
@@ -307,3 +307,8 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .activity-alert{animation:none;transform:translate(-50%,-50%)}
  .activity-alert.activity-alert-out{transition:none}
 }
+
+
+/* Local deterministic test-bot control. */
+.local-bot-option{display:flex;align-items:center;gap:.45rem;margin:.45rem 0 .65rem;padding:.45rem .55rem;border:1px solid #d8e0d5;border-radius:.55rem;background:#fafbf7;font-size:.8rem;font-weight:750;color:#41574d}
+.local-bot-option input{width:1rem;height:1rem;margin:0;flex:none}
