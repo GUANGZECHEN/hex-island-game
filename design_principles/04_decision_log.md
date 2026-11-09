@@ -54,4 +54,8 @@ D016: At room creation the host chooses either the standard board for 2–4 play
 
 ## Local test-bot decision
 
-D017: Offline/local play may optionally run a deterministic test bot only in a fixed two-player configuration: Player 1 is the human viewer and Player 2 is the bot. The bot exists to exercise gameplay and UI flows without a second person. It must use the same deterministic game-rule reducers as human actions, use no external AI/model/API service, incur no model cost, and must not be connected to private-room multiplayer, WebSocket transport, spectator access or recovery authority. Remote multiplayer continues to have no AI opponents.
+D017: Offline/local play may optionally run a deterministic test bot only in a fixed two-player configuration: Player 1 is the human viewer and Player 2 is the bot. The bot exists to exercise gameplay and UI flows without a second person. It must use the same deterministic game-rule reducers as human actions, use no external AI/model/API service, incur no model cost, and must not be connected to private-room multiplayer, WebSocket transport, spectator access or recovery authority. Remote multiplayer continues to have no AI opponents. **Superseded for local bot count by D018.**
+
+## Two-bot local test-mode decision
+
+D018: Offline/local play additionally supports a fixed three-player test mode with Player 1 as the only human viewer and Bot 1 / Bot 2 as deterministic automated players. The existing one-bot two-player mode remains available. All local test bots use the same game-rule reducers and the same local-only constraints from D017; no bot participates in private-room multiplayer, WebSocket transport, spectator access or saved-room recovery.
