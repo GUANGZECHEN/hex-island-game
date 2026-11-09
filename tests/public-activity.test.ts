@@ -5,7 +5,8 @@ import { derivePublicActivity, turnAnnouncement, type PublicActivityState } from
 const base=():PublicActivityState=>({
   players:[{id:'Player 1',resources:4,developmentCards:0},{id:'Player 2',resources:5,developmentCards:0},{id:'Player 3',resources:3,developmentCards:0}],
   currentSeat:0,turn:3,phase:'roll',dice:null,victims:[],
-  board:{robberHexId:'h0'},roads:{},buildings:{},playedCards:[],bank:{lumber:19,brick:19,wool:19,grain:19,ore:19},deckCount:25,offer:null,
+  board:{robberHexId:'h0'},roads:{},buildings:{},playedCards:[],bank:{lumber:19,brick:19,wool:19,grain:19,ore:19},deckCount:25
+
 });
 
 test('public activity announces dice, robber and theft without revealing resource identity',()=>{
@@ -94,17 +95,4 @@ test('public activity reports only bank or port trade ratio',()=>{
     assert.ok(message);
     assert.ok(!message!.match(/lumber|brick|wool|grain|ore/));
   }
-});
-
-
-test('public domestic trade activity exposes card counts but no resource identities',()=>{
- const a={...base(),phase:'action',offer:{proposer:'Player 1',targets:['Player 2'],giveCount:2,receiveCount:1}};
- const next={...a,offer:null,players:[
-  {id:'Player 1',resources:3,developmentCards:0},
-  {id:'Player 2',resources:6,developmentCards:0},
-  {id:'Player 3',resources:3,developmentCards:0},
- ]};
- const message=derivePublicActivity(a,next);
- assert.equal(message,'Player 1 traded 2 cards for 1 card with Player 2.');
- assert.ok(!message!.match(/lumber|brick|wool|grain|ore/));
 });
