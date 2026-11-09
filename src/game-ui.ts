@@ -1,5 +1,5 @@
 import './style.css';
-import { ACTION_PATHS, BOARD_BUILDING_PATHS, DEVELOPMENT_LABELS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
+import { ACTION_PATHS, BOARD_BUILDING_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
@@ -167,7 +167,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
   const card=document.createElement('div');
   card.className=`player-summary player-${player.seat+1}${player.id===activeId?' active-player':''}${player.id===viewer?' local-player':''}`;
   card.dataset.seat=String(player.seat+1);
-  card.setAttribute('aria-label',`${playerName(player.id)}${player.id===viewer?', you':''}: ${handCount} resource cards, ${developmentCount} development cards, ${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${player.id===activeId?', current turn':''}`);
+  card.setAttribute('aria-label',`${playerName(player.id)}${player.id===viewer?', you':''}: ${handCount} resource cards, ${developmentCount} development cards, ${player.knights} knights played, ${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${s.armyHolder===player.id?', largest army holder':''}${player.id===activeId?', current turn':''}`);
 
   const header=document.createElement('div');header.className='player-summary-header';
   const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(player.seat+1);marker.setAttribute('aria-hidden','true');
@@ -179,8 +179,10 @@ function renderPlayerStrip(s:GameState,activeId:string){
   publicStats.append(
    playerStat(ACTION_PATHS.victory,publicVp,'Public victory points','player-vp-count','VP'),
    playerStat(ACTION_PATHS.hand,handCount,'Resource cards','player-hand-count'),
-   playerStat(ACTION_PATHS.card,developmentCount,'Development cards','player-dev-count')
+   playerStat(ACTION_PATHS.card,developmentCount,'Development cards','player-dev-count'),
+   playerStat(DEVELOPMENT_PATHS.knight,player.knights,'Knights played','player-knight-count','K')
   );
+  if(s.armyHolder===player.id)publicStats.lastElementChild?.classList.add('largest-army-holder');
 
   const pieces=document.createElement('div');pieces.className='player-piece-stats';
   pieces.append(
@@ -238,7 +240,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  renderPlayerStrip(s,active.id);
  const handCard=el('private-hand-card'),tabs=el('game-tabs');handCard.hidden=spectating;tabs.hidden=spectating;
  if(actor)renderPieceSupply(actor);else el('piece-supply').replaceChildren();
- el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
+ el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
