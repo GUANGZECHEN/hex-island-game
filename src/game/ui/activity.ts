@@ -18,7 +18,6 @@ export interface PublicActivityState {
   playedCards: readonly string[];
   bank: Readonly<Record<string,number>>;
   deckCount: number;
-  offer: {proposer:string;targets:readonly string[];giveCount:number;receiveCount:number} | null;
 }
 
 const activePlayer=(state:PublicActivityState)=>state.players[state.currentSeat];
@@ -67,11 +66,6 @@ export function derivePublicActivity(previous:PublicActivityState|null,next:Publ
   if(next.playedCards.length>previous.playedCards.length){
     const card=next.playedCards.at(-1);
     if(card)return `${actor} played ${card.replaceAll('-',' ')}.`;
-  }
-
-  if(previous.phase==='action'&&next.phase==='action'&&previous.offer&&!next.offer){
-    const accepter=previous.offer.targets[0];
-    if(accepter)return `${label(previous,previous.offer.proposer)} traded ${previous.offer.giveCount} card${previous.offer.giveCount===1?'':'s'} for ${previous.offer.receiveCount} card${previous.offer.receiveCount===1?'':'s'} with ${label(previous,accepter)}.`;
   }
 
   if(previous.phase==='action'&&next.phase==='action'){
