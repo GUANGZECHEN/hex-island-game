@@ -42,7 +42,7 @@ test('turn changes flash the central cue and active player card exactly three ti
   const ui=readFileSync('src/game-ui.ts','utf8');
   const css=readFileSync('src/style.css','utf8');
   assert.ok(ui.includes("function flashTurnCue"));
-  assert.ok(ui.includes("renderPlayerStrip(s,active.id);flashTurnCue(s);"));
+  assert.ok(ui.includes("drawBoard();flashTurnCue(s);"));
   assert.ok(css.includes('.turn-banner.turn-cue-flash'));
   assert.ok(css.includes('.player-summary.active-player.turn-cue-flash'));
   assert.ok(css.includes('animation:turn-cue-pulse .55s ease-in-out 3'));
