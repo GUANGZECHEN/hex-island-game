@@ -125,6 +125,7 @@ test('local test bot is restricted to optional two-player offline mode',()=>{
  const html=readFileSync('index.html','utf8');
  const ui=readFileSync('src/game-ui.ts','utf8');
  const targets=readFileSync('src/game/ui/targets.ts','utf8');
+ const legal=readFileSync('src/game/rules/legal.ts','utf8');
  assert.ok(html.includes('id="local-bot"'));
  assert.ok(html.includes('Add test bot as Player 2'));
  assert.ok(ui.includes("localBotId=bot?'Bot':null"));
@@ -132,5 +133,6 @@ test('local test bot is restricted to optional two-player offline mode',()=>{
  assert.ok(ui.includes("localSeats.value='2';localSeats.disabled=true"));
  assert.ok(ui.includes("if(old.currentSeat!==next.currentSeat&&!localBotId)handoff"));
  assert.ok(ui.includes('scheduleLocalBot()'));
- assert.ok(targets.includes('createIslandBoard(state.board.layout)'));
+ assert.ok(targets.includes("from '../rules/legal.ts'"));
+ assert.ok(legal.includes('createIslandBoard(state.board.layout)'));
 });
