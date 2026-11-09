@@ -138,3 +138,14 @@ test('local test bot selector supports one-bot/two-player and two-bot/three-play
  assert.ok(targets.includes("from '../rules/legal.ts'"));
  assert.ok(legal.includes('createIslandBoard(state.board.layout)'));
 });
+
+
+test('player cards show played knight counts and highlight the largest army holder',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes("playerStat(DEVELOPMENT_PATHS.knight,player.knights,'Knights played','player-knight-count','K')"));
+ assert.ok(ui.includes("if(s.armyHolder===player.id)publicStats.lastElementChild?.classList.add('largest-army-holder')"));
+ assert.ok(ui.includes("knights played"));
+ assert.ok(ui.includes("(Largest Army)"));
+ assert.ok(css.includes('.player-knight-count.largest-army-holder'));
+});
