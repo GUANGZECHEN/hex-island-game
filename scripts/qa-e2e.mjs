@@ -16,26 +16,29 @@ const guest=await guestContext.newPage();
 const spectator=await spectatorContext.newPage();
 
 try{
-  // Local-only deterministic bot smoke: fixed two players, no pass-device handoff to the bot.
+  // Local-only deterministic bot smoke: one human plus two bots, no pass-device handoff.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
-  await host.locator('#local-bot').check();
-  if(await host.locator('#seats').inputValue()!=='2'||!(await host.locator('#seats').isDisabled()))throw new Error('Local bot mode did not lock the game to two players.');
+  await host.locator('#local-bot-count').selectOption('2');
+  if(await host.locator('#seats').inputValue()!=='3'||!(await host.locator('#seats').isDisabled()))throw new Error('Two-bot mode did not lock the game to three players.');
   await host.locator('#seed').fill('13579');
   await host.getByRole('button',{name:'Start game'}).click();
   await host.locator('#game').waitFor({state:'visible'});
-  if(await host.locator('#pass').isVisible())throw new Error('Local bot mode opened the pass-device screen.');
-  if(await host.locator('#switch-player').isVisible())throw new Error('Local bot mode exposed manual player switching.');
-  if(!(await host.locator('#connection-summary').textContent())?.includes('test bot enabled'))throw new Error('Local bot mode status was missing.');
-  if((await host.locator('#game-status').textContent())?.includes("Player 1's turn")){
+  if(await host.locator('#pass').isVisible())throw new Error('Two-bot mode opened the pass-device screen.');
+  if(await host.locator('#switch-player').isVisible())throw new Error('Two-bot mode exposed manual player switching.');
+  if(!(await host.locator('#connection-summary').textContent())?.includes('2 test bots enabled'))throw new Error('Two-bot mode status was missing.');
+  if(await host.locator('#player-strip .player-summary').count()!==3)throw new Error('Two-bot mode did not create three player cards.');
+  const placeHumanSetupPair=async()=>{
     await host.getByRole('button',{name:'Place settlement'}).click();
     await host.locator('#targets select').first().selectOption({index:0});
     await host.getByRole('button',{name:'Use target'}).click();
     await host.getByRole('button',{name:'Place road',exact:true}).click();
     await host.locator('#targets select').first().selectOption({index:0});
     await host.getByRole('button',{name:'Use target'}).click();
-  }
-  await host.waitForFunction(()=>/Bot built a (settlement|road)/.test(document.querySelector('#public-action')?.textContent??''),null,{timeout:12000});
-  if(await host.locator('#pass').isVisible())throw new Error('Bot turn triggered pass-device UI.');
+  };
+  if((await host.locator('#game-status').textContent())?.includes("Player 1's turn"))await placeHumanSetupPair();
+  await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 1 settlement')),null,{timeout:15000});
+  await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 2 settlement')),null,{timeout:15000});
+  if(await host.locator('#pass').isVisible())throw new Error('Bot turns triggered pass-device UI.');
   await host.goto(qaUrl,{waitUntil:'networkidle'});
 
   // First prove that an invite survives the host-unavailable window instead of failing once.
