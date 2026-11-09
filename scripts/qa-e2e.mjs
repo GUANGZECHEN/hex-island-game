@@ -16,6 +16,28 @@ const guest=await guestContext.newPage();
 const spectator=await spectatorContext.newPage();
 
 try{
+  // Local-only deterministic bot smoke: fixed two players, no pass-device handoff to the bot.
+  await host.goto(qaUrl,{waitUntil:'networkidle'});
+  await host.locator('#local-bot').check();
+  if(await host.locator('#seats').inputValue()!=='2'||!(await host.locator('#seats').isDisabled()))throw new Error('Local bot mode did not lock the game to two players.');
+  await host.locator('#seed').fill('13579');
+  await host.getByRole('button',{name:'Start game'}).click();
+  await host.locator('#game').waitFor({state:'visible'});
+  if(await host.locator('#pass').isVisible())throw new Error('Local bot mode opened the pass-device screen.');
+  if(await host.locator('#switch-player').isVisible())throw new Error('Local bot mode exposed manual player switching.');
+  if(!(await host.locator('#connection-summary').textContent())?.includes('test bot enabled'))throw new Error('Local bot mode status was missing.');
+  if((await host.locator('#game-status').textContent())?.includes("Player 1's turn")){
+    await host.getByRole('button',{name:'Place settlement'}).click();
+    await host.locator('#targets select').first().selectOption({index:0});
+    await host.getByRole('button',{name:'Use target'}).click();
+    await host.getByRole('button',{name:'Place road',exact:true}).click();
+    await host.locator('#targets select').first().selectOption({index:0});
+    await host.getByRole('button',{name:'Use target'}).click();
+  }
+  await host.waitForFunction(()=>/Bot built a (settlement|road)/.test(document.querySelector('#public-action')?.textContent??''),null,{timeout:12000});
+  if(await host.locator('#pass').isVisible())throw new Error('Bot turn triggered pass-device UI.');
+  await host.goto(qaUrl,{waitUntil:'networkidle'});
+
   // First prove that an invite survives the host-unavailable window instead of failing once.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
   await host.getByRole('button',{name:'Create room'}).click();
