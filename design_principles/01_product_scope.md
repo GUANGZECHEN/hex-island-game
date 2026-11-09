@@ -8,7 +8,7 @@
 - After a multiplayer game starts, a valid room invitation may join as a live spectator with public-only game information and no gameplay controls.
 - Classic base-game Catan-inspired mechanics: a hexagonal map, dice, resource production, construction, trading, development cards, the robber, and victory conditions.
 - No account registration required.
-- No ranking system or AI opponents in the MVP.
+- No ranking system. Remote multiplayer has no AI opponents; local play may optionally use one deterministic test bot as Player 2 in a fixed two-player test game.
 - Prefer free or low-cost deployment.
 - Use original project branding and visual assets.
 
