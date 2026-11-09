@@ -27,8 +27,7 @@ const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) 
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
- const offer=s.offer?{proposer:s.offer.proposer,targets:s.offer.targets,giveCount:RESOURCES.reduce((sum,r)=>sum+s.offer!.give[r],0),receiveCount:RESOURCES.reduce((sum,r)=>sum+s.offer!.receive[r],0)}:null;
- return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length,offer};
+ return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /rolled dice|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
@@ -56,6 +55,7 @@ function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['player
 }
 
 function resourceAmounts(parent:HTMLElement,amounts:readonly TradeAmount[]){for(const amount of amounts)parent.append(resourceChip(amount.resource,amount.count));}
+function domesticTradeMessage(offer:NonNullable<GameState['offer']>,accepter:string){const give=RESOURCES.reduce((sum,r)=>sum+offer.give[r],0),receive=RESOURCES.reduce((sum,r)=>sum+offer.receive[r],0);return `${playerName(offer.proposer)} traded ${give} card${give===1?'':'s'} for ${receive} card${receive===1?'':'s'} with ${playerName(accepter)}.`;}
 function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer']>){
  const view=incomingTradeView(offer,viewer);if(!view)return;
  const card=document.createElement('section');card.className='incoming-trade';card.setAttribute('aria-label',`Trade offer from ${view.proposer}`);
@@ -225,7 +225,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
  if(s.discards[viewer]&&s.phase==='discard'){const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
- if(s.offer?.targets.includes(viewer)){activePanel='actions';incomingTradeCard(actions,s.offer);action(grid,'Accept trade','trade',()=>commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),`${viewer} accepted a trade.`));action(grid,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
+ if(s.offer?.targets.includes(viewer)){activePanel='actions';incomingTradeCard(actions,s.offer);action(grid,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(grid,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
  if(viewer!==active.id){setPanel(activePanel);return;}
  if(s.phase==='setup-settlement')action(grid,'Place settlement','settlement',()=>mode('settlement'));
  if(s.phase==='setup-road'||s.phase==='free-road'){action(grid,'Place road','road',()=>mode('road'));if(s.phase==='free-road')action(grid,'Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'));}
