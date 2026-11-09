@@ -238,8 +238,8 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .bank-trade-button:disabled{opacity:.38}
 .bank-trade-side{display:inline-flex;align-items:center;gap:.05rem;min-width:0}
 .bank-trade-side .resource-icon{width:1.25rem;height:1.25rem;flex:none}
-.bank-trade-rate{font-size:.66rem;font-weight:900;line-height:1;color:#4f6258}
-.bank-trade-arrow{width:.95rem;height:.95rem;flex:none;color:#687b70}
+.bank-trade-rate{font-size:.8rem;font-weight:900;line-height:1;color:#4f6258;font-variant-numeric:tabular-nums}
+.bank-trade-arrow{display:inline-grid;place-items:center;min-width:.9rem;flex:none;color:#687b70;font-size:1rem;font-weight:900;line-height:1}
 
 /* Icon resource selectors for development cards. */
 .resource-choice-group{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;margin:.35rem 0;padding:.4rem;border:1px solid #d8e0d5;border-radius:.55rem}
