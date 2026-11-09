@@ -106,3 +106,16 @@ test('monopoly and invention resource choices use icon buttons instead of resour
  assert.ok(!ui.includes("select(box,'Second resource'"));
  assert.ok(css.includes('.resource-choice-button[aria-pressed="true"]'));
 });
+
+
+test('public gameplay actions surface as centered board alerts without replacing turn alerts',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('function centralActivity'));
+ assert.ok(ui.includes('function showActivityAlert'));
+ assert.ok(ui.includes("lead.textContent='TABLE ACTION'"));
+ assert.ok(ui.includes('drawBoard();flashTurnCue(s);showActivityAlert(s);'));
+ assert.ok(ui.includes('rolled dice|built a road|built a settlement'));
+ assert.ok(css.includes('.activity-alert{'));
+ assert.ok(css.includes('.activity-alert-message{'));
+});
