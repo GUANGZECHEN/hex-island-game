@@ -132,8 +132,8 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  if(publicVictoryPoints(state,botId)+player.cards.filter(card=>card.type==='victory-point').length>=10)return {type:'claim-victory',playerId:botId};
 
  const playable=playableCards(state,botId);
- if(playable.includes('knight')&&legalTargetIds(state,botId,'robber').length)return {type:'play-card',playerId:botId,card:'knight'};
- if(playable.includes('road-building')&&legalTargetIds(state,botId,'road').length)return {type:'play-card',playerId:botId,card:'road-building'};
+ if(playable.includes('knight'))return {type:'play-card',playerId:botId,card:'knight'};
+ if(playable.includes('road-building')&&player.roads>0)return {type:'play-card',playerId:botId,card:'road-building'};
  if(playable.includes('invention')){const resources=inventionResources(state,botId);if(resources)return {type:'play-card',playerId:botId,card:'invention',resources};}
  if(playable.includes('monopoly'))return {type:'play-card',playerId:botId,card:'monopoly',resource:monopolyResource(state,botId)};
 
