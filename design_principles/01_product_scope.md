@@ -8,7 +8,7 @@
 - After a multiplayer game starts, a valid room invitation may join as a live spectator with public-only game information and no gameplay controls.
 - Classic base-game Catan-inspired mechanics: a hexagonal map, dice, resource production, construction, trading, development cards, the robber, and victory conditions.
 - No account registration required.
-- No ranking system. Remote multiplayer has no AI opponents; local play may optionally use one deterministic test bot as Player 2 in a fixed two-player test game.
+- No ranking system. Remote multiplayer has no AI opponents; local play may optionally use deterministic test bots in fixed test modes: one bot in a two-player game or two bots in a three-player game, with Player 1 as the human viewer.
 - Prefer free or low-cost deployment.
 - Use original project branding and visual assets.
 
