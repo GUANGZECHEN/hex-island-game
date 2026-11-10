@@ -321,3 +321,8 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .board-stage .player-summary .player-marker{width:1.4rem;height:1.4rem;font-size:.7rem}
  .board-stage .player-summary-name{font-size:.74rem}
 }
+
+/* Playable development cards live directly inside Actions. */
+.development-actions-inline{margin:.6rem 0 0;padding:.5rem 0 0;border:0;border-top:1px solid #e2e9df;border-radius:0;background:transparent;box-shadow:none}
+.development-actions-inline h2{margin:.05rem 0 .4rem;font-size:.82rem;color:#41574d}
+.development-actions-inline .development-effect{margin:.4rem 0 0}
