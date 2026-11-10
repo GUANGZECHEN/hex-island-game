@@ -326,3 +326,100 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .development-actions-inline{margin:.6rem 0 0;padding:.5rem 0 0;border:0;border-top:1px solid #e2e9df;border-radius:0;background:transparent;box-shadow:none}
 .development-actions-inline h2{margin:.05rem 0 .4rem;font-size:.82rem;color:#41574d}
 .development-actions-inline .development-effect{margin:.4rem 0 0}
+
+
+/* End-game celebration: a larger, longer-lived board-centered victory alert. */
+.victory-alert{
+ --victory-color:#d89b24;
+ position:absolute;
+ left:50%;
+ top:50%;
+ z-index:30;
+ transform:translate(-50%,-50%) scale(.78);
+ width:min(86%,38rem);
+ min-height:10rem;
+ padding:1.5rem 1.6rem 1.35rem;
+ display:grid;
+ place-items:center;
+ align-content:center;
+ border:5px solid var(--victory-color);
+ border-radius:1.3rem;
+ background:radial-gradient(circle at 50% 30%,#fffef8 0,#fff7d9 52%,#f5e6af 100%);
+ box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 44px color-mix(in srgb,var(--victory-color) 45%,transparent);
+ text-align:center;
+ overflow:visible;
+ pointer-events:none;
+ isolation:isolate;
+ animation:victory-panel-in .48s cubic-bezier(.2,.9,.2,1.18) forwards,victory-glow 1s ease-in-out .5s 4 alternate;
+}
+.victory-alert.player-1{--victory-color:#1f5aa6}
+.victory-alert.player-2{--victory-color:#b3261e}
+.victory-alert.player-3{--victory-color:#33733b}
+.victory-alert.player-4{--victory-color:#7b3f91}
+.victory-alert.player-5{--victory-color:#b66b00}
+.victory-alert.player-6{--victory-color:#167b7f}
+.victory-alert-lead{
+ display:block;
+ margin-bottom:.18rem;
+ color:#7a651f;
+ font-size:.86rem;
+ font-weight:950;
+ letter-spacing:.22em;
+}
+.victory-alert-name{
+ display:block;
+ max-width:100%;
+ color:var(--victory-color);
+ font-size:clamp(2.6rem,7vw,5.6rem);
+ line-height:.98;
+ font-weight:1000;
+ letter-spacing:-.035em;
+ text-shadow:0 3px 0 #fff,0 8px 20px #14223724;
+ overflow-wrap:anywhere;
+}
+.victory-alert-note{display:block;margin-top:.45rem;color:#53645b;font-size:1rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+.victory-burst{position:absolute;left:50%;top:50%;width:1px;height:1px;z-index:-1;pointer-events:none}
+.victory-confetti{
+ position:absolute;
+ left:0;
+ top:0;
+ width:.72rem;
+ height:.72rem;
+ border-radius:.18rem;
+ background:#e0a72c;
+ opacity:0;
+ box-shadow:0 0 0 1px #ffffff55;
+ animation:victory-confetti-pop 1.25s cubic-bezier(.12,.65,.25,1) var(--delay) both,victory-confetti-twinkle 1.15s ease-in-out 1.4s infinite alternate;
+}
+.victory-confetti:nth-child(4n+1){background:#d95d39}
+.victory-confetti:nth-child(4n+2){background:#2c8b62;border-radius:50%}
+.victory-confetti:nth-child(4n+3){background:#4b72c2;clip-path:polygon(50% 0,62% 35%,100% 35%,69% 57%,81% 100%,50% 73%,19% 100%,31% 57%,0 35%,38% 35%)}
+.victory-confetti:nth-child(4n){background:#d8a11d;transform:rotate(45deg)}
+.victory-alert.victory-alert-out{opacity:0;transform:translate(-50%,-50%) scale(1.04);transition:opacity .5s ease,transform .5s ease}
+@keyframes victory-panel-in{
+ 0%{opacity:0;transform:translate(-50%,-50%) scale(.68) rotate(-2deg)}
+ 68%{opacity:1;transform:translate(-50%,-50%) scale(1.04) rotate(.7deg)}
+ 100%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+}
+@keyframes victory-glow{
+ from{box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 28px color-mix(in srgb,var(--victory-color) 30%,transparent)}
+ to{box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 62px color-mix(in srgb,var(--victory-color) 70%,transparent)}
+}
+@keyframes victory-confetti-pop{
+ 0%{opacity:0;transform:translate(-50%,-50%) scale(.25) rotate(0)}
+ 18%{opacity:1}
+ 100%{opacity:1;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(1) rotate(var(--r))}
+}
+@keyframes victory-confetti-twinkle{from{filter:brightness(.88);opacity:.72}to{filter:brightness(1.25);opacity:1}}
+@media(max-width:760px){
+ .victory-alert{width:min(92%,30rem);min-height:8rem;padding:1.05rem 1rem}
+ .victory-alert-name{font-size:clamp(2.1rem,13vw,4rem)}
+ .victory-alert-lead{font-size:.72rem}
+ .victory-alert-note{font-size:.78rem}
+ .victory-burst{transform:scale(.68)}
+}
+@media(prefers-reduced-motion:reduce){
+ .victory-alert{animation:none;transform:translate(-50%,-50%)}
+ .victory-confetti{animation:none;opacity:.85;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.8)}
+ .victory-alert.victory-alert-out{transition:none}
+}
