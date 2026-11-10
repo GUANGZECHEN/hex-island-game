@@ -237,7 +237,7 @@ export function shouldPlayKnight(state:GameState,playerId:string){
  return armySwing||blocked>=4||leader>=publicVictoryPoints(state,playerId)+2;
 }
 export function shouldPlayRoadBuilding(state:GameState,playerId:string){
- const road=bestRoad(state,playerId,true)??bestRoad(state,playerId);if(!road)return false;
+ const road=bestRoad(state,playerId);if(!road)return false;
  return roadScore(state,playerId,road)>=4.8||longestRoute(state,playerId)>=3;
 }
 export function tradeOfferWorthAccepting(state:GameState,playerId:string){
