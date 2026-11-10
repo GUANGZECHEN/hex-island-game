@@ -149,3 +149,13 @@ test('player cards show played knight counts and highlight the largest army hold
  assert.ok(ui.includes("(Largest Army)"));
  assert.ok(css.includes('.player-knight-count.largest-army-holder'));
 });
+
+
+test('public player cards are slightly larger for readability on desktop and mobile',()=>{
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(css.includes('width:min(12.5rem,27%)'));
+ assert.ok(css.includes('padding:.48rem .55rem'));
+ assert.ok(css.includes('font-size:.78rem'));
+ assert.ok(css.includes('.board-stage .player-summary-name{font-size:.82rem'));
+ assert.ok(css.includes('position:static;width:auto;padding:.4rem .45rem'));
+});
