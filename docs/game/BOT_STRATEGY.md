@@ -34,6 +34,10 @@ Every action phase re-evaluates four competing investments:
 
 The bot chooses the affordable action with the highest current strategic score. Roads have a deliberately low baseline value so the bot does not spam roads with no expansion purpose.
 
+### Saving / reservation
+
+When a high-value settlement or city is within two missing resource cards, the bot creates a short-term saving goal. Cards required by that build are treated as reserved: lower-value roads or development-card purchases may not consume them. The bot first tries a bank/port trade using genuine surplus to fill the missing resource; if no useful trade exists, it ends the turn and keeps saving. When expansion requires a road before the settlement is legal, the bot may reserve the combined road + settlement package and spend the road only as part of that expansion plan.
+
 ## Trading and hand management
 
 Bank/port trades are aimed at the highest-value near-term goal and spend genuine surplus first. Resource-card value reflects the bot's current build deficits, board scarcity, production gaps and port access.
