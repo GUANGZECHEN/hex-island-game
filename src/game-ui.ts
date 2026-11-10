@@ -21,7 +21,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let activePanel:'actions'|'trade'|'status'='actions';
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
@@ -157,6 +157,23 @@ function showActivityAlert(s:GameState){
  const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent='TABLE ACTION';const message=document.createElement('strong');message.className='activity-alert-message';message.textContent=pendingActivityAlert;alert.append(lead,message);board.append(alert);pendingActivityAlert='';
  activityAlertTimer=window.setTimeout(()=>{alert.classList.add('activity-alert-out');activityAlertTimer=window.setTimeout(()=>{alert.remove();activityAlertTimer=null;},220);},1700);
 }
+function showVictoryAlert(s:GameState){
+ if(!s.winner||lastWinnerAlert===s.winner||el('game').hidden)return;
+ const winner=s.players.find(player=>player.id===s.winner);if(!winner)return;lastWinnerAlert=s.winner;
+ if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
+ if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}
+ if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}
+ const board=el('board');board.querySelector('.turn-alert')?.remove();board.querySelector('.activity-alert')?.remove();board.querySelector('.victory-alert')?.remove();
+ const alert=document.createElement('div');alert.className=`victory-alert player-${winner.seat+1}`;alert.setAttribute('role','alert');alert.setAttribute('aria-live','assertive');
+ const burst=document.createElement('div');burst.className='victory-burst';burst.setAttribute('aria-hidden','true');
+ const vectors=[[-190,-120],[-120,-165],[-45,-180],[45,-175],[125,-150],[195,-95],[205,-10],[175,75],[110,135],[35,160],[-45,155],[-120,135],[-185,80],[-210,5],[-165,-55],[155,-35]];
+ vectors.forEach(([x,y],index)=>{const piece=document.createElement('span');piece.className='victory-confetti';piece.style.setProperty('--x',`${x}px`);piece.style.setProperty('--y',`${y}px`);piece.style.setProperty('--r',`${(index%2?1:-1)*(75+index*19)}deg`);piece.style.setProperty('--delay',`${(index%5)*45}ms`);burst.append(piece);});
+ const lead=document.createElement('span');lead.className='victory-alert-lead';lead.textContent='VICTORY';
+ const name=document.createElement('strong');name.className='victory-alert-name';name.textContent=`${playerName(s.winner)} WINS!`;
+ const note=document.createElement('span');note.className='victory-alert-note';note.textContent='Game over';
+ alert.append(burst,lead,name,note);board.append(alert);
+ victoryAlertTimer=window.setTimeout(()=>{alert.classList.add('victory-alert-out');victoryAlertTimer=window.setTimeout(()=>{alert.remove();victoryAlertTimer=null;},520);},5000);
+}
 function renderPlayerStrip(s:GameState,activeId:string){
  const strip=el('player-strip');strip.replaceChildren();strip.dataset.playerCount=String(s.players.length);
  for(const player of s.players){
@@ -245,7 +262,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?'Choose cards to discard.':s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
- drawBoard();flashTurnCue(s);showActivityAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();const targets=el('targets');targets.replaceChildren();
+ drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();const targets=el('targets');targets.replaceChildren();
  if(spectating){activePanel='status';el('actions').hidden=true;el('trade-actions').hidden=true;el('status-panel').hidden=false;return;}
  if(!actor)return;
  if(targetMode){const description=document.createElement('p');description.textContent=`Select a highlighted ${targetMode} target on the board.`;targets.append(description);const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';const choices=legalTargetIds(s,viewer,targetMode);if(choices.length){const choice=select(targets,'Legal target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}else{const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}}
@@ -287,7 +304,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[]);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount===1?['Player 1','Bot']:botCount===2?['Player 1','Bot 1','Bot 2']:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[]);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount===1?['Player 1','Bot']:botCount===2?['Player 1','Bot 1','Bot 2']:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.victory-alert')?.remove();activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
@@ -297,7 +314,7 @@ const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectE
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();el('game').hidden=true;
+  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
