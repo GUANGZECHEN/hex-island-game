@@ -3,8 +3,8 @@ import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 import {
- affordableAction,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,
- chooseInventionResources,monopolyResource,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
+ affordableAction,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
+ chooseInventionResources,monopolyResource,savingGoal,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
 } from './strategy.ts';
 
 export type BotCommand = SetupCommand | TurnCommand | BuildCommand | EconomyCommand;
@@ -61,6 +61,15 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
   if(choice.count>=3||(choice.count>=2&&publicVictoryPoints(state,botId)>=7))return {type:'play-card',playerId:botId,card:'monopoly',resource:choice.resource};
  }
  if(playable.includes('road-building')&&player.roads>0&&shouldPlayRoadBuilding(state,botId))return {type:'play-card',playerId:botId,card:'road-building'};
+
+ const reserve=savingGoal(state,botId);
+ if(reserve){
+  if(reserve.kind==='settlement'&&reserve.missing===0&&reserve.targetId)return {type:'build-settlement',playerId:botId,vertexId:reserve.targetId};
+  if(reserve.kind==='city'&&reserve.missing===0&&reserve.targetId)return {type:'build-city',playerId:botId,vertexId:reserve.targetId};
+  const trade=chooseBankTrade(state,botId,reserve.cost);if(trade)return trade;
+  if(reserve.kind==='expansion'&&reserve.roadId&&player.roads>0&&player.hand.lumber>=COSTS.road.lumber&&player.hand.brick>=COSTS.road.brick)return {type:'build-road',playerId:botId,edgeId:reserve.roadId};
+  return {type:'end-turn',playerId:botId};
+ }
 
  const action=affordableAction(state,botId);
  if(action?.type==='city'&&action.id)return {type:'build-city',playerId:botId,vertexId:action.id};
