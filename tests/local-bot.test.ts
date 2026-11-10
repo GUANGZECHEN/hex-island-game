@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createGame } from '../src/game/rules/state.ts';
 import { chooseBotCommand } from '../src/game/bot/policy.ts';
 import { applyBotCommand } from '../src/game/bot/runner.ts';
+import { monopolyResource, settlementScore } from '../src/game/bot/strategy.ts';
+import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('local bot deterministically completes the full snake setup through normal reducers',()=>{
  let state=createGame(23,['Player 1','Bot']);
@@ -76,4 +78,40 @@ test('both bot identities can independently answer offers and take normal turns'
  assert.deepEqual(chooseBotCommand(state,'Bot 1'),{type:'roll',playerId:'Bot 1'});
  state.currentSeat=2;
  assert.deepEqual(chooseBotCommand(state,'Bot 2'),{type:'roll',playerId:'Bot 2'});
+});
+
+
+test('strategy values a high-production grain/ore opening above a weak wool opening',()=>{
+ let state=createGame(99,['Player 1','Bot']);
+ const board=createIslandBoard(),vertices=board.vertices.filter(vertex=>board.hexes.filter(hex=>hex.vertexIds.includes(vertex.id)).length===3);
+ let pair:[string,string]|null=null;
+ for(const a of vertices)for(const b of vertices){
+  const ah=new Set(board.hexes.filter(hex=>hex.vertexIds.includes(a.id)).map(hex=>hex.id));
+  const bh=board.hexes.filter(hex=>hex.vertexIds.includes(b.id)).map(hex=>hex.id);
+  if(a.id!==b.id&&bh.every(id=>!ah.has(id))){pair=[a.id,b.id];break;}
+ }
+ assert.ok(pair);
+ const [strong,weak]=pair!;
+ const strongHexes=new Set(board.hexes.filter(hex=>hex.vertexIds.includes(strong)).map(hex=>hex.id));
+ state.board={...state.board,hexes:state.board.hexes.map(hex=>strongHexes.has(hex.hexId)
+  ? {...hex,terrain:hex.hexId===Array.from(strongHexes)[0]?'fields':'mountains',resource:hex.hexId===Array.from(strongHexes)[0]?'grain':'ore',token:hex.hexId===Array.from(strongHexes)[0]?6:8}
+  : {...hex,terrain:'pasture',resource:'wool',token:2})};
+ assert.ok(settlementScore(state,'Bot',strong)>settlementScore(state,'Bot',weak)+8);
+});
+
+test('monopoly choice uses public bank depletion instead of peeking at individual hidden hands',()=>{
+ const state=createGame(12,['Player 1','Bot']);state.phase='action';state.currentSeat=1;state.turn=3;
+ state.players[0].hand.ore=4;state.bank.ore=15;
+ const choice=monopolyResource(state,'Bot');
+ assert.deepEqual(choice,{resource:'ore',count:4});
+ state.players[1].cards=[{type:'monopoly',boughtTurn:1}];
+ assert.deepEqual(chooseBotCommand(state,'Bot'),{type:'play-card',playerId:'Bot',card:'monopoly',resource:'ore'});
+});
+
+test('strategy saves a knight when it does not improve army position, unblock production, or attack a leader',()=>{
+ const state=createGame(13,['Player 1','Bot']);state.phase='action';state.currentSeat=1;state.turn=3;
+ state.players[1].cards=[{type:'knight',boughtTurn:1}];
+ const command=chooseBotCommand(state,'Bot');
+ assert.notEqual(command?.type,'play-card');
+ assert.equal(command?.type,'end-turn');
 });
