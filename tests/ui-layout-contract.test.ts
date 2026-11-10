@@ -173,3 +173,20 @@ test('playable development cards are exposed directly in Actions with no Cards t
  assert.ok(ui.includes("developmentAction(cardGrid,'Play Knight'"));
  assert.ok(css.includes('.development-actions-inline{'));
 });
+
+
+test('a winner gets a one-shot animated board-centered victory celebration',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('function showVictoryAlert'));
+ assert.ok(ui.includes("if(!s.winner||lastWinnerAlert===s.winner||el('game').hidden)return"));
+ assert.ok(ui.includes('victory-alert player-${winner.seat+1}'));
+ assert.ok(ui.includes("lead.textContent='VICTORY'"));
+ assert.ok(ui.includes('WINS!'));
+ assert.ok(ui.includes("alert.classList.add('victory-alert-out')"));
+ assert.ok(ui.includes('},5000)'));
+ assert.ok(ui.includes('drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
+ assert.ok(css.includes('.victory-alert{'));
+ assert.ok(css.includes('@keyframes victory-confetti-pop'));
+ assert.ok(css.includes('.victory-alert.victory-alert-out'));
+});
