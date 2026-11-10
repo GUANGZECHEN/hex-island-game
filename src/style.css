@@ -50,7 +50,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .board-stage{position:relative;max-width:52rem;margin:0 auto}
 .board-stage #board{padding:1.5rem .25rem}
 .board-stage .player-strip{position:absolute;inset:0;display:block;margin:0;pointer-events:none;z-index:2}
-.board-stage .player-summary{position:absolute;width:min(11.5rem,26%);display:block;padding:.38rem .45rem;background:#fffef9e8;backdrop-filter:blur(3px);box-shadow:0 3px 12px #18382914;pointer-events:none}
+.board-stage .player-summary{position:absolute;width:min(12.5rem,27%);display:block;padding:.48rem .55rem;background:#fffef9e8;backdrop-filter:blur(3px);box-shadow:0 3px 12px #18382914;pointer-events:none;font-size:.78rem}
 .board-stage .player-summary[data-seat="1"]{top:.25rem;left:.25rem}
 .board-stage .player-summary[data-seat="2"]{top:.25rem;right:.25rem}
 .board-stage .player-summary[data-seat="3"]{bottom:.25rem;left:.25rem}
@@ -60,9 +60,9 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .player-summary-header .player-turn-badge{grid-column:auto;justify-self:auto;flex:none}
 .player-public-stats,.player-piece-stats{display:flex;align-items:center;gap:.32rem;flex-wrap:wrap;justify-content:flex-start;margin-top:.26rem}
 .player-piece-stats{padding-top:.22rem;border-top:1px solid #dfe5da}
-.player-stat{display:inline-flex;align-items:center;gap:.1rem;font-size:.66rem;font-weight:850;color:#41574d}
-.player-stat-label{font-size:.5rem;line-height:1;color:#718277;font-weight:900;letter-spacing:.02em}
-.player-piece-stats .player-stat-icon{width:.78rem;height:.78rem}
+.player-stat{display:inline-flex;align-items:center;gap:.12rem;font-size:.72rem;font-weight:850;color:#41574d}
+.player-stat-label{font-size:.54rem;line-height:1;color:#718277;font-weight:900;letter-spacing:.02em}
+.player-piece-stats .player-stat-icon{width:.86rem;height:.86rem}
 .player-longest-road.award-holder{color:#8b6500;background:#fff1b8;border-radius:999px;padding:.08rem .2rem}
 .player-knight-count.largest-army-holder{color:#7a4300;background:#ffe8a3;border-radius:999px;padding:.08rem .22rem;box-shadow:inset 0 0 0 1px #d89b24}
 .piece-supply{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.4rem;padding-top:.35rem;border-top:1px solid #e1e7de;font-size:.72rem;color:#4a6256}
@@ -71,9 +71,9 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .piece-supply .player-stat-icon{width:.82rem;height:.82rem}
 
 @media(max-width:900px) and (min-width:761px){
- .board-stage .player-summary{width:min(10rem,28%);font-size:.64rem}
- .player-public-stats,.player-piece-stats{gap:.22rem}
- .player-stat{font-size:.6rem}
+ .board-stage .player-summary{width:min(11rem,29%);font-size:.7rem;padding:.4rem .48rem}
+ .player-public-stats,.player-piece-stats{gap:.25rem}
+ .player-stat{font-size:.66rem}
 }
 @media(max-width:760px){
  .board-announcements{min-height:2.8rem;margin:.1rem 0 .25rem}
@@ -81,13 +81,13 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .public-action{font-size:.72rem;min-height:1.05rem}
  .board-stage{max-width:none}
  .board-stage .player-strip{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem;margin:.2rem 0 .3rem;pointer-events:auto}
- .board-stage .player-summary{position:static;width:auto;padding:.3rem .35rem;backdrop-filter:none}
+ .board-stage .player-summary{position:static;width:auto;padding:.4rem .45rem;backdrop-filter:none;font-size:.72rem}
  .board-stage #board{padding:0}
  .player-summary-header{gap:.2rem}
  .player-public-stats,.player-piece-stats{gap:.22rem;margin-top:.2rem}
- .player-stat{font-size:.61rem}
- .player-stat-label{font-size:.46rem}
- .player-piece-stats .player-stat-icon,.player-public-stats .player-stat-icon{width:.72rem;height:.72rem}
+ .player-stat{font-size:.67rem}
+ .player-stat-label{font-size:.5rem}
+ .player-piece-stats .player-stat-icon,.player-public-stats .player-stat-icon{width:.78rem;height:.78rem}
  .piece-supply{gap:.25rem;margin-top:.3rem}
 }
 
@@ -313,3 +313,11 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 /* Local deterministic test-bot control. */
 .local-bot-option{display:flex;align-items:center;gap:.45rem;margin:.45rem 0 .65rem;padding:.45rem .55rem;border:1px solid #d8e0d5;border-radius:.55rem;background:#fafbf7;font-size:.8rem;font-weight:750;color:#41574d}
 .local-bot-option input{width:1rem;height:1rem;margin:0;flex:none}
+
+/* Slightly larger public player HUD for easier table reading. */
+.board-stage .player-summary .player-marker{width:1.6rem;height:1.6rem;font-size:.78rem}
+.board-stage .player-summary-name{font-size:.82rem;font-weight:780}
+@media(max-width:760px){
+ .board-stage .player-summary .player-marker{width:1.4rem;height:1.4rem;font-size:.7rem}
+ .board-stage .player-summary-name{font-size:.74rem}
+}
