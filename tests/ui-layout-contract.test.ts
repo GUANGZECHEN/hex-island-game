@@ -159,3 +159,17 @@ test('public player cards are slightly larger for readability on desktop and mob
  assert.ok(css.includes('.board-stage .player-summary-name{font-size:.82rem'));
  assert.ok(css.includes('position:static;width:auto;padding:.4rem .45rem'));
 });
+
+
+test('playable development cards are exposed directly in Actions with no Cards tab',()=>{
+ const html=readFileSync('index.html','utf8');
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(!html.includes('data-panel="cards"'));
+ assert.ok(!html.includes('id="card-actions"'));
+ assert.ok(!ui.includes("activePanel:'actions'|'cards'"));
+ assert.ok(!ui.includes("el('card-actions')"));
+ assert.ok(ui.includes("heading.textContent='Development cards'"));
+ assert.ok(ui.includes("developmentAction(cardGrid,'Play Knight'"));
+ assert.ok(css.includes('.development-actions-inline{'));
+});
