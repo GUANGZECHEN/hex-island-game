@@ -177,10 +177,37 @@ function strategicGoalCosts(state:GameState,playerId:string){
  const road=bestRoad(state,playerId);if(road&&player.roads>0)goals.push({cost:COSTS.road,score:3.5+roadScore(state,playerId,road)*.62,kind:'road'});
  return goals;
 }
-function missingCount(hand:Hand,cost:Hand){return RESOURCES.reduce((sum,r)=>sum+Math.max(0,cost[r]-hand[r]),0);}
+export function missingCount(hand:Hand,cost:Hand){return RESOURCES.reduce((sum,r)=>sum+Math.max(0,cost[r]-hand[r]),0);}
 function preferredGoal(state:GameState,playerId:string){
  const hand=state.players.find(p=>p.id===playerId)!.hand;
  return strategicGoalCosts(state,playerId).sort((a,b)=>(b.score/(1+missingCount(hand,b.cost)))-(a.score/(1+missingCount(hand,a.cost)))||b.score-a.score)[0]??null;
+}
+export interface SavingGoal {kind:'settlement'|'city'|'expansion';cost:Hand;missing:number;targetId?:string;roadId?:string}
+/**
+ * Lock onto a near-term build when it is close enough to finish. This prevents
+ * the bot from liquidating settlement/city resources into lower-value actions.
+ */
+export function savingGoal(state:GameState,playerId:string):SavingGoal|null {
+ const player=state.players.find(p=>p.id===playerId);if(!player)return null;
+ const settlement=bestSettlement(state,playerId);
+ if(settlement&&player.settlements>0){
+  const missing=missingCount(player.hand,COSTS.settlement);
+  if(missing<=2)return {kind:'settlement',cost:{...COSTS.settlement},missing,targetId:settlement};
+ }
+ const city=bestCity(state,playerId);
+ if(city&&player.cities>0){
+  const missing=missingCount(player.hand,COSTS.city);
+  if(missing<=2)return {kind:'city',cost:{...COSTS.city},missing,targetId:city};
+ }
+ if(player.settlements>0){
+  const road=bestRoad(state,playerId);
+  if(road&&roadScore(state,playerId,road)>=4.6){
+   const combined:Hand={lumber:2,brick:2,wool:1,grain:1,ore:0};
+   const missing=missingCount(player.hand,combined);
+   if(missing<=3)return {kind:'expansion',cost:combined,missing,roadId:road};
+  }
+ }
+ return null;
 }
 function cardValue(state:GameState,playerId:string,resource:Resource){
  const player=state.players.find(p=>p.id===playerId)!,profile=productionProfile(state,playerId),goal=preferredGoal(state,playerId);
@@ -199,9 +226,9 @@ export function chooseDiscard(state:GameState,playerId:string,required:number):H
  }
  return result;
 }
-export function chooseBankTrade(state:GameState,playerId:string):EconomyCommand|null {
+export function chooseBankTrade(state:GameState,playerId:string,reservedCost?:Hand):EconomyCommand|null {
  const player=state.players.find(p=>p.id===playerId)!;
- const goals=strategicGoalCosts(state,playerId).filter(g=>missingCount(player.hand,g.cost)>0).sort((a,b)=>(b.score/(1+missingCount(player.hand,b.cost)))-(a.score/(1+missingCount(player.hand,a.cost))));
+ const goals=reservedCost?[{cost:reservedCost,score:100,kind:'reserved'}]:strategicGoalCosts(state,playerId).filter(g=>missingCount(player.hand,g.cost)>0).sort((a,b)=>(b.score/(1+missingCount(player.hand,b.cost)))-(a.score/(1+missingCount(player.hand,a.cost))));
  for(const goal of goals){
   const receives=RESOURCES.filter(r=>player.hand[r]<goal.cost[r]&&state.bank[r]>0).sort((a,b)=>cardValue(state,playerId,b)-cardValue(state,playerId,a));
   for(const receive of receives){
