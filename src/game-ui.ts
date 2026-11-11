@@ -24,6 +24,7 @@ let activePanel:'actions'|'trade'|'status'='actions';
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
+const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
@@ -233,16 +234,16 @@ function drawBoard(){
  for(const vertex of view.vertices){
   const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
   if(owner){
-   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1,fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`;
+   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1,palette=PLAYER_PIECE_PALETTE[seat-1]??PLAYER_PIECE_PALETTE[0],fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`;
    piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}${fresh?' game-piece-enter':''}`);
    const size=owner.kind==='city'?.58:.42,scale=size/24;
    piece.setAttribute('transform',`translate(${vertex.point.x-size/2} ${vertex.point.y-size/2}) scale(${scale})`);
    piece.setAttribute('data-building-kind',owner.kind);
    const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner.playerId)} ${owner.kind}, ${vertex.id}`;piece.append(title);
-   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx','12');shadow.setAttribute('cy','21.5');shadow.setAttribute('rx',owner.kind==='city'?'10':'8.5');shadow.setAttribute('ry','2.2');shadow.setAttribute('class','game-building-shadow');piece.append(shadow);
-   const shell=document.createElementNS(NS,'path');shell.setAttribute('d',paths.shell);shell.setAttribute('class','game-building-shell');piece.append(shell);
-   const accent=document.createElementNS(NS,'path');accent.setAttribute('d',paths.accent);accent.setAttribute('class','game-building-accent');piece.append(accent);
-   const detail=document.createElementNS(NS,'path');detail.setAttribute('d',paths.detail);detail.setAttribute('class','game-building-detail');piece.append(detail);
+   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx','12');shadow.setAttribute('cy','21.5');shadow.setAttribute('rx',owner.kind==='city'?'10':'8.5');shadow.setAttribute('ry','2.2');shadow.setAttribute('class','game-building-shadow');shadow.setAttribute('style','fill:#17251f;opacity:.24');piece.append(shadow);
+   const shell=document.createElementNS(NS,'path');shell.setAttribute('d',paths.shell);shell.setAttribute('class','game-building-shell');shell.setAttribute('style',`fill:${palette.body};stroke:${palette.edge};stroke-width:${owner.kind==='city'?'1.85':'1.75'};stroke-linejoin:round`);piece.append(shell);
+   const accent=document.createElementNS(NS,'path');accent.setAttribute('d',paths.accent);accent.setAttribute('class','game-building-accent');accent.setAttribute('style','fill:none;stroke:#ffffff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.65');piece.append(accent);
+   const detail=document.createElementNS(NS,'path');detail.setAttribute('d',paths.detail);detail.setAttribute('class','game-building-detail');detail.setAttribute('style','fill:none;stroke:#173027;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;opacity:.9');piece.append(detail);
    if(cityTarget){piece.setAttribute('data-legal-target','city');piece.setAttribute('tabindex','0');piece.setAttribute('role','button');piece.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);piece.onclick=()=>attempt(()=>moveTarget(vertex.id));piece.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
    svg.append(piece);continue;
   }
