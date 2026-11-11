@@ -196,17 +196,14 @@ export interface SavingGoal {kind:'settlement'|'city'|'expansion';cost:Hand;miss
  */
 export function savingGoal(state:GameState,playerId:string):SavingGoal|null {
  const player=state.players.find(p=>p.id===playerId);if(!player)return null;
- // Building-first: a reachable settlement always outranks discretionary spending.
+ const buildingGoals:SavingGoal[]=[];
  const settlement=bestSettlement(state,playerId);
- if(settlement&&player.settlements>0){
-  const missing=missingCount(player.hand,COSTS.settlement);
-  return {kind:'settlement',cost:{...COSTS.settlement},missing,targetId:settlement};
- }
- // If expansion is not immediately available, improve production by upgrading a settlement.
+ if(settlement&&player.settlements>0)buildingGoals.push({kind:'settlement',cost:{...COSTS.settlement},missing:missingCount(player.hand,COSTS.settlement),targetId:settlement});
  const city=bestCity(state,playerId);
- if(city&&player.cities>0){
-  const missing=missingCount(player.hand,COSTS.city);
-  return {kind:'city',cost:{...COSTS.city},missing,targetId:city};
+ if(city&&player.cities>0)buildingGoals.push({kind:'city',cost:{...COSTS.city},missing:missingCount(player.hand,COSTS.city),targetId:city});
+ if(buildingGoals.length){
+  // Finish the closest building first; a tie favors a new settlement because it claims new production.
+  return buildingGoals.sort((a,b)=>a.missing-b.missing||(a.kind==='settlement'?-1:1))[0];
  }
  // Roads are purchased as part of a concrete settlement package, not as a standalone sink for lumber/brick.
  if(player.settlements>0&&player.roads>0){
