@@ -100,38 +100,79 @@ export function cityScore(state:GameState,playerId:string,vertexId:string):numbe
  return score;
 }
 
-function potentialSettlements(state:GameState,playerId:string){
- return geometry(state).vertices.filter(vertex=>distanceLegalSettlement(state,vertex.id)).map(vertex=>({id:vertex.id,score:settlementScore(state,playerId,vertex.id)}));
+export interface ExpansionTarget {
+ vertexId:string;
+ importance:number;
+ roadDistance:number;
+ priority:number;
+ pathEdgeIds:string[];
+ nextRoadId:string|null;
 }
-export function roadDistanceToTargets(state:GameState,playerId:string,edgeId:string){
- const board=geometry(state),edge=board.edges.find(item=>item.id===edgeId);if(!edge)return 0;
- const targets=potentialSettlements(state,playerId);if(!targets.length)return 0;
- const dist=new Map<string,number>(),queue:Array<{id:string;d:number}>=[];
- for(const vertex of edge.vertexIds){dist.set(vertex,0);queue.push({id:vertex,d:0});}
+
+function expansionPath(state:GameState,playerId:string,targetId:string):{roadDistance:number;pathEdgeIds:string[]}|null {
+ const board=geometry(state),starts=new Set<string>();
+ for(const [vertexId,building] of Object.entries(state.buildings))if(building.playerId===playerId)starts.add(vertexId);
+ for(const [edgeId,owner] of Object.entries(state.roads))if(owner===playerId){
+  const edge=board.edges.find(item=>item.id===edgeId);if(edge)for(const vertexId of edge.vertexIds)starts.add(vertexId);
+ }
+ if(!starts.size)return null;
+ const best=new Map<string,{cost:number;path:string[]}>(),queue:Array<{vertexId:string;cost:number;path:string[]}>=Array.from(starts).map(vertexId=>({vertexId,cost:0,path:[]}));
+ for(const item of queue)best.set(item.vertexId,{cost:0,path:[]});
  while(queue.length){
-  queue.sort((a,b)=>a.d-b.d);const current=queue.shift()!;if(current.d!==dist.get(current.id)||current.d>4)continue;
-  const occupant=state.buildings[current.id];if(current.d>0&&occupant&&occupant.playerId!==playerId)continue;
-  for(const nextEdge of board.edges.filter(item=>item.vertexIds.includes(current.id))){
-   if(nextEdge.id===edgeId)continue;
-   const owner=state.roads[nextEdge.id];if(owner&&owner!==playerId)continue;
-   const next=nextEdge.vertexIds[0]===current.id?nextEdge.vertexIds[1]:nextEdge.vertexIds[0],step=owner===playerId?0:1,nd=current.d+step;
-   if(nd<(dist.get(next)??99)){dist.set(next,nd);queue.push({id:next,d:nd});}
+  queue.sort((a,b)=>a.cost-b.cost||a.path.join('|').localeCompare(b.path.join('|'))||a.vertexId.localeCompare(b.vertexId));
+  const current=queue.shift()!,known=best.get(current.vertexId);
+  if(!known||known.cost!==current.cost||known.path.join('|')!==current.path.join('|'))continue;
+  if(current.vertexId===targetId)return {roadDistance:current.cost,pathEdgeIds:current.path};
+  const blocker=state.buildings[current.vertexId];
+  if(blocker&&blocker.playerId!==playerId)continue;
+  const adjacent=board.edges.filter(edge=>edge.vertexIds.includes(current.vertexId)).sort((a,b)=>a.id.localeCompare(b.id));
+  for(const edge of adjacent){
+   const owner=state.roads[edge.id];if(owner&&owner!==playerId)continue;
+   const next=edge.vertexIds[0]===current.vertexId?edge.vertexIds[1]:edge.vertexIds[0];
+   const nextBuilding=state.buildings[next];if(nextBuilding&&nextBuilding.playerId!==playerId&&next!==targetId)continue;
+   const step=owner===playerId?0:1,newCost=current.cost+step,newPath=owner===playerId?current.path:[...current.path,edge.id],previous=best.get(next);
+   const better=!previous||newCost<previous.cost||(newCost===previous.cost&&newPath.join('|')<previous.path.join('|'));
+   if(better){best.set(next,{cost:newCost,path:newPath});queue.push({vertexId:next,cost:newCost,path:newPath});}
   }
  }
- return Math.max(0,...targets.map(target=>target.score/(1+1.45*(dist.get(target.id)??5))));
+ return null;
+}
+
+/**
+ * Rank several settlement expansion targets by tile importance and the number of
+ * new roads still required. Recomputed every decision so blocked/stolen targets
+ * automatically disappear and the bot falls through to the next candidate.
+ */
+export function rankExpansionTargets(state:GameState,playerId:string):ExpansionTarget[] {
+ const legalRoads=new Set(buildableRoadEdges(state,playerId));
+ return geometry(state).vertices
+  .filter(vertex=>distanceLegalSettlement(state,vertex.id))
+  .map(vertex=>{
+   const path=expansionPath(state,playerId,vertex.id);if(!path)return null;
+   const importance=settlementScore(state,playerId,vertex.id),roadDistance=path.roadDistance;
+   const nextRoadId=path.pathEdgeIds.find(edgeId=>!state.roads[edgeId]&&legalRoads.has(edgeId))??null;
+   const priority=importance/(1+.58*roadDistance)+(roadDistance===0?2.2:0);
+   return {vertexId:vertex.id,importance,roadDistance,priority,pathEdgeIds:path.pathEdgeIds,nextRoadId};
+  })
+  .filter((target):target is ExpansionTarget=>!!target)
+  .sort((a,b)=>b.priority-a.priority||b.importance-a.importance||a.roadDistance-b.roadDistance||a.vertexId.localeCompare(b.vertexId));
+}
+
+export function roadDistanceToTargets(state:GameState,playerId:string,edgeId:string){
+ const target=rankExpansionTargets(state,playerId).find(item=>item.nextRoadId===edgeId);
+ return target?.priority??0;
 }
 export function roadSettlementValue(state:GameState,playerId:string,edgeId:string):number {
- const before=new Set(buildableSettlementVertices(state,playerId)),copy=structuredClone(state);copy.roads[edgeId]=playerId;
- const newlyUnlocked=buildableSettlementVertices(copy,playerId).filter(id=>!before.has(id));
- if(newlyUnlocked.length)return Math.max(...newlyUnlocked.map(id=>settlementScore(copy,playerId,id)))+4;
- return roadDistanceToTargets(state,playerId,edgeId);
+ const target=rankExpansionTargets(state,playerId).find(item=>item.nextRoadId===edgeId);
+ return target?target.importance/(1+.4*Math.max(0,target.roadDistance-1)):0;
 }
 export function roadScore(state:GameState,playerId:string,edgeId:string):number {
+ const target=rankExpansionTargets(state,playerId).find(item=>item.nextRoadId===edgeId);
+ if(!target)return 0;
  const before=longestRoute(state,playerId),copy=structuredClone(state);copy.roads[edgeId]=playerId;
  const after=longestRoute(copy,playerId),opponentBest=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>longestRoute(state,p.id)));
- let score=roadSettlementValue(state,playerId,edgeId)+Math.max(0,after-before)*.25;
- if(after>=5&&after>opponentBest)score+=1.25;
- else if(after>=4&&after>=opponentBest-1)score+=.45;
+ let score=target.priority+Math.max(0,after-before)*.18;
+ if(after>=5&&after>opponentBest)score+=.8;
  return score;
 }
 export function bestSettlement(state:GameState,playerId:string,setup=false):string|null {
@@ -142,8 +183,17 @@ export function bestCity(state:GameState,playerId:string):string|null {
  return upgradableCityVertices(state,playerId).sort((a,b)=>cityScore(state,playerId,b)-cityScore(state,playerId,a)||a.localeCompare(b))[0]??null;
 }
 export function bestRoad(state:GameState,playerId:string,setupOrFree=false):string|null {
- const ids=setupOrFree?legalTargetIds(state,playerId,'road'):buildableRoadEdges(state,playerId);
- return ids.sort((a,b)=>roadScore(state,playerId,b)-roadScore(state,playerId,a)||a.localeCompare(b))[0]??null;
+ if(state.phase==='setup-road'){
+  const ids=legalTargetIds(state,playerId,'road');
+  return ids.sort((a,b)=>roadScore(state,playerId,b)-roadScore(state,playerId,a)||a.localeCompare(b))[0]??null;
+ }
+ const target=rankExpansionTargets(state,playerId).find(item=>item.roadDistance>0&&item.nextRoadId);
+ if(target?.nextRoadId)return target.nextRoadId;
+ if(setupOrFree&&state.phase==='free-road'){
+  const ids=legalTargetIds(state,playerId,'road');
+  return ids.sort((a,b)=>roadScore(state,playerId,b)-roadScore(state,playerId,a)||a.localeCompare(b))[0]??null;
+ }
+ return null;
 }
 
 export function threatScore(state:GameState,playerId:string){
@@ -180,8 +230,8 @@ function strategicGoalCosts(state:GameState,playerId:string){
   const profile=productionProfile(state,playerId),armyGap=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>p.knights))-player.knights;
   goals.push({cost:COSTS.card,score:5.2+(profile.ore+profile.grain+profile.wool-(profile.lumber+profile.brick))*.05+(armyGap>=0&&player.knights>=2?.7:0),kind:'card'});
  }
- const road=bestRoad(state,playerId);
- if(road&&player.roads>0&&roadSettlementValue(state,playerId,road)>=5.25)goals.push({cost:COSTS.road,score:1.5+roadSettlementValue(state,playerId,road)*.42,kind:'road'});
+ const road=bestRoad(state,playerId),target=rankExpansionTargets(state,playerId).find(item=>item.nextRoadId===road);
+ if(road&&target&&player.roads>0)goals.push({cost:COSTS.road,score:2+target.priority*.5,kind:'road'});
  return goals;
 }
 export function missingCount(hand:Hand,cost:Hand){return RESOURCES.reduce((sum,r)=>sum+Math.max(0,cost[r]-hand[r]),0);}
@@ -189,31 +239,18 @@ function preferredGoal(state:GameState,playerId:string){
  const hand=state.players.find(p=>p.id===playerId)!.hand;
  return strategicGoalCosts(state,playerId).sort((a,b)=>(b.score/(1+missingCount(hand,b.cost)))-(a.score/(1+missingCount(hand,a.cost)))||b.score-a.score)[0]??null;
 }
-export interface SavingGoal {kind:'settlement'|'city'|'expansion';cost:Hand;missing:number;targetId?:string;roadId?:string}
+export interface SavingGoal {kind:'settlement'|'city';cost:Hand;missing:number;targetId:string}
 /**
- * Lock onto a near-term build when it is close enough to finish. This prevents
- * the bot from liquidating settlement/city resources into lower-value actions.
+ * Resource reservation begins only after a settlement target is actually
+ * connected and legal to build. Before that point, roads advance the ranked
+ * expansion plan. A ready city can still be taken immediately.
  */
 export function savingGoal(state:GameState,playerId:string):SavingGoal|null {
  const player=state.players.find(p=>p.id===playerId);if(!player)return null;
- const buildingGoals:SavingGoal[]=[];
  const settlement=bestSettlement(state,playerId);
- if(settlement&&player.settlements>0)buildingGoals.push({kind:'settlement',cost:{...COSTS.settlement},missing:missingCount(player.hand,COSTS.settlement),targetId:settlement});
+ if(settlement&&player.settlements>0)return {kind:'settlement',cost:{...COSTS.settlement},missing:missingCount(player.hand,COSTS.settlement),targetId:settlement};
  const city=bestCity(state,playerId);
- if(city&&player.cities>0)buildingGoals.push({kind:'city',cost:{...COSTS.city},missing:missingCount(player.hand,COSTS.city),targetId:city});
- if(buildingGoals.length){
-  // Finish the closest building first; a tie favors a new settlement because it claims new production.
-  return buildingGoals.sort((a,b)=>a.missing-b.missing||(a.kind==='settlement'?-1:1))[0];
- }
- // Roads are purchased as part of a concrete settlement package, not as a standalone sink for lumber/brick.
- if(player.settlements>0&&player.roads>0){
-  const road=bestRoad(state,playerId);
-  if(road&&roadSettlementValue(state,playerId,road)>=5.25){
-   const combined:Hand={lumber:2,brick:2,wool:1,grain:1,ore:0};
-   const missing=missingCount(player.hand,combined);
-   return {kind:'expansion',cost:combined,missing,roadId:road};
-  }
- }
+ if(city&&player.cities>0)return {kind:'city',cost:{...COSTS.city},missing:missingCount(player.hand,COSTS.city),targetId:city};
  return null;
 }
 function cardValue(state:GameState,playerId:string,resource:Resource){
@@ -271,9 +308,8 @@ export function shouldPlayKnight(state:GameState,playerId:string){
  return armySwing||blocked>=4||leader>=publicVictoryPoints(state,playerId)+2;
 }
 export function shouldPlayRoadBuilding(state:GameState,playerId:string){
- const road=bestRoad(state,playerId);if(!road)return false;
- // Free roads are still primarily an expansion tool; Longest Road alone is not enough.
- return roadSettlementValue(state,playerId,road)>=4.25;
+ const target=rankExpansionTargets(state,playerId).find(item=>item.roadDistance>0&&item.nextRoadId);
+ return !!target&&target.priority>=3.2;
 }
 export function tradeOfferWorthAccepting(state:GameState,playerId:string){
  const offer=state.offer,player=state.players.find(p=>p.id===playerId);if(!offer||!player)return false;
@@ -282,12 +318,10 @@ export function tradeOfferWorthAccepting(state:GameState,playerId:string){
  const proposerVp=publicVictoryPoints(state,offer.proposer),ownVp=publicVictoryPoints(state,playerId),threshold=proposerVp>=8||proposerVp>=ownVp+2?1.25:.92;
  return received>=given*threshold;
 }
-export function affordableAction(state:GameState,playerId:string):{type:'city'|'settlement'|'road'|'card';id?:string;score:number}|null {
- const player=state.players.find(p=>p.id===playerId)!;const choices:Array<{type:'city'|'settlement'|'road'|'card';id?:string;score:number}>=[];
+export function affordableAction(state:GameState,playerId:string):{type:'city'|'settlement'|'card';id?:string;score:number}|null {
+ const player=state.players.find(p=>p.id===playerId)!;const choices:Array<{type:'city'|'settlement'|'card';id?:string;score:number}>=[];
  const settlement=bestSettlement(state,playerId);if(settlement&&player.settlements>0&&affordable(player.hand,COSTS.settlement))choices.push({type:'settlement',id:settlement,score:14+settlementScore(state,playerId,settlement)*.72});
  const city=bestCity(state,playerId);if(city&&player.cities>0&&affordable(player.hand,COSTS.city))choices.push({type:'city',id:city,score:12+cityScore(state,playerId,city)*.72});
  if(state.deck.length&&affordable(player.hand,COSTS.card)){const goal=strategicGoalCosts(state,playerId).find(g=>g.kind==='card');choices.push({type:'card',score:goal?.score??5.2});}
- const road=bestRoad(state,playerId),roadPurpose=road?roadSettlementValue(state,playerId,road):0;
- if(road&&player.roads>0&&roadPurpose>=5.25&&affordable(player.hand,COSTS.road))choices.push({type:'road',id:road,score:1.5+roadPurpose*.42});
  return choices.sort((a,b)=>b.score-a.score||a.type.localeCompare(b.type))[0]??null;
 }
