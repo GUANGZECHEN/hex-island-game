@@ -5,7 +5,7 @@
 .port-badge{fill:#fff;stroke:#142237;stroke-width:.05}.port-label{font-size:.23px;font-weight:700;fill:#142237;pointer-events:none}
 .game-target{fill:#fff;stroke:#073a9e;stroke-width:.14;cursor:pointer;outline:none}.game-target:focus,.game-target:focus-visible{stroke:#ed9400;stroke-width:.22;outline:none}.game-road{stroke:#142237;stroke-width:.13;stroke-linecap:round}.game-building{fill:#142237;stroke:white;stroke-width:.05}fieldset{margin:.75rem 0}select{font:inherit;padding:.4rem}#game-error{color:#a02121}
 .game-road.player-1{stroke:#003f87}.game-road.player-2{stroke:#ae1717}.game-road.player-3{stroke:#27662a}.game-road.player-4{stroke:#72327c}.game-road.player-2{stroke-dasharray:.18 .05}.game-road.player-3{stroke-dasharray:.07 .04}.game-road.player-4{stroke-dasharray:.22 .05 .05 .05}
-.game-building-piece{cursor:default;outline:none}.game-building-piece.player-1{color:#003f87}.game-building-piece.player-2{color:#ae1717}.game-building-piece.player-3{color:#27662a}.game-building-piece.player-4{color:#72327c}.game-building-shell{fill:#fffef9;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}.game-building-accent{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.game-building-detail{fill:none;stroke:#263a33;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round}.game-building-city .game-building-shell{stroke-width:2}.game-building-piece.game-target-city{cursor:pointer}.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}.game-building-piece.game-target-city:hover .game-building-shell,.game-building-piece.game-target-city:focus .game-building-shell,.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
+.game-building-piece{cursor:default;outline:none}.game-building-piece.player-1{color:#003f87}.game-building-piece.player-2{color:#ae1717}.game-building-piece.player-3{color:#27662a}.game-building-piece.player-4{color:#72327c}.game-building-shell{stroke-width:1.8;stroke-linejoin:round}.game-building-accent{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.game-building-detail{fill:none;stroke:#263a33;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round}.game-building-city .game-building-shell{stroke-width:2}.game-building-piece.game-target-city{cursor:pointer}.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}.game-building-piece.game-target-city:hover .game-building-shell,.game-building-piece.game-target-city:focus .game-building-shell,.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
 
 select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-visible,select:focus-visible,#board:focus-visible{outline:3px solid #1555a0;outline-offset:2px}.island-token-high{stroke:#7e0000;stroke-width:.06;stroke-dasharray:.07 .04}.island-board{min-width:360px}#board{overflow-x:auto}fieldset{min-width:0}fieldset label{display:inline-block;width:min(8rem,100%);margin-right:.4rem}fieldset input{max-width:6rem}
 /* The game uses one shared board and control surface at every viewport. */
@@ -600,8 +600,6 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .game-building-piece.player-6{--piece-color:#2b9295;--piece-edge:#176b70;color:#176b70}
 .game-building-shadow{fill:#17251f;opacity:.22}
 .game-building-shell{
- fill:var(--piece-color);
- stroke:var(--piece-edge);
  stroke-width:1.75;
  stroke-linejoin:round;
  filter:drop-shadow(0 1px .65px #14251f45);
@@ -624,10 +622,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .game-building-city .game-building-shell{stroke-width:1.85}
 .game-building-city .game-building-accent{stroke-width:1.55}
-.game-building-piece.game-piece-enter .game-building-shadow,
-.game-building-piece.game-piece-enter .game-building-shell,
-.game-building-piece.game-piece-enter .game-building-accent,
-.game-building-piece.game-piece-enter .game-building-detail{transform-box:fill-box;transform-origin:center;animation:building-place .32s cubic-bezier(.18,.85,.28,1.25) both}
+.game-building-piece.game-piece-enter{animation:building-place .28s ease-out both}
 .game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}
 .game-building-piece.game-target-city:hover .game-building-shell,
 .game-building-piece.game-target-city:focus .game-building-shell,
@@ -643,9 +638,8 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  to{stroke-dashoffset:0;opacity:1}
 }
 @keyframes building-place{
- 0%{opacity:0;transform:scale(.72)}
- 70%{opacity:1;transform:scale(1.08)}
- 100%{opacity:1;transform:scale(1)}
+ from{opacity:.22;filter:brightness(1.28)}
+ to{opacity:1;filter:brightness(1)}
 }
 @keyframes robber-settle{
  0%{opacity:.2;transform:translateY(-.22px) scale(.82)}
@@ -664,9 +658,6 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 @media(prefers-reduced-motion:reduce){
  .game-road-piece.game-piece-enter .game-road,
  .game-road-piece.game-piece-enter .game-road-highlight,
- .game-building-piece.game-piece-enter .game-building-shadow,
- .game-building-piece.game-piece-enter .game-building-shell,
- .game-building-piece.game-piece-enter .game-building-accent,
- .game-building-piece.game-piece-enter .game-building-detail,
+ .game-building-piece.game-piece-enter,
  .robber-marker.robber-marker-enter{animation:none}
 }
