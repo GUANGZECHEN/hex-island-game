@@ -22,6 +22,7 @@ const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as 
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let activePanel:'actions'|'trade'|'status'='actions';
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
+let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
@@ -218,8 +219,11 @@ function drawBoard(){
  for(const edge of view.edges){
   const owner=s.roads[edge.id];
   if(owner){
-   const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
-   line.setAttribute('class',`game-road player-${byId(owner).seat+1}`);const title=document.createElementNS(NS,'title');title.textContent=`${owner} road, ${edge.id}`;line.append(title);svg.append(line);continue;
+   const seat=byId(owner).seat+1,piece=document.createElementNS(NS,'g'),fresh=renderedRoadOwners.get(edge.id)!==owner;
+   piece.setAttribute('class',`game-road-piece player-${seat}${fresh?' game-piece-enter':''}`);piece.setAttribute('data-road-id',edge.id);
+   const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner)} road, ${edge.id}`;piece.append(title);
+   const roadLine=(className:string)=>{const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));line.setAttribute('class',className);line.setAttribute('pathLength','1');piece.append(line);};
+   roadLine('game-road-shadow');roadLine(`game-road player-${seat}`);roadLine('game-road-highlight');svg.append(piece);continue;
   }
   if(targetMode!=='road'||!legal.has(edge.id))continue;
   const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
@@ -229,12 +233,13 @@ function drawBoard(){
  for(const vertex of view.vertices){
   const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
   if(owner){
-   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1;
-   piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}`);
-   const size=owner.kind==='city'?.5:.43,scale=size/24;
+   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1,fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`;
+   piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}${fresh?' game-piece-enter':''}`);
+   const size=owner.kind==='city'?.58:.42,scale=size/24;
    piece.setAttribute('transform',`translate(${vertex.point.x-size/2} ${vertex.point.y-size/2}) scale(${scale})`);
    piece.setAttribute('data-building-kind',owner.kind);
    const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner.playerId)} ${owner.kind}, ${vertex.id}`;piece.append(title);
+   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx','12');shadow.setAttribute('cy','21.5');shadow.setAttribute('rx',owner.kind==='city'?'10':'8.5');shadow.setAttribute('ry','2.2');shadow.setAttribute('class','game-building-shadow');piece.append(shadow);
    const shell=document.createElementNS(NS,'path');shell.setAttribute('d',paths.shell);shell.setAttribute('class','game-building-shell');piece.append(shell);
    const accent=document.createElementNS(NS,'path');accent.setAttribute('d',paths.accent);accent.setAttribute('class','game-building-accent');piece.append(accent);
    const detail=document.createElementNS(NS,'path');detail.setAttribute('d',paths.detail);detail.setAttribute('class','game-building-detail');piece.append(detail);
@@ -245,10 +250,12 @@ function drawBoard(){
   const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target','settlement');node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal settlement target ${vertex.id}`);
   node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};svg.append(node);
  }
+ const robberMarker=svg.querySelector<SVGGElement>('.robber-marker');if(robberMarker&&renderedRobberHex!==s.board.robberHexId)robberMarker.classList.add('robber-marker-enter');
  if(targetMode==='robber')for(const group of Array.from(svg.querySelectorAll<SVGGElement>('[data-hex-id]'))){
   const id=group.dataset.hexId!;if(!legal.has(id))continue;group.classList.add('robber-target');group.setAttribute('data-legal-target','robber');group.setAttribute('tabindex','0');group.setAttribute('role','button');group.setAttribute('aria-label',`Legal robber target ${id}`);
   group.onclick=()=>attempt(()=>moveTarget(id));group.onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(id));}};
  }
+ renderedRoadOwners=new Map(Object.entries(s.roads));renderedBuildings=new Map(Object.entries(s.buildings).map(([id,building])=>[id,`${building.playerId}:${building.kind}`]));renderedRobberHex=s.board.robberHexId;
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
@@ -304,7 +311,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[]);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount===1?['Player 1','Bot']:botCount===2?['Player 1','Bot 1','Bot 2']:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.victory-alert')?.remove();activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
+el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[]);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount===1?['Player 1','Bot']:botCount===2?['Player 1','Bot 1','Bot 2']:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.victory-alert')?.remove();activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
@@ -314,7 +321,7 @@ const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectE
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
+  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
