@@ -44,8 +44,9 @@ try{
   if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
   if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
   if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
+  await host.waitForFunction(()=>document.querySelectorAll('#board .game-road-piece').length>=2,null,{timeout:15000});
   const roadPieces=await host.locator('#board .game-road-piece').count();
-  if(roadPieces<2||await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
+  if(await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
   await host.goto(qaUrl,{waitUntil:'networkidle'});
 
   // First prove that an invite survives the host-unavailable window instead of failing once.
