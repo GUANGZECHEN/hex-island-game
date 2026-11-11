@@ -101,8 +101,8 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   svg.classList.add('island-board');
   const defsPrefix=`hex-board-${++boardRenderSequence}`;
   appendBoardDefs(svg,defsPrefix);
-  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean',fill:'#6da9ad',style:`fill:url(#${defsPrefix}-board-ocean-gradient)`}));
-  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean-waves',fill:'none',style:`fill:url(#${defsPrefix}-board-ocean-waves)`}));
+  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean',fill:'#6da9ad',style:`fill:url(#${defsPrefix}-board-ocean-gradient) #6da9ad`}));
+  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean-waves',fill:'none',style:`fill:url(#${defsPrefix}-board-ocean-waves) transparent`}));
 
   const details = document.createElement('ul');
   details.className = 'sr-only';
@@ -116,7 +116,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     const title = document.createElementNS(SVG_NS, 'title');title.textContent = description;group.append(title);
     const points=hex.points.map(point => `${point.x},${point.y}`).join(' ');
     group.append(node('polygon',{points,class:'island-cell-shadow'}));
-    group.append(node('polygon',{points,class:`island-cell island-cell-${hex.terrain}`,fill:terrainFallback[hex.terrain],style:`fill:url(#${defsPrefix}-terrain-${hex.terrain})`}));
+    group.append(node('polygon',{points,class:`island-cell island-cell-${hex.terrain}`,fill:terrainFallback[hex.terrain],style:`fill:url(#${defsPrefix}-terrain-${hex.terrain}) ${terrainFallback[hex.terrain]}`}));
     const inset=node('polygon',{points,class:'island-cell-inset',transform:`translate(${hex.center.x} ${hex.center.y}) scale(.94) translate(${-hex.center.x} ${-hex.center.y})`});group.append(inset);
     appendTerrainArt(group,hex.terrain,hex.center.x,hex.center.y);
 
