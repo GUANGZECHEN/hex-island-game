@@ -196,7 +196,7 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
  const render=readFileSync('src/game/board/render.ts','utf8');
  const game=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(render.includes("id:'board-ocean-gradient'"));
+ assert.ok(render.includes("gradient(defs,'board-ocean-gradient'"));
  assert.ok(render.includes("class:'board-ocean'"));
  assert.ok(render.includes("'data-terrain-art':terrain"));
  assert.ok(render.includes("class:'island-cell-shadow'"));
