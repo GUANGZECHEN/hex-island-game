@@ -87,9 +87,15 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     const container = new FakeElement('div');
     renderIslandBoard(container as unknown as HTMLElement, setup);
     const [svg, list] = container.children;
-    assert.equal(svg.children.length, 28);
+    const hexGroups=svg.children.filter(child=>child.attributes.get('data-hex-id'));
+    const portGroups=svg.children.filter(child=>child.attributes.get('data-port-edge'));
+    assert.equal(hexGroups.length,19);
+    assert.equal(portGroups.length,9);
+    assert.ok(svg.children.some(child=>child.tag==='rect'&&child.attributes.get('class')==='board-ocean'));
+    assert.ok(svg.children.some(child=>child.tag==='rect'&&child.attributes.get('class')==='board-ocean-waves'));
+    assert.ok(svg.children.some(child=>child.tag==='defs'));
     assert.equal(list.children.length, 19);
-    for (const [index, group] of svg.children.slice(0, 19).entries()) {
+    for (const [index, group] of hexGroups.entries()) {
       const hex = setup.hexes[index];
       assert.equal(group.attributes.get('data-hex-id'), hex.hexId);
       assert.equal(group.attributes.get('data-terrain'), hex.terrain);
@@ -97,6 +103,9 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       assert.equal(group.attributes.get('data-token'), String(hex.token ?? 'none'));
       assert.equal(group.attributes.get('data-robber'), String(hex.hexId === setup.robberHexId));
       assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class')?.includes(hex.terrain)));
+      assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class') === 'island-cell-shadow'));
+      assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class') === 'island-cell-inset'));
+      assert.ok(group.children.some(child => child.tag === 'g' && child.attributes.get('data-terrain-art') === hex.terrain));
       if (hex.resource) {
         assert.ok(group.children.some(child => child.tag === 'svg' && child.attributes.get('data-resource-icon') === hex.resource));
         assert.ok(!group.children.some(child => child.tag === 'text' && child.attributes.get('class') === 'island-label'));
@@ -107,13 +116,13 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       }
       else { assert.equal(hex.terrain,'desert'); assert.ok(group.children.some(child => child.tag === 'svg' && child.attributes.get('data-terrain-icon') === 'desert')); assert.ok(!group.children.some(child => child.tag === 'text' && ['Desert','None'].includes(child.textContent))); } 
       if (hex.token !== null) {
-        assert.ok(group.children.some(child => child.tag === 'circle'));
+        assert.ok(group.children.some(child => child.tag === 'circle' && child.attributes.get('class')?.includes('island-token')));
+        assert.ok(group.children.some(child => child.tag === 'circle' && child.attributes.get('class')?.includes('island-token-rim')));
+        assert.ok(group.children.some(child => child.tag === 'circle' && child.attributes.get('class')?.includes('island-token-pip')));
         assert.ok(group.children.some(child => child.tag === 'text' && child.textContent === String(hex.token)));
       } else assert.ok(group.children.some(child => child.tag === 'g' && child.attributes.get('data-robber-marker') === 'true'));
       assert.ok(list.children[index].textContent.includes(hex.hexId));
     }
-    const portGroups=svg.children.slice(19);
-    assert.equal(portGroups.length,9);
     for(const [index,group] of portGroups.entries()){
       const port=setup.ports[index];
       assert.equal(group.attributes.get('data-port-edge'),port.edgeId);
@@ -135,7 +144,7 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     const token=moved.children.find(child=>child.tag==='circle'&&child.attributes.get('class')?.includes('island-token'))!;
     const markerCircle=marker.children.find(child=>child.tag==='circle')!;
     assert.equal(markerCircle.attributes.get('cy'),token.attributes.get('cy'));
-    assert.equal(moved.attributes.get('class'),'robber-occupied');
+    assert.ok(moved.attributes.get('class')?.includes('robber-occupied'));
   } finally { Object.assign(globalThis, { document: previous }); }
 });
 
