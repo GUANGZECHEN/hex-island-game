@@ -423,3 +423,244 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .victory-confetti{animation:none;opacity:.85;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.8)}
  .victory-alert.victory-alert-out{transition:none}
 }
+
+
+/* ART-A01 · modern illustrated tabletop board */
+.island-board{
+ border-radius:1rem;
+ overflow:visible;
+ filter:drop-shadow(0 .18rem .24rem #254a4520);
+}
+.board-ocean{fill:url(#board-ocean-gradient)}
+.board-ocean-waves{fill:url(#board-ocean-waves);opacity:.72}
+.board-ocean-wave-path{fill:none;stroke:#eaf8f5;stroke-width:.035;stroke-linecap:round;opacity:.34}
+.board-ocean-wave-faint{opacity:.18}
+
+.island-hex{isolation:isolate}
+.island-cell-shadow{
+ fill:#493e30;
+ opacity:.28;
+ transform:translateY(.075px);
+ filter:drop-shadow(0 .045px .035px #263b3330);
+ pointer-events:none;
+}
+.island-cell{
+ stroke:#f8efdb;
+ stroke-width:.075;
+ stroke-linejoin:round;
+ filter:drop-shadow(0 .02px .02px #253d3428);
+}
+.island-cell-forest{fill:url(#terrain-forest)}
+.island-cell-hills{fill:url(#terrain-hills)}
+.island-cell-pasture{fill:url(#terrain-pasture)}
+.island-cell-fields{fill:url(#terrain-fields)}
+.island-cell-mountains{fill:url(#terrain-mountains)}
+.island-cell-desert{fill:url(#terrain-desert)}
+.island-cell-inset{
+ fill:none;
+ stroke:#fff9e9;
+ stroke-width:.028;
+ stroke-linejoin:round;
+ opacity:.44;
+ pointer-events:none;
+}
+
+.terrain-art{pointer-events:none;opacity:.78}
+.terrain-art-primary,.terrain-art-secondary,.terrain-art-detail,.terrain-art-snow{
+ fill:none;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.terrain-art-primary{stroke-width:.045}
+.terrain-art-secondary{stroke-width:.035;opacity:.65}
+.terrain-art-detail{stroke-width:.03;opacity:.75}
+.terrain-art-forest{color:#153e2b}
+.terrain-art-forest .terrain-art-primary{fill:#2b6544;stroke:#214f36}
+.terrain-art-forest .terrain-art-detail{stroke:#173c2a}
+.terrain-art-hills{color:#874735}
+.terrain-art-hills .terrain-art-primary{stroke:#8e4e3a}
+.terrain-art-hills .terrain-art-secondary{stroke:#f2c19b}
+.terrain-art-pasture{color:#477f45}
+.terrain-art-pasture .terrain-art-primary{stroke:#4f874c}
+.terrain-art-pasture .terrain-art-secondary{stroke:#d5edb9}
+.terrain-art-pasture .terrain-art-detail{stroke:#3e733e}
+.terrain-art-fields{color:#8e651a}
+.terrain-art-fields .terrain-art-primary{stroke:#9c711e}
+.terrain-art-fields .terrain-art-secondary{stroke:#f5dfa0}
+.terrain-art-fields .terrain-art-detail{stroke:#9e721f}
+.terrain-art-mountains{color:#526874}
+.terrain-art-mountains .terrain-art-mountain-fill{fill:#718895;stroke:none;opacity:.66}
+.terrain-art-mountains .terrain-art-primary{fill:none;stroke:#506775;stroke-width:.048}
+.terrain-art-mountains .terrain-art-snow{stroke:#edf2ef;stroke-width:.045;opacity:.8}
+.terrain-art-desert{color:#97723b}
+.terrain-art-desert .terrain-art-primary{stroke:#aa834b}
+.terrain-art-desert .terrain-art-secondary{stroke:#f2dfae}
+.terrain-art-sun{fill:#efd27d;stroke:#b58a48;stroke-width:.025}
+
+.tile-resource,.desert-icon{
+ pointer-events:none;
+ filter:drop-shadow(0 .025px .012px #17322635);
+ opacity:.9;
+}
+.tile-resource.resource-lumber{color:#153e2b}
+.tile-resource.resource-brick{color:#7d3f2d}
+.tile-resource.resource-wool{color:#3f713c}
+.tile-resource.resource-grain{color:#805c13}
+.tile-resource.resource-ore{color:#4c5965}
+.desert-icon{color:#7d5b27}
+
+.island-token-shadow{fill:#4b3d2c;opacity:.28;pointer-events:none}
+.island-token{
+ fill:#fff8e8;
+ stroke:#8c7657;
+ stroke-width:.035;
+ filter:drop-shadow(0 .025px .015px #45372525);
+ pointer-events:none;
+}
+.island-token-rim{fill:none;stroke:#d8c59f;stroke-width:.018;pointer-events:none}
+.island-token-high{stroke:#9f2b24;stroke-width:.045;stroke-dasharray:none}
+.island-token-rim-high{stroke:#d99b8f;stroke-width:.024}
+.island-number{
+ fill:#26322d;
+ pointer-events:none;
+ font-size:.33px;
+ font-weight:950;
+ letter-spacing:-.018em;
+ font-variant-numeric:tabular-nums;
+}
+.island-number-red{fill:#a72b25}
+.island-token-pip{fill:#66553e;pointer-events:none}
+.island-token-pip-high{fill:#a72b25}
+
+.robber-occupied>.island-cell,
+.robber-occupied>.island-cell-inset,
+.robber-occupied>.terrain-art,
+.robber-occupied>.tile-resource,
+.robber-occupied>.desert-icon,
+.robber-occupied>.island-token-shadow,
+.robber-occupied>.island-token,
+.robber-occupied>.island-token-rim,
+.robber-occupied>.island-number,
+.robber-occupied>.island-token-pip{opacity:.4}
+.robber-marker{pointer-events:none;filter:drop-shadow(0 .035px .035px #29322e55)}
+.robber-token-shadow{fill:#492f2f;opacity:.28}
+.robber-marker-circle{fill:#fffdf6;stroke:#d7cabc;stroke-width:.035}
+.robber-marker-ring{fill:none;stroke:#c82e2e;stroke-width:.065}
+.robber-marker-slash{stroke:#c82e2e;stroke-width:.085;stroke-linecap:round}
+.robber-marker-highlight{fill:none;stroke:#fff;stroke-width:.025;stroke-linecap:round;opacity:.85}
+.robber-marker.robber-marker-enter{animation:robber-settle .34s cubic-bezier(.2,.85,.25,1.15)}
+
+.port-connector{stroke:#4d625d;stroke-width:.05;stroke-linecap:round;opacity:.8}
+.port-badge-shadow{fill:#284943;opacity:.25}
+.port-badge{
+ fill:#fffaf0;
+ stroke:#45615a;
+ stroke-width:.045;
+ filter:drop-shadow(0 .02px .018px #26423c25);
+}
+.port-label{fill:#263d36;font-size:.21px;font-weight:900}
+.port-resource-icon{filter:drop-shadow(0 .015px .01px #20352f30)}
+
+/* Roads are small wooden table pieces: dark edge, player body, soft top highlight. */
+.game-road-piece{
+ --road-color:#315c80;
+ --road-edge:#1e405e;
+ --road-highlight:#ffffff;
+ pointer-events:none;
+}
+.game-road-piece.player-1{--road-color:#2868b2;--road-edge:#174679}
+.game-road-piece.player-2{--road-color:#c74a42;--road-edge:#8f2b27}
+.game-road-piece.player-3{--road-color:#4f8b51;--road-edge:#2f6334}
+.game-road-piece.player-4{--road-color:#8b55a1;--road-edge:#633675}
+.game-road-piece.player-5{--road-color:#d48826;--road-edge:#9a5d12}
+.game-road-piece.player-6{--road-color:#2b9295;--road-edge:#176b70}
+.game-road-shadow{stroke:#1b2825;stroke-width:.235;stroke-linecap:round;opacity:.28;transform:translateY(.035px)}
+.game-road{stroke:var(--road-color)!important;stroke-width:.18;stroke-linecap:round;stroke-dasharray:none!important;filter:drop-shadow(0 .012px .008px #182b2525)}
+.game-road-highlight{stroke:var(--road-highlight);stroke-width:.045;stroke-linecap:round;opacity:.3;transform:translateY(-.025px)}
+.game-road-piece.game-piece-enter .game-road,
+.game-road-piece.game-piece-enter .game-road-highlight{
+ stroke-dasharray:1!important;
+ animation:road-grow .34s ease-out both;
+}
+
+/* Settlement and city are solid colored pieces with a shared tabletop material. */
+.game-building-piece{
+ --piece-color:#315c80;
+ --piece-edge:#1e405e;
+ cursor:default;
+ outline:none;
+ transform-box:fill-box;
+ transform-origin:center;
+}
+.game-building-piece.player-1{--piece-color:#2868b2;--piece-edge:#174679;color:#174679}
+.game-building-piece.player-2{--piece-color:#c74a42;--piece-edge:#8f2b27;color:#8f2b27}
+.game-building-piece.player-3{--piece-color:#4f8b51;--piece-edge:#2f6334;color:#2f6334}
+.game-building-piece.player-4{--piece-color:#8b55a1;--piece-edge:#633675;color:#633675}
+.game-building-piece.player-5{--piece-color:#d48826;--piece-edge:#9a5d12;color:#9a5d12}
+.game-building-piece.player-6{--piece-color:#2b9295;--piece-edge:#176b70;color:#176b70}
+.game-building-shadow{fill:#17251f;opacity:.22}
+.game-building-shell{
+ fill:var(--piece-color);
+ stroke:var(--piece-edge);
+ stroke-width:1.75;
+ stroke-linejoin:round;
+ filter:drop-shadow(0 1px .65px #14251f45);
+}
+.game-building-accent{
+ fill:none;
+ stroke:#ffffff;
+ stroke-width:1.45;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+ opacity:.55;
+}
+.game-building-detail{
+ fill:none;
+ stroke:#173027;
+ stroke-width:1.25;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+ opacity:.8;
+}
+.game-building-city .game-building-shell{stroke-width:1.85}
+.game-building-city .game-building-accent{stroke-width:1.55}
+.game-building-piece.game-piece-enter{animation:building-place .32s cubic-bezier(.18,.85,.28,1.25) both}
+.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}
+.game-building-piece.game-target-city:hover .game-building-shell,
+.game-building-piece.game-target-city:focus .game-building-shell,
+.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
+
+/* Target affordances remain brighter than decorative board art. */
+.game-target-road{stroke:#ffd15c;stroke-width:.2;stroke-dasharray:.14 .07;filter:drop-shadow(0 0 .055px #8a4f00)}
+.game-target-vertex{fill:#fff4a2;stroke:#d96300;stroke-width:.14;filter:drop-shadow(0 0 .045px #7e3d00)}
+.robber-target .island-cell{stroke:#ffd15c;stroke-width:.12;filter:brightness(1.06) drop-shadow(0 0 .055px #a66000)}
+
+@keyframes road-grow{
+ from{stroke-dashoffset:1;opacity:.25}
+ to{stroke-dashoffset:0;opacity:1}
+}
+@keyframes building-place{
+ 0%{opacity:0;transform:scale(.72)}
+ 70%{opacity:1;transform:scale(1.08)}
+ 100%{opacity:1;transform:scale(1)}
+}
+@keyframes robber-settle{
+ 0%{opacity:.2;transform:translateY(-.22px) scale(.82)}
+ 68%{opacity:1;transform:translateY(.035px) scale(1.05)}
+ 100%{opacity:1;transform:translateY(0) scale(1)}
+}
+
+@media(max-width:760px){
+ .terrain-art{opacity:.65}
+ .island-cell{stroke-width:.065}
+ .island-cell-inset{stroke-width:.024}
+ .game-road-shadow{stroke-width:.22}
+ .game-road{stroke-width:.17}
+ .game-road-highlight{stroke-width:.04}
+}
+@media(prefers-reduced-motion:reduce){
+ .game-road-piece.game-piece-enter .game-road,
+ .game-road-piece.game-piece-enter .game-road-highlight,
+ .game-building-piece.game-piece-enter,
+ .robber-marker.robber-marker-enter{animation:none}
+}
