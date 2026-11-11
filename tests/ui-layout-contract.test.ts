@@ -196,7 +196,7 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
  const render=readFileSync('src/game/board/render.ts','utf8');
  const game=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(render.includes("gradient(defs,'board-ocean-gradient'"));
+ assert.ok(render.includes("${prefix}-board-ocean-gradient"));
  assert.ok(render.includes("class:'board-ocean'"));
  assert.ok(render.includes("'data-terrain-art':terrain"));
  assert.ok(render.includes("class:'island-cell-shadow'"));
@@ -207,6 +207,11 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
  assert.ok(game.includes("game-road-shadow"));
  assert.ok(game.includes("game-road-highlight"));
  assert.ok(game.includes("game-building-shadow"));
+ assert.ok(game.includes("PLAYER_PIECE_PALETTE"));
+ assert.ok(game.includes("shell.setAttribute('fill',palette.body)"));
+ assert.ok(render.includes('terrainFallback'));
+ assert.ok(render.includes('boardRenderSequence'));
+ assert.ok(render.includes('url(#${defsPrefix}-terrain-${hex.terrain})'));
  assert.ok(game.includes("owner.kind==='city'?.58:.42"));
  assert.ok(game.includes("robber-marker-enter"));
  assert.ok(css.includes('/* ART-A01 · modern illustrated tabletop board */'));
