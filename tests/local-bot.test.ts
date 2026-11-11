@@ -135,3 +135,45 @@ test('bot preserves a near-complete settlement instead of spending its wool and 
  assert.equal(command?.type,'build-settlement');
  assert.equal(command&&'vertexId' in command?command.vertexId:null,target);
 });
+
+
+test('building-first bot chooses a settlement over roads or development cards when both are affordable',()=>{
+ const state=createGame(61,['Player 1','Bot']),board=createIslandBoard();
+ state.phase='action';state.currentSeat=1;state.turn=6;
+ const first=board.edges[0],v0=first.vertexIds[0],v1=first.vertexIds[1];
+ const second=board.edges.find(edge=>edge.id!==first.id&&edge.vertexIds.includes(v1))!;
+ const v2=second.vertexIds[0]===v1?second.vertexIds[1]:second.vertexIds[0];
+ state.buildings={[v0]:{playerId:'Bot',kind:'settlement'}};
+ state.roads={[first.id]:'Bot',[second.id]:'Bot'};
+ state.players[1].hand={lumber:3,brick:3,wool:2,grain:3,ore:3};
+ state.players[1].cards=[];state.deck=[{type:'knight'} as any];
+ const command=chooseBotCommand(state,'Bot');
+ assert.equal(command?.type,'build-settlement');
+ assert.equal(command&&'vertexId' in command?command.vertexId:null,v2);
+});
+
+test('building-first bot upgrades a city when it is ready and the next settlement is still far away',()=>{
+ const state=createGame(62,['Player 1','Bot']),board=createIslandBoard();
+ state.phase='action';state.currentSeat=1;state.turn=6;
+ const first=board.edges[0],v0=first.vertexIds[0],v1=first.vertexIds[1];
+ const second=board.edges.find(edge=>edge.id!==first.id&&edge.vertexIds.includes(v1))!;
+ state.buildings={[v0]:{playerId:'Bot',kind:'settlement'}};
+ state.roads={[first.id]:'Bot',[second.id]:'Bot'};
+ state.players[1].hand={lumber:0,brick:0,wool:0,grain:2,ore:3};
+ const command=chooseBotCommand(state,'Bot');
+ assert.deepEqual(command,{type:'build-city',playerId:'Bot',vertexId:v0});
+});
+
+test('bot does not lay an expansion road until the road plus settlement package is ready',()=>{
+ const state=createGame(63,['Player 1','Bot']),board=createIslandBoard();
+ state.phase='action';state.currentSeat=1;state.turn=6;
+ const first=board.edges[0],v0=first.vertexIds[0],v1=first.vertexIds[1];
+ state.buildings={[v0]:{playerId:'Bot',kind:'city'}};
+ state.roads={[first.id]:'Bot'};
+ state.players[1].hand={lumber:3,brick:3,wool:0,grain:0,ore:0};
+ assert.deepEqual(chooseBotCommand(state,'Bot'),{type:'end-turn',playerId:'Bot'});
+ state.players[1].hand={lumber:2,brick:2,wool:1,grain:1,ore:0};
+ const command=chooseBotCommand(state,'Bot');
+ assert.equal(command?.type,'build-road');
+ assert.ok(command&&'edgeId' in command&&board.edges.some(edge=>edge.id===command.edgeId&&edge.vertexIds.includes(v1)));
+});
