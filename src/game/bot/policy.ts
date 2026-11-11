@@ -3,7 +3,7 @@ import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 import {
- affordableAction,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
+ affordableAction,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,
  chooseInventionResources,monopolyResource,savingGoal,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
 } from './strategy.ts';
 
@@ -63,11 +63,22 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  if(playable.includes('road-building')&&player.roads>0&&shouldPlayRoadBuilding(state,botId))return {type:'play-card',playerId:botId,card:'road-building'};
 
  const reserve=savingGoal(state,botId);
- if(reserve){
-  if(reserve.kind==='settlement'&&reserve.missing===0&&reserve.targetId)return {type:'build-settlement',playerId:botId,vertexId:reserve.targetId};
-  if(reserve.kind==='city'&&reserve.missing===0&&reserve.targetId)return {type:'build-city',playerId:botId,vertexId:reserve.targetId};
+ // Once a settlement target is connected and legal, stop extending roads and save for that house.
+ if(reserve?.kind==='settlement'){
+  if(reserve.missing===0)return {type:'build-settlement',playerId:botId,vertexId:reserve.targetId};
   const trade=chooseBankTrade(state,botId,reserve.cost);if(trade)return trade;
-  if(reserve.kind==='expansion'&&reserve.missing===0&&reserve.roadId&&player.roads>0&&player.hand.lumber>=COSTS.road.lumber&&player.hand.brick>=COSTS.road.brick)return {type:'build-road',playerId:botId,edgeId:reserve.roadId};
+  return {type:'end-turn',playerId:botId};
+ }
+ // A city that is already affordable is an immediate production upgrade.
+ if(reserve?.kind==='city'&&reserve.missing===0)return {type:'build-city',playerId:botId,vertexId:reserve.targetId};
+
+ // Before a settlement is reachable, roads advance the highest-ranked expansion target one edge at a time.
+ const road=bestRoad(state,botId);
+ if(road&&player.roads>0&&player.hand.lumber>=1&&player.hand.brick>=1)return {type:'build-road',playerId:botId,edgeId:road};
+
+ // If the expansion road is not currently affordable, an existing city remains the next saving priority.
+ if(reserve?.kind==='city'){
+  const trade=chooseBankTrade(state,botId,reserve.cost);if(trade)return trade;
   return {type:'end-turn',playerId:botId};
  }
 
@@ -75,7 +86,6 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  if(action?.type==='city'&&action.id)return {type:'build-city',playerId:botId,vertexId:action.id};
  if(action?.type==='settlement'&&action.id)return {type:'build-settlement',playerId:botId,vertexId:action.id};
  if(action?.type==='card')return {type:'buy-card',playerId:botId};
- if(action?.type==='road'&&action.id)return {type:'build-road',playerId:botId,edgeId:action.id};
 
  const trade=chooseBankTrade(state,botId);if(trade)return trade;
  return {type:'end-turn',playerId:botId};
