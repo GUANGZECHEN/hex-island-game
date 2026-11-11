@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createGame } from '../src/game/rules/state.ts';
 import { chooseBotCommand } from '../src/game/bot/policy.ts';
 import { applyBotCommand } from '../src/game/bot/runner.ts';
-import { monopolyResource, settlementScore } from '../src/game/bot/strategy.ts';
+import { monopolyResource, rankExpansionTargets, settlementScore } from '../src/game/bot/strategy.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('local bot deterministically completes the full snake setup through normal reducers',()=>{
@@ -164,16 +164,51 @@ test('building-first bot upgrades a city when it is ready and the next settlemen
  assert.deepEqual(command,{type:'build-city',playerId:'Bot',vertexId:v0});
 });
 
-test('bot does not lay an expansion road until the road plus settlement package is ready',()=>{
+test('bot builds roads toward the highest-ranked settlement target before saving settlement resources',()=>{
  const state=createGame(63,['Player 1','Bot']),board=createIslandBoard();
  state.phase='action';state.currentSeat=1;state.turn=6;
- const first=board.edges[0],v0=first.vertexIds[0],v1=first.vertexIds[1];
- state.buildings={[v0]:{playerId:'Bot',kind:'city'}};
+ const first=board.edges[0],home=first.vertexIds[0];
+ state.buildings={[home]:{playerId:'Bot',kind:'city'}};
  state.roads={[first.id]:'Bot'};
  state.players[1].hand={lumber:3,brick:3,wool:0,grain:0,ore:0};
- assert.deepEqual(chooseBotCommand(state,'Bot'),{type:'end-turn',playerId:'Bot'});
- state.players[1].hand={lumber:2,brick:2,wool:1,grain:1,ore:0};
+ const targets=rankExpansionTargets(state,'Bot');
+ assert.ok(targets.length>=2);
+ assert.ok(targets[0].priority>=targets[1].priority);
+ assert.ok(targets[0].roadDistance>0);
+ assert.ok(targets[0].nextRoadId);
  const command=chooseBotCommand(state,'Bot');
- assert.equal(command?.type,'build-road');
- assert.ok(command&&'edgeId' in command&&board.edges.some(edge=>edge.id===command.edgeId&&edge.vertexIds.includes(v1)));
+ assert.deepEqual(command,{type:'build-road',playerId:'Bot',edgeId:targets[0].nextRoadId!});
+});
+
+test('once the planned target is connected, bot stops extending roads and starts saving for that settlement',()=>{
+ const state=createGame(64,['Player 1','Bot']),board=createIslandBoard();
+ state.phase='action';state.currentSeat=1;state.turn=6;
+ const first=board.edges[0],home=first.vertexIds[0];
+ state.buildings={[home]:{playerId:'Bot',kind:'city'}};
+ state.roads={[first.id]:'Bot'};
+ const target=rankExpansionTargets(state,'Bot').find(item=>item.roadDistance>0&&item.pathEdgeIds.length>0);
+ assert.ok(target);
+ for(const edgeId of target!.pathEdgeIds)state.roads[edgeId]='Bot';
+ state.players[1].hand={lumber:3,brick:3,wool:0,grain:0,ore:0};
+ const connected=rankExpansionTargets(state,'Bot').find(item=>item.vertexId===target!.vertexId);
+ assert.ok(connected);
+ assert.equal(connected!.roadDistance,0);
+ const command=chooseBotCommand(state,'Bot');
+ assert.deepEqual(command,{type:'end-turn',playerId:'Bot'});
+});
+
+test('expansion planner drops a blocked target and switches to the next ranked candidate',()=>{
+ const state=createGame(65,['Player 1','Bot']),board=createIslandBoard();
+ state.phase='action';state.currentSeat=1;state.turn=6;
+ const first=board.edges[0],home=first.vertexIds[0];
+ state.buildings={[home]:{playerId:'Bot',kind:'city'}};
+ state.roads={[first.id]:'Bot'};
+ const before=rankExpansionTargets(state,'Bot');
+ assert.ok(before.length>=2);
+ const blocked=before[0].vertexId;
+ state.buildings[blocked]={playerId:'Player 1',kind:'settlement'};
+ const after=rankExpansionTargets(state,'Bot');
+ assert.ok(after.length>0);
+ assert.notEqual(after[0].vertexId,blocked);
+ assert.ok(!after.some(target=>target.vertexId===blocked));
 });
