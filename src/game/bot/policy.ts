@@ -3,7 +3,7 @@ import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 import {
- affordableAction,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,
+ affordable,affordableAction,bestCity,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
  chooseInventionResources,monopolyResource,savingGoal,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
 } from './strategy.ts';
 
@@ -66,6 +66,8 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  // Once a settlement target is connected and legal, stop extending roads and save for that house.
  if(reserve?.kind==='settlement'){
   if(reserve.missing===0)return {type:'build-settlement',playerId:botId,vertexId:reserve.targetId};
+  const readyCity=bestCity(state,botId);
+  if(readyCity&&player.cities>0&&affordable(player.hand,COSTS.city))return {type:'build-city',playerId:botId,vertexId:readyCity};
   const trade=chooseBankTrade(state,botId,reserve.cost);if(trade)return trade;
   return {type:'end-turn',playerId:botId};
  }
