@@ -26,17 +26,13 @@ Setup roads are scored by the value and distance of future legal settlement site
 
 ## Mid-game engine
 
-Every action phase re-evaluates four competing investments:
-- city: immediate VP plus doubled production at an existing settlement;
-- settlement: immediate VP plus new production and expansion;
-- development card: stronger when the bot has grain/ore/wool production or is competing for Largest Army;
-- road: valuable when it opens a strong settlement site or advances a realistic Longest Road race.
+Every action phase follows a building-first policy. Settlements and cities are the primary investments because they claim or multiply production. When both are realistic, the bot finishes the building with the smaller resource gap; an equal gap favors a settlement because it claims new production. Development cards are discretionary spending after building goals. Roads are infrastructure for a concrete settlement plan, not a destination by themselves.
 
-The bot chooses the affordable action with the highest current strategic score. Roads have a deliberately low baseline value so the bot does not spam roads with no expansion purpose.
+A normal paid road must have strong settlement-expansion value. Longest Road contributes only a small secondary bonus and cannot justify ordinary road spam by itself. Even with surplus lumber and brick, the bot normally waits until it has the complete road + settlement resource package before laying the expansion road, so the road is quickly followed by a house.
 
 ### Saving / reservation
 
-When a high-value settlement or city is within two missing resource cards, the bot creates a short-term saving goal. Cards required by that build are treated as reserved: lower-value roads or development-card purchases may not consume them. The bot first tries a bank/port trade using genuine surplus to fill the missing resource; if no useful trade exists, it ends the turn and keeps saving. When expansion requires a road before the settlement is legal, the bot may reserve the combined road + settlement package and spend the road only as part of that expansion plan.
+When a legal settlement or city exists, the bot creates a building saving goal even if it needs several future rolls. Cards required by that build are treated as reserved: lower-value roads or development-card purchases may not consume them. The bot first tries a bank/port trade using genuine surplus to fill the missing resource; if no useful trade exists, it ends the turn and keeps saving. When expansion requires a road before the settlement is legal, the bot may reserve the combined road + settlement package and spend the road only as part of that expansion plan.
 
 ## Trading and hand management
 
