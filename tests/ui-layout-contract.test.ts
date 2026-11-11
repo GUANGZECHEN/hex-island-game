@@ -190,3 +190,30 @@ test('a winner gets a one-shot animated board-centered victory celebration',()=>
  assert.ok(css.includes('@keyframes victory-confetti-pop'));
  assert.ok(css.includes('.victory-alert.victory-alert-out'));
 });
+
+
+test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-motion fallbacks',()=>{
+ const render=readFileSync('src/game/board/render.ts','utf8');
+ const game=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(render.includes("id:'board-ocean-gradient'"));
+ assert.ok(render.includes("class:'board-ocean'"));
+ assert.ok(render.includes("'data-terrain-art':terrain"));
+ assert.ok(render.includes("class:'island-cell-shadow'"));
+ assert.ok(render.includes("class:'island-cell-inset'"));
+ assert.ok(render.includes("class:`island-token-rim"));
+ assert.ok(render.includes("class:`island-token-pip"));
+ assert.ok(render.includes("class:'robber-marker-ring'"));
+ assert.ok(game.includes("game-road-shadow"));
+ assert.ok(game.includes("game-road-highlight"));
+ assert.ok(game.includes("game-building-shadow"));
+ assert.ok(game.includes("owner.kind==='city'?.58:.42"));
+ assert.ok(game.includes("robber-marker-enter"));
+ assert.ok(css.includes('/* ART-A01 · modern illustrated tabletop board */'));
+ assert.ok(css.includes('.game-road-piece.player-5'));
+ assert.ok(css.includes('.game-road-piece.player-6'));
+ assert.ok(css.includes('@keyframes road-grow'));
+ assert.ok(css.includes('@keyframes building-place'));
+ assert.ok(css.includes('@keyframes robber-settle'));
+ assert.ok(css.includes('@media(prefers-reduced-motion:reduce)'));
+});
