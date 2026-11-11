@@ -270,7 +270,7 @@ try{
       if(responsive.stripPosition!=='static')throw new Error(`Player HUD did not move above the board at ${width}px.`);
     }
     const before=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
-    await actor.locator('[data-panel="cards"]').click();
+    if(await actor.locator('[data-panel="cards"]').count()!==0)throw new Error('Removed Cards tab unexpectedly returned.');
     await actor.locator('[data-panel="trade"]').click();
     await actor.locator('[data-panel="status"]').click();
     await actor.locator('[data-panel="actions"]').click();
