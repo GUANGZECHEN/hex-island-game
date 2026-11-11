@@ -40,10 +40,18 @@ try{
   await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 2 settlement')),null,{timeout:15000});
   if(await host.locator('#pass').isVisible())throw new Error('Bot turns triggered pass-device UI.');
   if(await host.locator('#board .board-ocean').count()!==1||await host.locator('#board .board-ocean-waves').count()!==1)throw new Error('ART-A01 ocean layers are missing.');
+  const oceanPaint=await host.locator('#board .board-ocean').evaluate(node=>getComputedStyle(node).fill);
+  if(!oceanPaint||oceanPaint==='none'||oceanPaint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-A01 ocean is visually transparent: ${oceanPaint}`);
+  for(const terrain of ['forest','hills','pasture','fields','mountains','desert']){
+    const paint=await host.locator(`#board .island-cell-${terrain}`).first().evaluate(node=>getComputedStyle(node).fill);
+    if(!paint||paint==='none'||paint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-A01 ${terrain} tile has no visible fill: ${paint}`);
+  }
   if(await host.locator('#board [data-terrain-art]').count()!==19)throw new Error('ART-A01 terrain illustration is incomplete.');
   if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
   if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
   if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
+  const visibleBuildings=await host.locator('#board [data-building-kind] .game-building-shell').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect(),style=getComputedStyle(node);return box.width>=6&&box.height>=6&&style.fill!=='none'&&style.opacity!=='0';}).length);
+  if(visibleBuildings<2)throw new Error(`ART-A01 settlements are present in state but not visibly painted: ${visibleBuildings}`);
   await host.waitForFunction(()=>document.querySelectorAll('#board .game-road-piece').length>=2,null,{timeout:15000});
   const roadPieces=await host.locator('#board .game-road-piece').count();
   if(await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
