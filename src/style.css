@@ -624,7 +624,10 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .game-building-city .game-building-shell{stroke-width:1.85}
 .game-building-city .game-building-accent{stroke-width:1.55}
-.game-building-piece.game-piece-enter{animation:building-place .32s cubic-bezier(.18,.85,.28,1.25) both}
+.game-building-piece.game-piece-enter .game-building-shadow,
+.game-building-piece.game-piece-enter .game-building-shell,
+.game-building-piece.game-piece-enter .game-building-accent,
+.game-building-piece.game-piece-enter .game-building-detail{transform-box:fill-box;transform-origin:center;animation:building-place .32s cubic-bezier(.18,.85,.28,1.25) both}
 .game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}
 .game-building-piece.game-target-city:hover .game-building-shell,
 .game-building-piece.game-target-city:focus .game-building-shell,
@@ -661,6 +664,9 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 @media(prefers-reduced-motion:reduce){
  .game-road-piece.game-piece-enter .game-road,
  .game-road-piece.game-piece-enter .game-road-highlight,
- .game-building-piece.game-piece-enter,
+ .game-building-piece.game-piece-enter .game-building-shadow,
+ .game-building-piece.game-piece-enter .game-building-shell,
+ .game-building-piece.game-piece-enter .game-building-accent,
+ .game-building-piece.game-piece-enter .game-building-detail,
  .robber-marker.robber-marker-enter{animation:none}
 }
