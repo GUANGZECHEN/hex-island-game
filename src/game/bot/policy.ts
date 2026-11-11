@@ -67,7 +67,7 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
   if(reserve.kind==='settlement'&&reserve.missing===0&&reserve.targetId)return {type:'build-settlement',playerId:botId,vertexId:reserve.targetId};
   if(reserve.kind==='city'&&reserve.missing===0&&reserve.targetId)return {type:'build-city',playerId:botId,vertexId:reserve.targetId};
   const trade=chooseBankTrade(state,botId,reserve.cost);if(trade)return trade;
-  if(reserve.kind==='expansion'&&reserve.roadId&&player.roads>0&&player.hand.lumber>=COSTS.road.lumber&&player.hand.brick>=COSTS.road.brick)return {type:'build-road',playerId:botId,edgeId:reserve.roadId};
+  if(reserve.kind==='expansion'&&reserve.missing===0&&reserve.roadId&&player.roads>0&&player.hand.lumber>=COSTS.road.lumber&&player.hand.brick>=COSTS.road.brick)return {type:'build-road',playerId:botId,edgeId:reserve.roadId};
   return {type:'end-turn',playerId:botId};
  }
 
