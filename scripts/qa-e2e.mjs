@@ -39,6 +39,13 @@ try{
   await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 1 settlement')),null,{timeout:15000});
   await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 2 settlement')),null,{timeout:15000});
   if(await host.locator('#pass').isVisible())throw new Error('Bot turns triggered pass-device UI.');
+  if(await host.locator('#board .board-ocean').count()!==1||await host.locator('#board .board-ocean-waves').count()!==1)throw new Error('ART-A01 ocean layers are missing.');
+  if(await host.locator('#board [data-terrain-art]').count()!==19)throw new Error('ART-A01 terrain illustration is incomplete.');
+  if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
+  if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
+  if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
+  const roadPieces=await host.locator('#board .game-road-piece').count();
+  if(roadPieces<2||await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
   await host.goto(qaUrl,{waitUntil:'networkidle'});
 
   // First prove that an invite survives the host-unavailable window instead of failing once.
