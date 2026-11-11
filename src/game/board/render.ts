@@ -6,6 +6,8 @@ import type { Resource } from '../rules/state.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const names: Record<HexSetup['terrain'], string> = { forest: 'Forest', hills: 'Hills', pasture: 'Pasture', fields: 'Fields', mountains: 'Mountains', desert: 'Desert' };
+const terrainFallback:Record<HexSetup['terrain'],string>={forest:'#3f7954',hills:'#c7774f',pasture:'#87b96b',fields:'#d9ae4a',mountains:'#7f95a3',desert:'#d8be83'};
+let boardRenderSequence=0;
 
 function node(tag:string,attributes:Record<string,string>={}):SVGElement {
   const element=document.createElementNS(SVG_NS,tag) as SVGElement;
@@ -24,16 +26,16 @@ function gradient(defs:SVGElement,id:string,stops:readonly (readonly [string,str
   for(const [offset,color] of stops)g.append(node('stop',{offset,'stop-color':color}));
   defs.append(g);
 }
-function appendBoardDefs(svg:SVGElement){
+function appendBoardDefs(svg:SVGElement,prefix:string){
   const defs=node('defs');
-  gradient(defs,'board-ocean-gradient',[['0%','#8fc3c3'],['52%','#6da9ad'],['100%','#4f8f98']]);
-  gradient(defs,'terrain-forest',[['0%','#5c9366'],['58%','#3f7954'],['100%','#2e6246']]);
-  gradient(defs,'terrain-hills',[['0%','#dfa071'],['60%','#c7774f'],['100%','#a95e43']]);
-  gradient(defs,'terrain-pasture',[['0%','#abd28a'],['60%','#87b96b'],['100%','#659c58']]);
-  gradient(defs,'terrain-fields',[['0%','#edd273'],['55%','#d9ae4a'],['100%','#bd8f31']]);
-  gradient(defs,'terrain-mountains',[['0%','#aebdc7'],['55%','#7f95a3'],['100%','#667b89']]);
-  gradient(defs,'terrain-desert',[['0%','#ead9a7'],['55%','#d8be83'],['100%','#c8a66a']]);
-  const pattern=node('pattern',{id:'board-ocean-waves',width:'1.35',height:'.72',patternUnits:'userSpaceOnUse'});
+  gradient(defs,`${prefix}-board-ocean-gradient`,[['0%','#8fc3c3'],['52%','#6da9ad'],['100%','#4f8f98']]);
+  gradient(defs,`${prefix}-terrain-forest`,[['0%','#5c9366'],['58%','#3f7954'],['100%','#2e6246']]);
+  gradient(defs,`${prefix}-terrain-hills`,[['0%','#dfa071'],['60%','#c7774f'],['100%','#a95e43']]);
+  gradient(defs,`${prefix}-terrain-pasture`,[['0%','#abd28a'],['60%','#87b96b'],['100%','#659c58']]);
+  gradient(defs,`${prefix}-terrain-fields`,[['0%','#edd273'],['55%','#d9ae4a'],['100%','#bd8f31']]);
+  gradient(defs,`${prefix}-terrain-mountains`,[['0%','#aebdc7'],['55%','#7f95a3'],['100%','#667b89']]);
+  gradient(defs,`${prefix}-terrain-desert`,[['0%','#ead9a7'],['55%','#d8be83'],['100%','#c8a66a']]);
+  const pattern=node('pattern',{id:`${prefix}-board-ocean-waves`,width:'1.35',height:'.72',patternUnits:'userSpaceOnUse'});
   path(pattern,'M-.2 .31 C.12 .08 .48 .08 .8 .31 S1.48 .54 1.72 .31','board-ocean-wave-path');
   path(pattern,'M.18 .61 C.42 .44 .72 .44 .96 .61','board-ocean-wave-path board-ocean-wave-faint');
   defs.append(pattern);svg.append(defs);
@@ -97,9 +99,10 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('aria-hidden', 'true');
   svg.classList.add('island-board');
-  appendBoardDefs(svg);
-  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean'}));
-  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean-waves'}));
+  const defsPrefix=`hex-board-${++boardRenderSequence}`;
+  appendBoardDefs(svg,defsPrefix);
+  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean',fill:'#6da9ad',style:`fill:url(#${defsPrefix}-board-ocean-gradient)`}));
+  svg.append(node('rect',{x:String(vx),y:String(vy),width:String(vw),height:String(vh),rx:'.42',class:'board-ocean-waves',fill:'none',style:`fill:url(#${defsPrefix}-board-ocean-waves)`}));
 
   const details = document.createElement('ul');
   details.className = 'sr-only';
@@ -113,7 +116,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     const title = document.createElementNS(SVG_NS, 'title');title.textContent = description;group.append(title);
     const points=hex.points.map(point => `${point.x},${point.y}`).join(' ');
     group.append(node('polygon',{points,class:'island-cell-shadow'}));
-    group.append(node('polygon',{points,class:`island-cell island-cell-${hex.terrain}`}));
+    group.append(node('polygon',{points,class:`island-cell island-cell-${hex.terrain}`,fill:terrainFallback[hex.terrain],style:`fill:url(#${defsPrefix}-terrain-${hex.terrain})`}));
     const inset=node('polygon',{points,class:'island-cell-inset',transform:`translate(${hex.center.x} ${hex.center.y}) scale(.94) translate(${-hex.center.x} ${-hex.center.y})`});group.append(inset);
     appendTerrainArt(group,hex.terrain,hex.center.x,hex.center.y);
 
