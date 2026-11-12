@@ -16,12 +16,17 @@ test('nickname field, target focus styling and development-card purchase placeme
 });
 
 
-test('board buildings render semantic B3 SVG pieces instead of circle/rect ownership markers',()=>{
+test('board buildings render semantic B3 SVG pieces directly in board coordinates',()=>{
   const ui=readFileSync('src/game-ui.ts','utf8');
   const css=readFileSync('src/style.css','utf8');
   assert.ok(ui.includes("data-building-kind"));
-  assert.ok(ui.includes("BOARD_BUILDING_PATHS[owner.kind]"));
+  assert.ok(ui.includes("data-vertex-id"));
+  assert.ok(ui.includes("data-board-x"));
   assert.ok(ui.includes("game-building-piece game-building-"));
+  assert.ok(ui.includes("M${x-.24} ${y+.19}V${y-.03}"));
+  assert.ok(ui.includes("M${x-.33} ${y+.2}V${y-.07}"));
+  assert.ok(!ui.includes("BOARD_BUILDING_PATHS[owner.kind]"));
+  assert.ok(!ui.includes("scale(size/24)"));
   assert.ok(css.includes('.game-building-shell'));
   assert.ok(css.includes('.game-building-city'));
   assert.ok(!ui.includes("owner.kind==='city'?'rect':'circle'"));
