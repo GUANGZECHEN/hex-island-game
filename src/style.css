@@ -1266,7 +1266,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .port-label{
  fill:#3f3222;
- font-size:.19px;
+ font-size:.22px;
  font-weight:950;
  letter-spacing:.01em;
  paint-order:stroke;
@@ -1286,7 +1286,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .port-anchor-icon{
  fill:none;
  stroke:#42564f;
- stroke-width:.045;
+ stroke-width:.050;
  stroke-linecap:round;
  stroke-linejoin:round;
 }
@@ -1306,6 +1306,6 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .port-pier-leg{stroke-width:.058;opacity:.62}
  .port-dock-plank,.port-bollard,.port-boat-decor{display:none}
  .port-dock-board{stroke-width:.035}
- .port-label{font-size:.18px;stroke-width:.02}
- .port-resource-icon{transform:scale(.94);transform-origin:center}
+ .port-label{font-size:.205px;stroke-width:.022}
+ .port-resource-icon{transform:scale(.98);transform-origin:center}
 }
