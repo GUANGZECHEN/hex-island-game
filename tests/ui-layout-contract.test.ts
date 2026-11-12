@@ -235,7 +235,7 @@ test('ART-B01 unifies player boards, hand, actions, trades and tabs without chan
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
  assert.ok(icons.includes('resource-chip-${resource}'));
- assert.ok(icons.includes('chip.dataset.resource=resource'));
+ assert.ok(icons.includes("chip.setAttribute('data-resource',resource)"));
  assert.ok(ui.includes('function playerAward'));
  assert.ok(ui.includes("'Longest Road'"));
  assert.ok(ui.includes("'Largest Army'"));
