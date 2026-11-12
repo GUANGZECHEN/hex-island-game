@@ -47,10 +47,10 @@ function appendTerrainArt(group:SVGElement,terrain:HexSetup['terrain'],cx:number
     line(art,cx-.44,cy+.13,cx-.44,cy+.34,'terrain-art-detail');line(art,cx-.04,cy+.16,cx-.04,cy+.39,'terrain-art-detail');line(art,cx+.38,cy+.13,cx+.38,cy+.33,'terrain-art-detail');
   }else if(terrain==='hills'){
     // Exposed red-clay quarry: stepped cuts plus a few stacked bricks make the brick source legible at a glance.
-    path(art,`M${cx-.72} ${cy+.31}L${cx-.52} ${cy-.02}L${cx-.18} ${cy-.14}L${cx+.02} ${cy+.02}L${cx+.34} ${cy-.12}L${cx+.72} ${cy+.28}`,'terrain-art-clay-face');
-    path(art,`M${cx-.66} ${cy+.12}L${cx-.34} ${cy+.04}L${cx-.12} ${cy+.15}L${cx+.16} ${cy+.07}L${cx+.48} ${cy+.14}`,'terrain-art-quarry-cut');
-    path(art,`M${cx-.58} ${cy+.31}L${cx-.29} ${cy+.22}L${cx+.02} ${cy+.31}L${cx+.34} ${cy+.22}L${cx+.61} ${cy+.31}`,'terrain-art-secondary');
-    for(const [bx,by] of [[cx+.22,cy-.31],[cx+.39,cy-.27],[cx+.30,cy-.17]]){
+    path(art,`M${cx-.72} ${cy+.31}L${cx-.52} ${cy+.07}L${cx-.18} ${cy-.03}L${cx+.02} ${cy+.08}L${cx+.34} ${cy-.02}L${cx+.72} ${cy+.28}`,'terrain-art-clay-face');
+    path(art,`M${cx-.66} ${cy+.15}L${cx-.34} ${cy+.10}L${cx-.12} ${cy+.18}L${cx+.16} ${cy+.12}L${cx+.48} ${cy+.17}`,'terrain-art-quarry-cut');
+    path(art,`M${cx-.58} ${cy+.31}L${cx-.29} ${cy+.24}L${cx+.02} ${cy+.31}L${cx+.34} ${cy+.24}L${cx+.61} ${cy+.31}`,'terrain-art-secondary');
+    for(const [bx,by] of [[cx+.22,cy-.05],[cx+.39,cy-.01],[cx+.30,cy+.07]]){
       art.append(node('rect',{x:String(bx-.07),y:String(by-.035),width:'.14',height:'.07',rx:'.012',class:'terrain-art-brick'}));
     }
   }else if(terrain==='pasture'){
@@ -65,9 +65,9 @@ function appendTerrainArt(group:SVGElement,terrain:HexSetup['terrain'],cx:number
     path(art,`M${cx-.62} ${cy+.36}Q${cx} ${cy+.18} ${cx+.62} ${cy+.36}`,'terrain-art-secondary');
   }else if(terrain==='mountains'){
     // Angular quarry faces and loose boulders read as an ore/stone source rather than a generic alpine mountain.
-    path(art,`M${cx-.72} ${cy+.34}L${cx-.45} ${cy-.22}L${cx-.20} ${cy-.04}L${cx+.08} ${cy-.48}L${cx+.34} ${cy-.16}L${cx+.70} ${cy+.34}Z`,'terrain-art-rock-fill');
-    path(art,`M${cx-.45} ${cy-.22}L${cx-.22} ${cy+.20}L${cx+.08} ${cy-.48}L${cx+.17} ${cy+.16}L${cx+.34} ${cy-.16}`,'terrain-art-rock-facet');
-    path(art,`M${cx-.60} ${cy+.19}L${cx-.29} ${cy+.10}L${cx-.08} ${cy+.22}L${cx+.17} ${cy+.12}L${cx+.48} ${cy+.20}`,'terrain-art-quarry-bench');
+    path(art,`M${cx-.72} ${cy+.34}L${cx-.45} ${cy-.02}L${cx-.20} ${cy+.08}L${cx+.08} ${cy-.12}L${cx+.34} ${cy+.02}L${cx+.70} ${cy+.34}Z`,'terrain-art-rock-fill');
+    path(art,`M${cx-.45} ${cy-.02}L${cx-.22} ${cy+.22}L${cx+.08} ${cy-.12}L${cx+.17} ${cy+.19}L${cx+.34} ${cy+.02}`,'terrain-art-rock-facet');
+    path(art,`M${cx-.60} ${cy+.22}L${cx-.29} ${cy+.15}L${cx-.08} ${cy+.24}L${cx+.17} ${cy+.17}L${cx+.48} ${cy+.23}`,'terrain-art-quarry-bench');
     for(const [rx,ry,rr] of [[cx-.46,cy+.30,.055],[cx-.31,cy+.34,.038],[cx+.43,cy+.29,.050],[cx+.55,cy+.34,.032]]){
       art.append(node('circle',{cx:String(rx),cy:String(ry),r:String(rr),class:'terrain-art-rubble'}));
     }
@@ -150,7 +150,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     // Push the dock farther offshore and bias it slightly along the coast so its two direct pier legs breathe and differ naturally in length.
     const tx=-uy,ty=ux,dockDistance=.78,dockBias=.055;
     const px=mid.x+ux*dockDistance+tx*dockBias,py=mid.y+uy*dockDistance+ty*dockBias;
-    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.37,dockAttachInset=.255;
+    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.43,dockAttachInset=.305;
     const leftDock={x:px-tx*dockAttachHalf-ux*dockAttachInset,y:py-ty*dockAttachHalf-uy*dockAttachInset};
     const rightDock={x:px+tx*dockAttachHalf-ux*dockAttachInset,y:py+ty*dockAttachHalf-uy*dockAttachInset};
     const aAlong=(a.x-mid.x)*tx+(a.y-mid.y)*ty,bAlong=(b.x-mid.x)*tx+(b.y-mid.y)*ty;
@@ -163,21 +163,21 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     line(group,b.x,b.y,bDock.x,bDock.y,'port-pier-leg port-pier-b');
 
     const dock=node('g',{class:'port-dock',transform:`translate(${px} ${py}) rotate(${angle})`});
-    dock.append(node('rect',{x:'-.41',y:'-.27',width:'.82',height:'.54',rx:'.095',class:'port-dock-shadow',transform:'translate(0 .035)'}));
-    dock.append(node('rect',{x:'-.41',y:'-.27',width:'.82',height:'.54',rx:'.095',class:'port-dock-board'}));
-    for(const x of [-.26,-.085,.085,.26])line(dock,x,-.23,x,.23,'port-dock-plank');
-    dock.append(node('circle',{cx:'-.33',cy:'-.20',r:'.032',class:'port-bollard'}),node('circle',{cx:'.33',cy:'-.20',r:'.032',class:'port-bollard'}));
+    dock.append(node('rect',{x:'-.48',y:'-.32',width:'.96',height:'.64',rx:'.11',class:'port-dock-shadow',transform:'translate(0 .04)'}));
+    dock.append(node('rect',{x:'-.48',y:'-.32',width:'.96',height:'.64',rx:'.11',class:'port-dock-board'}));
+    for(const x of [-.31,-.10,.10,.31])line(dock,x,-.27,x,.27,'port-dock-plank');
+    dock.append(node('circle',{cx:'-.39',cy:'-.24',r:'.035',class:'port-bollard'}),node('circle',{cx:'.39',cy:'-.24',r:'.035',class:'port-bollard'}));
     group.append(dock);
 
     // Keep trade information upright even when the dock rotates around the coast.
     const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
     const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
     if(port.type==='generic'){
-      path(face,'M0 -.18v.23m-.12-.1q.12.16.24 0M-.16-.05h.32','port-anchor-icon');
-      label.setAttribute('y','.17');label.textContent='3:1';face.append(label);
+      path(face,'M0 -.21v.27m-.14-.11q.14.18.28 0M-.19-.05h.38','port-anchor-icon');
+      label.setAttribute('y','.20');label.textContent='3:1';face.append(label);
     }else{
-      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.14');symbol.setAttribute('y','-.23');symbol.setAttribute('width','.28');symbol.setAttribute('height','.28');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
-      label.setAttribute('y','.18');label.textContent='2:1';face.append(label);
+      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.17');symbol.setAttribute('y','-.28');symbol.setAttribute('width','.34');symbol.setAttribute('height','.34');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
+      label.setAttribute('y','.21');label.textContent='2:1';face.append(label);
     }
     group.append(face);
 
