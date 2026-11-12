@@ -156,3 +156,10 @@ A very small boat silhouette may appear beyond the dock on desktop as decorative
 ## Consistency pass
 
 Port shadows, number-token shadows, robber-token shadows, building shadows and road shadows share a restrained physical-component depth. Port information stays below legal-target emphasis and must not obscure vertices, roads, number tokens or buildings.
+
+
+## ART-FINAL refinement: dock spacing and terrain semantics
+
+Port docks sit farther outside the island and no longer route both coastal vertices into one shared stem. Each of the two coastal vertices connects directly to a different end of the same dock. A small tangent offset makes the two pier legs naturally unequal in length and prevents the dock board from visually covering their junction.
+
+Brick-producing hills use a stronger red-clay quarry language: exposed clay faces, stepped quarry cuts and small stacked-brick details. Ore-producing mountains use exposed angular rock faces, quarry benches and loose rubble. These background cues strengthen resource recognition while remaining subordinate to the resource icon and number token.
