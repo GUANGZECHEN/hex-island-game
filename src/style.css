@@ -477,9 +477,11 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .terrain-art-forest{color:#153e2b}
 .terrain-art-forest .terrain-art-primary{fill:#2b6544;stroke:#214f36}
 .terrain-art-forest .terrain-art-detail{stroke:#173c2a}
-.terrain-art-hills{color:#874735}
-.terrain-art-hills .terrain-art-primary{stroke:#8e4e3a}
-.terrain-art-hills .terrain-art-secondary{stroke:#f2c19b}
+.terrain-art-hills{color:#7c3f31}
+.terrain-art-hills .terrain-art-clay-face{fill:#b95e43;stroke:#7f3d30;stroke-width:.042;stroke-linejoin:round}
+.terrain-art-hills .terrain-art-quarry-cut{fill:none;stroke:#f1b28f;stroke-width:.035;stroke-linecap:round;stroke-linejoin:round;opacity:.88}
+.terrain-art-hills .terrain-art-secondary{stroke:#f4c0a0;stroke-width:.032;opacity:.72}
+.terrain-art-hills .terrain-art-brick{fill:#a95039;stroke:#74382d;stroke-width:.018;opacity:.92}
 .terrain-art-pasture{color:#477f45}
 .terrain-art-pasture .terrain-art-primary{stroke:#4f874c}
 .terrain-art-pasture .terrain-art-secondary{stroke:#d5edb9}
@@ -488,10 +490,11 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .terrain-art-fields .terrain-art-primary{stroke:#9c711e}
 .terrain-art-fields .terrain-art-secondary{stroke:#f5dfa0}
 .terrain-art-fields .terrain-art-detail{stroke:#9e721f}
-.terrain-art-mountains{color:#526874}
-.terrain-art-mountains .terrain-art-mountain-fill{fill:#718895;stroke:none;opacity:.66}
-.terrain-art-mountains .terrain-art-primary{fill:none;stroke:#506775;stroke-width:.048}
-.terrain-art-mountains .terrain-art-snow{stroke:#edf2ef;stroke-width:.045;opacity:.8}
+.terrain-art-mountains{color:#4d5964}
+.terrain-art-mountains .terrain-art-rock-fill{fill:#6c7781;stroke:#4d5660;stroke-width:.04;stroke-linejoin:round;opacity:.9}
+.terrain-art-mountains .terrain-art-rock-facet{fill:none;stroke:#c6cdd3;stroke-width:.036;stroke-linejoin:round;opacity:.82}
+.terrain-art-mountains .terrain-art-quarry-bench{fill:none;stroke:#505b66;stroke-width:.038;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.terrain-art-mountains .terrain-art-rubble{fill:#68737d;stroke:#46505a;stroke-width:.015;opacity:.96}
 .terrain-art-desert{color:#97723b}
 .terrain-art-desert .terrain-art-primary{stroke:#aa834b}
 .terrain-art-desert .terrain-art-secondary{stroke:#f2dfae}
@@ -1235,19 +1238,13 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .port-piece{pointer-events:none}
 .port-pier-leg{
  stroke:#6b553a;
- stroke-width:.075;
+ stroke-width:.066;
  stroke-linecap:round;
  opacity:.72;
  filter:drop-shadow(0 .018px .012px #26352f30);
 }
-.port-pier-stem{
- stroke:#785e3e;
- stroke-width:.11;
- stroke-linecap:round;
- opacity:.9;
-}
 .port-dock{filter:drop-shadow(0 .035px .028px #26352f35)}
-.port-dock-shadow{fill:#2a352f;opacity:.20}
+.port-dock-shadow{fill:#2a352f;opacity:.16}
 .port-dock-board{
  fill:#c9a66f;
  stroke:#6f5636;
@@ -1306,8 +1303,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .game-road-shadow{opacity:.24}
 
 @media(max-width:760px){
- .port-pier-leg{stroke-width:.065;opacity:.62}
- .port-pier-stem{stroke-width:.095}
+ .port-pier-leg{stroke-width:.058;opacity:.62}
  .port-dock-plank,.port-bollard,.port-boat-decor{display:none}
  .port-dock-board{stroke-width:.035}
  .port-label{font-size:.18px;stroke-width:.02}
