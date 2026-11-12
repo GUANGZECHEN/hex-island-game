@@ -129,17 +129,20 @@ test('public gameplay actions surface as centered board alerts without replacing
 });
 
 
-test('local test bot selector supports one-bot/two-player and two-bot/three-player offline modes',()=>{
+test('local test bot selector supports one through five bots and expands the board at five total players',()=>{
  const html=readFileSync('index.html','utf8');
  const ui=readFileSync('src/game-ui.ts','utf8');
  const targets=readFileSync('src/game/ui/targets.ts','utf8');
  const legal=readFileSync('src/game/rules/legal.ts','utf8');
  assert.ok(html.includes('id="local-bot-count"'));
- assert.ok(html.includes('1 bot · 2 players'));
- assert.ok(html.includes('2 bots · 3 players'));
- assert.ok(ui.includes("localBotIds=new Set(botCount===1?['Bot']:botCount===2?['Bot 1','Bot 2']:[])"));
- assert.ok(ui.includes("botCount===2?['Player 1','Bot 1','Bot 2']"));
+ for(const label of ['1 bot · 2 players','2 bots · 3 players','3 bots · 4 players','4 bots · 5 players · expanded board','5 bots · 6 players · expanded board'])assert.ok(html.includes(label));
+ assert.ok(ui.includes('function localBotNames(count:number)'));
+ assert.ok(ui.includes("count===1?['Bot']:Array.from({length:count},(_,i)=>`Bot ${i+1}`)"));
+ assert.ok(ui.includes("const bots=localBotNames(botCount);localBotIds=new Set(bots)"));
+ assert.ok(ui.includes("const ids=botCount>0?['Player 1',...bots]"));
+ assert.ok(ui.includes("boardLayout:n>=5?'expanded-5-6':'standard'"));
  assert.ok(ui.includes("localSeats.value=String(count+1);localSeats.disabled=true"));
+ assert.ok(ui.includes("count>=4?'Expanded 5–6 player board selected automatically.'"));
  assert.ok(ui.includes("if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff"));
  assert.ok(ui.includes('pendingLocalBot'));
  assert.ok(ui.includes('scheduleLocalBot()'));
@@ -280,4 +283,24 @@ test('ART-C01 adds non-blocking dice, development-card and shared motion with re
  assert.ok(css.includes('.motion-die'));
  assert.ok(css.includes('.motion-card-face'));
  assert.ok(css.includes('@media(prefers-reduced-motion:reduce)'));
+});
+
+
+test('ART-FINAL renders ports as coastal docks and removes the old floating circular badge',()=>{
+ const render=readFileSync('src/game/board/render.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(render.includes("class:'port-pier-leg'"));
+ assert.ok(render.includes("class:'port-pier-stem'"));
+ assert.ok(render.includes("class:'port-dock-board'"));
+ assert.ok(render.includes("class:'port-dock-plank'"));
+ assert.ok(render.includes("class:'port-bollard'"));
+ assert.ok(render.includes("class:'port-anchor-icon'"));
+ assert.ok(render.includes("class:'port-boat-decor'"));
+ assert.ok(!render.includes("class:'port-badge'"));
+ assert.ok(!render.includes("class:'port-badge-shadow'"));
+ assert.ok(css.includes('/* ART-FINAL · coastal ports and board consistency pass */'));
+ assert.ok(css.includes('.port-dock-board'));
+ assert.ok(css.includes('.port-anchor-icon'));
+ assert.ok(css.includes('.port-boat-decor'));
+ assert.ok(css.includes('.port-dock-plank,.port-bollard,.port-boat-decor{display:none}'));
 });
