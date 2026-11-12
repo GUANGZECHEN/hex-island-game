@@ -138,18 +138,39 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   for (const port of setup.ports) {
     const a = vertices.get(port.vertexIds[0])!, b = vertices.get(port.vertexIds[1])!,mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
     const dx=mid.x-islandCenter.x,dy=mid.y-islandCenter.y,length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
-    const px=mid.x+ux*.72,py=mid.y+uy*.72,endpoint={x:px-ux*.36,y:py-uy*.36};
-    const group=node('g',{'data-port-edge':port.edgeId,'data-port-type':port.type,class:'port-piece'});
+    const tx=-uy,ty=ux,px=mid.x+ux*.60,py=mid.y+uy*.60,shore={x:mid.x+ux*.13,y:mid.y+uy*.13};
+    const angle=Math.atan2(ty,tx)*180/Math.PI;
+    const group=node('g',{'data-port-edge':port.edgeId,'data-port-type':port.type,class:`port-piece port-${port.type}`});
     const portTitle=document.createElementNS(SVG_NS,'title');portTitle.textContent=port.type==='generic'?'Any resource 3:1 port':`${port.type} 2:1 port`;group.append(portTitle);
-    for(const start of [a,b])line(group,start.x,start.y,endpoint.x,endpoint.y,'port-connector');
-    group.append(node('circle',{cx:String(px),cy:String(py+.025),r:'.44',class:'port-badge-shadow'}));
-    group.append(node('circle',{cx:String(px),cy:String(py),r:'.43',class:'port-badge'}));
-    const label=node('text',{x:String(px),'text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
-    if(port.type==='generic'){label.setAttribute('y',String(py));label.textContent='3:1';group.append(label);}
-    else{
-      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x',String(px-.16));symbol.setAttribute('y',String(py-.28));symbol.setAttribute('width','.32');symbol.setAttribute('height','.32');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);group.append(symbol);
-      label.setAttribute('y',String(py+.19));label.textContent='2:1';group.append(label);
+
+    // Two pier legs preserve the exact coastal vertices while reading visually as a dock.
+    for(const start of [a,b])line(group,start.x,start.y,shore.x,shore.y,'port-pier-leg');
+    const stemEnd={x:px-ux*.22,y:py-uy*.22};
+    line(group,shore.x,shore.y,stemEnd.x,stemEnd.y,'port-pier-stem');
+
+    const dock=node('g',{class:'port-dock',transform:`translate(${px} ${py}) rotate(${angle})`});
+    dock.append(node('rect',{x:'-.44',y:'-.29',width:'.88',height:'.58',rx:'.10',class:'port-dock-shadow',transform:'translate(0 .035)'}));
+    dock.append(node('rect',{x:'-.44',y:'-.29',width:'.88',height:'.58',rx:'.10',class:'port-dock-board'}));
+    for(const x of [-.28,-.09,.10,.29])line(dock,x,-.25,x,.25,'port-dock-plank');
+    dock.append(node('circle',{cx:'-.36',cy:'-.22',r:'.035',class:'port-bollard'}),node('circle',{cx:'.36',cy:'-.22',r:'.035',class:'port-bollard'}));
+    group.append(dock);
+
+    // Keep trade information upright even when the dock rotates around the coast.
+    const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
+    const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
+    if(port.type==='generic'){
+      path(face,'M0 -.18v.23m-.12-.1q.12.16.24 0M-.16-.05h.32','port-anchor-icon');
+      label.setAttribute('y','.17');label.textContent='3:1';face.append(label);
+    }else{
+      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.14');symbol.setAttribute('y','-.23');symbol.setAttribute('width','.28');symbol.setAttribute('height','.28');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
+      label.setAttribute('y','.18');label.textContent='2:1';face.append(label);
     }
+    group.append(face);
+
+    // One tiny boat silhouette gives desktop ports a coastal landmark; hidden on phones.
+    const boatX=px+ux*.40,boatY=py+uy*.40,boat=node('g',{class:'port-boat-decor',transform:`translate(${boatX} ${boatY}) rotate(${angle})`});
+    path(boat,'M-.16 .04h.32l-.06.09h-.2Z','port-boat-hull');line(boat,0,.04,0,-.13,'port-boat-mast');path(boat,'M.01-.12v.12h.11Z','port-boat-sail');group.append(boat);
+
     svg.append(group);
     const item=document.createElement('li');item.textContent=port.type==='generic'?`Any resource 3:1 port at ${port.vertexIds.join(' and ')}`:`${port.type} 2:1 port at ${port.vertexIds.join(' and ')}`;ports.append(item);
   }
