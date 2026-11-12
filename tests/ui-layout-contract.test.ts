@@ -212,7 +212,9 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
  assert.ok(render.includes('terrainFallback'));
  assert.ok(render.includes('boardRenderSequence'));
  assert.ok(render.includes('url(#${defsPrefix}-terrain-${hex.terrain})'));
- assert.ok(game.includes("owner.kind==='city'?.58:.42"));
+ assert.ok(game.includes("data-board-x"));
+ assert.ok(game.includes("M${x-.24} ${y+.19}V${y-.03}"));
+ assert.ok(!game.includes("scale(size/24)"));
  assert.ok(game.includes("robber-marker-enter"));
  assert.ok(css.includes('/* ART-A01 · modern illustrated tabletop board */'));
  assert.ok(css.includes('.game-road-piece.player-5'));
