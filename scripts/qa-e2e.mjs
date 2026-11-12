@@ -69,12 +69,25 @@ try{
     if(!paint||paint==='none'||paint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-A01 ${terrain} tile has no visible fill: ${paint}`);
   }
   if(await host.locator('#board [data-terrain-art]').count()!==19)throw new Error('ART-A01 terrain illustration is incomplete.');
+  if(await host.locator('#board [data-terrain="hills"] .terrain-art-clay-face').count()<1||await host.locator('#board [data-terrain="hills"] .terrain-art-brick').count()<3)throw new Error('Brick terrain does not show clay-quarry/brick-source art.');
+  if(await host.locator('#board [data-terrain="mountains"] .terrain-art-rock-fill').count()<1||await host.locator('#board [data-terrain="mountains"] .terrain-art-rubble').count()<4)throw new Error('Ore terrain does not show exposed-rock/quarry art.');
   if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
   if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
   if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
   const dockCount=await host.locator('#board .port-dock-board').count();
   if(dockCount!==9)throw new Error(`ART-FINAL expected 9 dock ports, found ${dockCount}.`);
   if(await host.locator('#board .port-pier-leg').count()!==18)throw new Error('ART-FINAL port dock legs do not preserve both coastal vertices.');
+  const portLegGeometry=await host.locator('#board [data-port-type]').evaluateAll(groups=>groups.map(group=>{
+    const legs=Array.from(group.querySelectorAll('.port-pier-leg'));
+    if(legs.length!==2)return {split:false,lengthDelta:0};
+    const values=legs.map(line=>({x1:Number(line.getAttribute('x1')),y1:Number(line.getAttribute('y1')),x2:Number(line.getAttribute('x2')),y2:Number(line.getAttribute('y2'))}));
+    const split=Math.hypot(values[0].x2-values[1].x2,values[0].y2-values[1].y2)>.2;
+    const lengths=values.map(v=>Math.hypot(v.x2-v.x1,v.y2-v.y1));
+    return {split,lengthDelta:Math.abs(lengths[0]-lengths[1])};
+  }));
+  if(portLegGeometry.some(item=>!item.split))throw new Error(`ART-FINAL dock legs still converge on one endpoint: ${JSON.stringify(portLegGeometry)}`);
+  if(!portLegGeometry.some(item=>item.lengthDelta>.02))throw new Error(`ART-FINAL dock placement did not create natural unequal leg lengths: ${JSON.stringify(portLegGeometry)}`);
+  if(await host.locator('#board .port-pier-stem').count()!==0)throw new Error('ART-FINAL obsolete central dock stem is still rendered.');
   if(await host.locator('#board .port-badge').count()!==0)throw new Error('ART-FINAL old floating circular port badges are still rendered.');
   const dockPaint=await host.locator('#board .port-dock-board').first().evaluate(node=>getComputedStyle(node).fill);
   if(!dockPaint||dockPaint==='none'||dockPaint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-FINAL dock is visually unpainted: ${dockPaint}`);
