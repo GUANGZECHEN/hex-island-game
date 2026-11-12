@@ -123,17 +123,20 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       } else assert.ok(group.children.some(child => child.tag === 'g' && child.attributes.get('data-robber-marker') === 'true'));
       assert.ok(list.children[index].textContent.includes(hex.hexId));
     }
+    const descendants=(root:any):any[]=>root.children.flatMap((child:any)=>[child,...descendants(child)]);
     for(const [index,group] of portGroups.entries()){
-      const port=setup.ports[index];
+      const port=setup.ports[index],all=descendants(group);
       assert.equal(group.attributes.get('data-port-edge'),port.edgeId);
       assert.equal(group.attributes.get('data-port-type'),port.type);
-      assert.equal(group.children.filter(child=>child.tag==='line'&&child.attributes.get('class')==='port-connector').length,2);
+      assert.equal(all.filter(child=>child.tag==='line'&&child.attributes.get('class')==='port-pier-leg').length,2);
+      assert.equal(all.filter(child=>child.tag==='rect'&&child.attributes.get('class')==='port-dock-board').length,1);
       if(port.type==='generic'){
-        assert.ok(group.children.some(child=>child.tag==='text'&&child.textContent==='3:1'));
+        assert.ok(all.some(child=>child.tag==='path'&&child.attributes.get('class')==='port-anchor-icon'));
+        assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='3:1'));
       }else{
-        assert.ok(group.children.some(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type));
-        assert.ok(group.children.some(child=>child.tag==='text'&&child.textContent==='2:1'));
-        assert.ok(!group.children.some(child=>child.tag==='text'&&child.textContent?.startsWith(port.type[0].toUpperCase())));
+        assert.ok(all.some(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type));
+        assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='2:1'));
+        assert.ok(!all.some(child=>child.tag==='text'&&child.textContent?.startsWith(port.type[0].toUpperCase())));
       }
     }
     const occupied = setup.hexes.find(hex => hex.token !== null)!;
