@@ -1229,3 +1229,87 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .turn-alert-name,
  .panel-content:not([hidden]){animation:none}
 }
+
+
+/* ART-FINAL · coastal ports and board consistency pass */
+.port-piece{pointer-events:none}
+.port-pier-leg{
+ stroke:#6b553a;
+ stroke-width:.075;
+ stroke-linecap:round;
+ opacity:.72;
+ filter:drop-shadow(0 .018px .012px #26352f30);
+}
+.port-pier-stem{
+ stroke:#785e3e;
+ stroke-width:.11;
+ stroke-linecap:round;
+ opacity:.9;
+}
+.port-dock{filter:drop-shadow(0 .035px .028px #26352f35)}
+.port-dock-shadow{fill:#2a352f;opacity:.20}
+.port-dock-board{
+ fill:#c9a66f;
+ stroke:#6f5636;
+ stroke-width:.04;
+}
+.port-dock-plank{
+ stroke:#8f7048;
+ stroke-width:.025;
+ stroke-linecap:round;
+ opacity:.72;
+}
+.port-bollard{
+ fill:#6f5636;
+ stroke:#ead6ae;
+ stroke-width:.012;
+}
+.port-face{
+ filter:drop-shadow(0 .012px .01px #40362628);
+}
+.port-label{
+ fill:#3f3222;
+ font-size:.19px;
+ font-weight:950;
+ letter-spacing:.01em;
+ paint-order:stroke;
+ stroke:#f4e6c9;
+ stroke-width:.025;
+ stroke-linejoin:round;
+}
+.port-resource-icon{
+ color:#31493f;
+ filter:drop-shadow(0 .015px .01px #20352f30);
+}
+.port-resource-icon.resource-lumber{color:#265b39}
+.port-resource-icon.resource-brick{color:#91452e}
+.port-resource-icon.resource-wool{color:#4d7845}
+.port-resource-icon.resource-grain{color:#806017}
+.port-resource-icon.resource-ore{color:#555e68}
+.port-anchor-icon{
+ fill:none;
+ stroke:#42564f;
+ stroke-width:.045;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.port-boat-hull{fill:#5f4c36;stroke:#3f3327;stroke-width:.018}
+.port-boat-mast{stroke:#4e4030;stroke-width:.025;stroke-linecap:round}
+.port-boat-sail{fill:#f2e4c6;stroke:#65533c;stroke-width:.015}
+
+/* Keep physical components on one shared tabletop depth scale. */
+.island-token-shadow,.robber-token-shadow,.port-dock-shadow,.game-building-shadow{opacity:.24}
+.island-token,.robber-marker-circle,.port-dock-board,.game-building-shell{
+ filter:drop-shadow(0 .025px .018px #2b342f2d);
+}
+.robber-marker-ring{stroke-width:.06}
+.game-road-shadow{opacity:.24}
+
+@media(max-width:760px){
+ .port-pier-leg{stroke-width:.065;opacity:.62}
+ .port-pier-stem{stroke-width:.095}
+ .port-dock-plank,.port-bollard,.port-boat-decor{display:none}
+ .port-dock-board{stroke-width:.035}
+ .port-label{font-size:.18px;stroke-width:.02}
+ .port-resource-icon{transform:scale(.94);transform-origin:center}
+}
