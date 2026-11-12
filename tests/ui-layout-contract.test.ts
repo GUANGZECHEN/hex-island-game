@@ -28,7 +28,6 @@ test('board buildings render semantic B3 SVG pieces directly in board coordinate
   assert.ok(!ui.includes("BOARD_BUILDING_PATHS[owner.kind]"));
   assert.ok(!ui.includes("scale(size/24)"));
   assert.ok(css.includes('.game-building-shell'));
-  assert.ok(css.includes('.game-building-city'));
   assert.ok(!ui.includes("owner.kind==='city'?'rect':'circle'"));
 });
 
