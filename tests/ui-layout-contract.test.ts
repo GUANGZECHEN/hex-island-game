@@ -117,7 +117,11 @@ test('public gameplay actions surface as centered board alerts without replacing
  const css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes('function centralActivity'));
  assert.ok(ui.includes('function showActivityAlert'));
- assert.ok(ui.includes("lead.textContent='TABLE ACTION'"));
+ assert.ok(ui.includes("kind==='dice'?'DICE ROLL'"));
+ assert.ok(ui.includes("kind==='development'?'CARD PLAY'"));
+ assert.ok(ui.includes("kind==='build'?'BUILD'"));
+ assert.ok(ui.includes("kind==='robber'?'ROBBER'"));
+ assert.ok(ui.includes("kind==='trade'?'TRADE'"));
  assert.ok(ui.includes('drawBoard();flashTurnCue(s);showActivityAlert(s);'));
  assert.ok(ui.includes('rolled dice|built a road|built a settlement'));
  assert.ok(css.includes('.activity-alert{'));
