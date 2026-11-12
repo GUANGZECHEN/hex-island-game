@@ -27,6 +27,13 @@ try{
   if(await host.locator('#switch-player').isVisible())throw new Error('Two-bot mode exposed manual player switching.');
   if(!(await host.locator('#connection-summary').textContent())?.includes('2 test bots enabled'))throw new Error('Two-bot mode status was missing.');
   if(await host.locator('#player-strip .player-summary').count()!==3)throw new Error('Two-bot mode did not create three player cards.');
+  if(await host.locator('#game-tabs button .icon').count()!==3)throw new Error('ART-B01 control tabs do not all have icons.');
+  if(await host.locator('#private-hand-card .resource-chip').count()!==5)throw new Error('ART-B01 hand does not expose five resource tokens.');
+  const handClasses=await host.locator('#private-hand-card .resource-chip').evaluateAll(nodes=>nodes.map(node=>node.className));
+  if(!['lumber','brick','wool','grain','ore'].every(resource=>handClasses.some(value=>String(value).includes(`resource-chip-${resource}`))))throw new Error(`ART-B01 resource-specific hand styling is incomplete: ${handClasses.join(' | ')}`);
+  const handSurface=await host.locator('#private-hand-card').evaluate(node=>({background:getComputedStyle(node).backgroundImage,border:getComputedStyle(node).borderTopColor}));
+  if(!handSurface.background||handSurface.background==='none')throw new Error('ART-B01 hand tray has no material surface.');
+  if(await host.locator('#actions .action-button').count()&&await host.locator('#actions .action-button[class*="action-"]').count()!==await host.locator('#actions .action-button').count())throw new Error('ART-B01 action semantic styling is incomplete.');
   const placeHumanSetupPair=async()=>{
     await host.getByRole('button',{name:'Place settlement'}).click();
     await host.locator('#targets select').first().selectOption({index:0});
