@@ -68,6 +68,19 @@ try{
   await host.waitForFunction(()=>document.querySelectorAll('#board .game-road-piece').length>=2,null,{timeout:15000});
   const roadPieces=await host.locator('#board .game-road-piece').count();
   if(await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
+
+  // Complete Player 1's second setup pair, then exercise a real authoritative dice roll.
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
+  await placeHumanSetupPair();
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: roll"),null,{timeout:8000});
+  await host.getByRole('button',{name:'Roll dice'}).click();
+  const diceAlert=host.locator('#board .activity-alert.activity-dice');
+  await diceAlert.waitFor({state:'visible',timeout:3000});
+  const diceValues=await diceAlert.locator('.motion-die').evaluateAll(nodes=>nodes.map(node=>Number(node.getAttribute('data-value'))));
+  if(diceValues.length!==2||diceValues.some(value=>!Number.isInteger(value)||value<1||value>6))throw new Error(`ART-C01 dice motion does not show two authoritative faces: ${JSON.stringify(diceValues)}`);
+  const diceAnimation=await diceAlert.locator('.motion-die').first().evaluate(node=>getComputedStyle(node).animationName);
+  if(!diceAnimation.includes('dice-tumble'))throw new Error(`ART-C01 dice animation is not active: ${diceAnimation}`);
+
   await host.goto(qaUrl,{waitUntil:'networkidle'});
 
   // First prove that an invite survives the host-unavailable window instead of failing once.
