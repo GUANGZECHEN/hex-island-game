@@ -59,3 +59,8 @@ D017: Offline/local play may optionally run a deterministic test bot only in a f
 ## Two-bot local test-mode decision
 
 D018: Offline/local play additionally supports a fixed three-player test mode with Player 1 as the only human viewer and Bot 1 / Bot 2 as deterministic automated players. The existing one-bot two-player mode remains available. All local test bots use the same game-rule reducers and the same local-only constraints from D017; no bot participates in private-room multiplayer, WebSocket transport, spectator access or saved-room recovery.
+
+
+## Expanded local-bot decision
+
+D019: Offline/local play supports selecting one through five deterministic test bots, with Player 1 as the only human viewer. The selected bot count determines total local player count as Player 1 plus those bots. One through three bots use the standard board (2–4 total players); four or five bots automatically use the expanded 5–6 player board (5–6 total players). The local-only, deterministic, same-reducer and no-external-AI constraints from D017/D018 continue unchanged. This supersedes D018 for local bot count and board-selection behavior.
