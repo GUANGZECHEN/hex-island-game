@@ -228,3 +228,29 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
  assert.ok(css.includes('@keyframes robber-settle'));
  assert.ok(css.includes('@media(prefers-reduced-motion:reduce)'));
 });
+
+
+test('ART-B01 unifies player boards, hand, actions, trades and tabs without changing control surfaces',()=>{
+ const icons=readFileSync('src/game/ui/icons.ts','utf8');
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(icons.includes('resource-chip-${resource}'));
+ assert.ok(icons.includes('chip.dataset.resource=resource'));
+ assert.ok(ui.includes('function playerAward'));
+ assert.ok(ui.includes("'Longest Road'"));
+ assert.ok(ui.includes("'Largest Army'"));
+ assert.ok(ui.includes('player-awards'));
+ assert.ok(ui.includes('action-${symbol}'));
+ assert.ok(ui.includes('bank-trade-rate-${rate}'));
+ assert.ok(ui.includes("domestic.className='domestic-trade-card'"));
+ assert.ok(ui.includes("tab.dataset.panel==='actions'"));
+ assert.ok(ui.includes("tab.dataset.panel==='status'"));
+ assert.ok(css.includes('/* ART-B01 · tabletop control-surface visual system */'));
+ assert.ok(css.includes('.hand-card.active-hand'));
+ assert.ok(css.includes('.action-button.action-settlement'));
+ assert.ok(css.includes('.action-button.action-card'));
+ assert.ok(css.includes('.bank-trade-button.bank-trade-rate-2'));
+ assert.ok(css.includes('.domestic-trade-card'));
+ assert.ok(css.includes('.player-award'));
+ assert.ok(css.includes('@media(max-width:760px)'));
+});
