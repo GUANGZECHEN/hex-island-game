@@ -1071,3 +1071,161 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .player-awards{gap:.15rem}
  .player-award{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+
+
+/* ART-C01 · motion polish */
+:root{
+ --motion-fast:140ms;
+ --motion-normal:260ms;
+ --motion-slow:520ms;
+ --motion-ease:cubic-bezier(.2,.78,.2,1);
+ --motion-pop:cubic-bezier(.18,.88,.24,1.14);
+}
+
+/* Dice live inside the public board alert so the outcome is visible to every viewer. */
+.activity-alert.activity-dice{
+ width:min(76%,31rem);
+ padding:.7rem 1rem .85rem;
+}
+.motion-dice{
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ gap:.55rem;
+ margin:.18rem 0 .38rem;
+ perspective:500px;
+}
+.motion-die{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ grid-template-rows:repeat(3,1fr);
+ width:3.15rem;
+ height:3.15rem;
+ padding:.42rem;
+ border:1px solid #c8bda9;
+ border-radius:.7rem;
+ background:linear-gradient(145deg,#fffef9,#eee5d6);
+ box-shadow:0 .28rem .6rem #332b221f,inset 0 .08rem 0 #fff;
+ transform-origin:center;
+ animation:dice-tumble .58s var(--motion-pop) both;
+}
+.motion-die:nth-child(2){animation-delay:70ms}
+.motion-die-cell{display:grid;place-items:center}
+.motion-die-pip::before{
+ content:"";
+ width:.42rem;
+ height:.42rem;
+ border-radius:50%;
+ background:#283a33;
+ box-shadow:inset 0 .06rem 0 #ffffff30;
+}
+.activity-dice .activity-alert-message{
+ font-size:clamp(1rem,2vw,1.45rem);
+}
+
+/* Played development cards briefly flip forward. Bought cards stay intentionally generic. */
+.motion-card{
+ display:inline-grid;
+ place-items:center;
+ margin:.18rem auto .35rem;
+ width:5rem;
+ height:6.35rem;
+ perspective:650px;
+}
+.motion-card-face{
+ width:100%;
+ height:100%;
+ display:grid;
+ place-items:center;
+ align-content:center;
+ gap:.4rem;
+ padding:.55rem;
+ border:2px solid #86758f;
+ border-radius:.62rem;
+ background:linear-gradient(145deg,#fffafd,#e8deec);
+ color:#594865;
+ box-shadow:0 .42rem .85rem #382b3c25,inset 0 .08rem 0 #fff;
+ transform-origin:center;
+ animation:card-flip-in .58s var(--motion-pop) both;
+}
+.motion-card-hidden .motion-card-face{
+ border-color:#9f8c68;
+ background:
+  repeating-linear-gradient(135deg,#f7edcf 0,#f7edcf 7px,#ead6a5 7px,#ead6a5 14px);
+ color:#5f4b20;
+}
+.motion-card-face .development-icon,.motion-card-icon{
+ width:2.2rem;
+ height:2.2rem;
+}
+.motion-card-caption{
+ font-size:.68rem;
+ line-height:1.05;
+ font-weight:900;
+ text-align:center;
+}
+.activity-development .activity-alert-message,
+.activity-card-buy .activity-alert-message{
+ font-size:clamp(.95rem,2vw,1.35rem);
+}
+
+/* Existing board-piece motion adopts the same timing language. */
+.game-road-piece.game-piece-enter .game-road,
+.game-road-piece.game-piece-enter .game-road-highlight{
+ animation-duration:320ms;
+ animation-timing-function:var(--motion-ease);
+}
+.game-building-piece.game-piece-enter{
+ animation-duration:300ms;
+ animation-timing-function:var(--motion-pop);
+}
+.robber-marker.robber-marker-enter{
+ animation-duration:380ms;
+ animation-timing-function:var(--motion-pop);
+}
+
+/* Turn handoff feels like a placed table card rather than a modal. */
+.turn-alert{
+ animation-duration:320ms;
+ animation-timing-function:var(--motion-pop);
+}
+.turn-alert-name{animation:turn-name-settle .42s var(--motion-ease) both}
+.activity-alert{animation-duration:220ms;animation-timing-function:var(--motion-pop)}
+
+/* Local panel changes are quick and never block input. */
+.panel-content:not([hidden]){
+ animation:panel-reveal var(--motion-fast) var(--motion-ease) both;
+}
+
+@keyframes dice-tumble{
+ 0%{opacity:0;transform:translateY(-1.4rem) rotateX(35deg) rotateZ(-24deg) scale(.72)}
+ 45%{opacity:1;transform:translateY(.12rem) rotateX(-8deg) rotateZ(8deg) scale(1.06)}
+ 72%{transform:translateY(-.07rem) rotateX(3deg) rotateZ(-3deg) scale(.99)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes card-flip-in{
+ 0%{opacity:0;transform:rotateY(-88deg) translateY(.5rem) scale(.88)}
+ 58%{opacity:1;transform:rotateY(7deg) translateY(-.06rem) scale(1.03)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes turn-name-settle{
+ 0%{opacity:.35;transform:translateY(.35rem)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes panel-reveal{
+ from{opacity:.55;transform:translateY(.18rem)}
+ to{opacity:1;transform:none}
+}
+
+@media(max-width:760px){
+ .motion-die{width:2.65rem;height:2.65rem;padding:.35rem;border-radius:.58rem}
+ .motion-die-pip::before{width:.34rem;height:.34rem}
+ .motion-card{width:4.25rem;height:5.4rem}
+ .motion-card-face .development-icon,.motion-card-icon{width:1.85rem;height:1.85rem}
+}
+@media(prefers-reduced-motion:reduce){
+ .motion-die,
+ .motion-card-face,
+ .turn-alert-name,
+ .panel-content:not([hidden]){animation:none}
+}
