@@ -289,8 +289,8 @@ test('ART-C01 adds non-blocking dice, development-card and shared motion with re
 test('ART-FINAL renders ports as coastal docks and removes the old floating circular badge',()=>{
  const render=readFileSync('src/game/board/render.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(render.includes("class:'port-pier-leg'"));
- assert.ok(render.includes("class:'port-pier-stem'"));
+ assert.ok(render.includes("line(group,start.x,start.y,shore.x,shore.y,'port-pier-leg')"));
+ assert.ok(render.includes("line(group,shore.x,shore.y,stemEnd.x,stemEnd.y,'port-pier-stem')"));
  assert.ok(render.includes("class:'port-dock-board'"));
  assert.ok(render.includes("class:'port-dock-plank'"));
  assert.ok(render.includes("class:'port-bollard'"));
