@@ -279,8 +279,9 @@ try{
     for(const selector of ['.player-road-left','.player-settlement-left','.player-city-left','.player-longest-road'])if(await actor.locator(`#player-strip ${selector}`).count()!==2)throw new Error(`Public piece/road status ${selector} missing at ${width}px.`);
     if(await actor.locator('#piece-supply .supply-settlement').count()!==1||await actor.locator('#piece-supply .supply-city').count()!==1)throw new Error(`Local building supply missing at ${width}px.`);
     if(!(await actor.locator('#turn-banner').textContent())?.includes('Player 2'))throw new Error(`Board turn banner missing at ${width}px.`);
-    if(await actor.locator('#board [data-port-type] .port-connector').count()!==18)throw new Error(`Port connector lines missing at ${width}px.`);
+    if(await actor.locator('#board [data-port-type] .port-pier-leg').count()!==18)throw new Error(`Port dock legs missing at ${width}px.`);
     if(await actor.locator('#board [data-port-type]:not([data-port-type="generic"]) [data-resource-icon]').count()!==5)throw new Error(`Resource port icons missing at ${width}px.`);
+    if(width<=760&&await actor.locator('#board .port-boat-decor').first().evaluate(node=>getComputedStyle(node).display)!=='none')throw new Error(`Port boat decoration was not simplified on mobile at ${width}px.`);
     if(await actor.locator('#board [data-hex-id] [data-resource-icon]').count()!==18)throw new Error(`Tile icons missing at ${width}px.`);
     if(await actor.locator('#board [data-terrain-icon="desert"]').count()!==1)throw new Error(`Desert icon missing at ${width}px.`);
     if(await actor.locator('#board [data-robber-marker="true"]').count()!==1)throw new Error(`Robber prohibition marker missing at ${width}px.`);
