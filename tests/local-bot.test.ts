@@ -66,6 +66,30 @@ test('two local bots can share a three-player snake setup and advance automatica
  assert.deepEqual(state.players.map(player=>player.id),['Player 1','Bot 1','Bot 2']);
 });
 
+
+
+test('four and five local bots are compatible with the expanded 5–6 player board setup',()=>{
+ for(const botCount of [4,5]){
+  const ids=['Player 1',...Array.from({length:botCount},(_,i)=>`Bot ${i+1}`)];
+  let state=createGame(700+botCount,ids,undefined,{boardLayout:'expanded-5-6'});
+  let steps=0;
+  while((state.phase==='setup-settlement'||state.phase==='setup-road')&&steps<40){
+   const actor=state.players[state.currentSeat].id;
+   const command=chooseBotCommand(state,actor);
+   assert.ok(command,`expected setup command for ${actor} in ${state.phase}`);
+   state=applyBotCommand(state,command);
+   steps++;
+  }
+  assert.equal(state.phase,'roll');
+  assert.equal(state.players.length,botCount+1);
+  assert.equal(state.board.layout,'expanded-5-6');
+  assert.equal(state.board.hexes.length,24);
+  assert.equal(state.setupStep,2*(botCount+1));
+  assert.equal(Object.keys(state.buildings).length,2*(botCount+1));
+  assert.equal(Object.keys(state.roads).length,2*(botCount+1));
+ }
+});
+
 test('both bot identities can independently answer offers and take normal turns',()=>{
  let state=createGame(41,['Player 1','Bot 1','Bot 2']);
  state.phase='action';state.currentSeat=0;state.turn=4;
