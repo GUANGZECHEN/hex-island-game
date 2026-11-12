@@ -1,5 +1,5 @@
 import './style.css';
-import { ACTION_PATHS, BOARD_BUILDING_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
+import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
@@ -234,16 +234,25 @@ function drawBoard(){
  for(const vertex of view.vertices){
   const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
   if(owner){
-   const piece=document.createElementNS(NS,'g'),paths=BOARD_BUILDING_PATHS[owner.kind],seat=byId(owner.playerId).seat+1,palette=PLAYER_PIECE_PALETTE[seat-1]??PLAYER_PIECE_PALETTE[0],fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`;
+   const seat=byId(owner.playerId).seat+1,palette=PLAYER_PIECE_PALETTE[seat-1]??PLAYER_PIECE_PALETTE[0],fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`,x=vertex.point.x,y=vertex.point.y;
+   const piece=document.createElementNS(NS,'g');
    piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}${fresh?' game-piece-enter':''}`);
-   const size=owner.kind==='city'?.58:.42,scale=size/24;
-   piece.setAttribute('transform',`translate(${vertex.point.x-size/2} ${vertex.point.y-size/2}) scale(${scale})`);
-   piece.setAttribute('data-building-kind',owner.kind);
+   piece.setAttribute('data-building-kind',owner.kind);piece.setAttribute('data-vertex-id',vertex.id);piece.setAttribute('data-board-x',String(x));piece.setAttribute('data-board-y',String(y));
    const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner.playerId)} ${owner.kind}, ${vertex.id}`;piece.append(title);
-   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx','12');shadow.setAttribute('cy','21.5');shadow.setAttribute('rx',owner.kind==='city'?'10':'8.5');shadow.setAttribute('ry','2.2');shadow.setAttribute('class','game-building-shadow');shadow.setAttribute('style','fill:#17251f;opacity:.24');piece.append(shadow);
-   const shell=document.createElementNS(NS,'path');shell.setAttribute('d',paths.shell);shell.setAttribute('class','game-building-shell');shell.setAttribute('fill',palette.body);shell.setAttribute('stroke',palette.edge);shell.setAttribute('stroke-width',owner.kind==='city'?'1.85':'1.75');shell.setAttribute('stroke-linejoin','round');piece.append(shell);
-   const accent=document.createElementNS(NS,'path');accent.setAttribute('d',paths.accent);accent.setAttribute('class','game-building-accent');accent.setAttribute('fill','none');accent.setAttribute('stroke','#ffffff');accent.setAttribute('stroke-width','1.5');accent.setAttribute('stroke-linecap','round');accent.setAttribute('stroke-linejoin','round');accent.setAttribute('opacity','.65');piece.append(accent);
-   const detail=document.createElementNS(NS,'path');detail.setAttribute('d',paths.detail);detail.setAttribute('class','game-building-detail');detail.setAttribute('fill','none');detail.setAttribute('stroke','#173027');detail.setAttribute('stroke-width','1.25');detail.setAttribute('stroke-linecap','round');detail.setAttribute('stroke-linejoin','round');detail.setAttribute('opacity','.9');piece.append(detail);
+   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx',String(x));shadow.setAttribute('cy',String(y+.22));shadow.setAttribute('rx',owner.kind==='city'?'.31':'.23');shadow.setAttribute('ry','.065');shadow.setAttribute('class','game-building-shadow');piece.append(shadow);
+   const shell=document.createElementNS(NS,'path');shell.setAttribute('class','game-building-shell');shell.setAttribute('fill',palette.body);shell.setAttribute('stroke',palette.edge);shell.setAttribute('stroke-width','.045');shell.setAttribute('stroke-linejoin','round');
+   const accent=document.createElementNS(NS,'path');accent.setAttribute('class','game-building-accent');accent.setAttribute('fill','none');accent.setAttribute('stroke','#ffffff');accent.setAttribute('stroke-width','.035');accent.setAttribute('stroke-linecap','round');accent.setAttribute('stroke-linejoin','round');accent.setAttribute('opacity','.68');
+   const detail=document.createElementNS(NS,'path');detail.setAttribute('class','game-building-detail');detail.setAttribute('fill','none');detail.setAttribute('stroke','#173027');detail.setAttribute('stroke-width','.03');detail.setAttribute('stroke-linecap','round');detail.setAttribute('stroke-linejoin','round');detail.setAttribute('opacity','.9');
+   if(owner.kind==='settlement'){
+    shell.setAttribute('d',`M${x-.24} ${y+.19}V${y-.03}L${x} ${y-.25}L${x+.24} ${y-.03}V${y+.19}Z`);
+    accent.setAttribute('d',`M${x-.27} ${y-.02}L${x} ${y-.28}L${x+.27} ${y-.02}`);
+    detail.setAttribute('d',`M${x-.055} ${y+.19}V${y+.02}H${x+.055}V${y+.19}M${x-.16} ${y+.02}h.07v.07h-.07zM${x+.09} ${y+.02}h.07v.07h-.07z`);
+   }else{
+    shell.setAttribute('d',`M${x-.33} ${y+.2}V${y-.07}H${x-.14}V${y-.19}H${x-.055}V${y-.31}H${x+.09}V${y-.19}H${x+.19}V${y-.07}H${x+.33}V${y+.2}Z`);
+    accent.setAttribute('d',`M${x-.35} ${y-.07}H${x-.14}M${x-.14} ${y-.07}V${y-.2}H${x-.055}M${x+.09} ${y-.2}H${x+.19}V${y-.07}H${x+.35}`);
+    detail.setAttribute('d',`M${x-.06} ${y+.2}V${y+.03}H${x+.06}V${y+.2}M${x-.23} ${y+.02}h.08v.08h-.08zM${x+.15} ${y+.02}h.08v.08h-.08zM${x-.015} ${y-.255}h.065`);
+   }
+   piece.append(shadow,shell,accent,detail);
    if(cityTarget){piece.setAttribute('data-legal-target','city');piece.setAttribute('tabindex','0');piece.setAttribute('role','button');piece.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);piece.onclick=()=>attempt(()=>moveTarget(vertex.id));piece.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
    svg.append(piece);continue;
   }
