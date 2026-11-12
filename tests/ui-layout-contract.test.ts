@@ -294,7 +294,7 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
  assert.ok(render.includes("class:'port-dock-board'"));
  assert.ok(render.includes("line(dock,x,-.25,x,.25,'port-dock-plank')"));
  assert.ok(render.includes("class:'port-bollard'"));
- assert.ok(render.includes("class:'port-anchor-icon'"));
+ assert.ok(render.includes("path(face,'M0 -.18v.23m-.12-.1q.12.16.24 0M-.16-.05h.32','port-anchor-icon')"));
  assert.ok(render.includes("class:'port-boat-decor'"));
  assert.ok(!render.includes("class:'port-badge'"));
  assert.ok(!render.includes("class:'port-badge-shadow'"));
