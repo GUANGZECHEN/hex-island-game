@@ -614,7 +614,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  stroke-linejoin:round;
 }
 .game-building-piece.game-piece-enter{animation:building-place .28s ease-out both}
-.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:2.8}
+.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:.075}
 .game-building-piece.game-target-city:hover .game-building-shell,
 .game-building-piece.game-target-city:focus .game-building-shell,
 .game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:.085}
