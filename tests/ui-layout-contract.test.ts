@@ -254,3 +254,26 @@ test('ART-B01 unifies player boards, hand, actions, trades and tabs without chan
  assert.ok(css.includes('.player-award'));
  assert.ok(css.includes('@media(max-width:760px)'));
 });
+
+
+test('ART-C01 adds non-blocking dice, development-card and shared motion with reduced-motion support',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes("type ActivityMotionKind='dice'|'development'|'card-buy'|'build'|'robber'|'trade'|'generic'"));
+ assert.ok(ui.includes('function diceFace'));
+ assert.ok(ui.includes("die.className='motion-die'"));
+ assert.ok(ui.includes('function playedDevelopment'));
+ assert.ok(ui.includes('function motionCard'));
+ assert.ok(ui.includes('activity-alert activity-${kind}'));
+ assert.ok(ui.includes("kind==='dice'&&s.dice"));
+ assert.ok(ui.includes("kind==='development'"));
+ assert.ok(ui.includes("kind==='card-buy'"));
+ assert.ok(css.includes('/* ART-C01 · motion polish */'));
+ assert.ok(css.includes('@keyframes dice-tumble'));
+ assert.ok(css.includes('@keyframes card-flip-in'));
+ assert.ok(css.includes('@keyframes turn-name-settle'));
+ assert.ok(css.includes('@keyframes panel-reveal'));
+ assert.ok(css.includes('.motion-die'));
+ assert.ok(css.includes('.motion-card-face'));
+ assert.ok(css.includes('@media(prefers-reduced-motion:reduce)'));
+});
