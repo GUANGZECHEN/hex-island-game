@@ -73,7 +73,7 @@ function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURC
 }
 function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number]){
  const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent='Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
- for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className='bank-trade-button';tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
+ for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
    const from=document.createElement('span');from.className='bank-trade-side';const rateBadge=document.createElement('span');rateBadge.className='bank-trade-rate';rateBadge.textContent=String(rate);from.append(rateBadge,resourceIcon(give));
    const arrow=document.createElement('span');arrow.className='bank-trade-arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');const to=document.createElement('span');to.className='bank-trade-side';to.append(resourceIcon(receive));
    tradeButton.append(from,arrow,to);tradeButton.disabled=actor.hand[give]<rate||s.bank[receive]<1;
@@ -93,7 +93,7 @@ function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer
  card.append(receive,give);parent.append(card);
 }
 function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:Partial<Record<Resource,number>>,hand?:Hand){
- const b=button(parent,'',run);b.className='action-button';const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(icon(ACTION_PATHS[symbol]),text);
+ const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(icon(ACTION_PATHS[symbol]),text);
  if(cost){const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';b.setAttribute('aria-label',`${label}: not enough resources`);}}
  return b;
 }
@@ -117,7 +117,7 @@ function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
  parent.append(field);return ()=>({...values});
 }
 function developmentAction(parent:HTMLElement,label:string,card:Exclude<Development,'victory-point'>,run:()=>void){
- const b=button(parent,'',run);b.className='action-button development-action-button';const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(developmentIcon(card),text);return b;
+ const b=button(parent,'',run);b.className=`action-button development-action-button development-${card}`;b.dataset.development=card;const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(developmentIcon(card),text);return b;
 }
 function renderDevelopmentCards(parent:HTMLElement,cards:GameState['players'][number]['cards'],turn:number){
  parent.replaceChildren();for(const type of Object.keys(DEVELOPMENT_LABELS) as Development[]){const owned=cards.filter(card=>card.type===type);if(!owned.length)continue;parent.append(developmentChip(type,owned.length,owned.filter(card=>card.boughtTurn===turn).length));}
@@ -176,6 +176,10 @@ function showVictoryAlert(s:GameState){
  alert.append(burst,lead,name,note);board.append(alert);
  victoryAlertTimer=window.setTimeout(()=>{alert.classList.add('victory-alert-out');victoryAlertTimer=window.setTimeout(()=>{alert.remove();victoryAlertTimer=null;},520);},5000);
 }
+function playerAward(label:string,pathData:string,className:string){
+ const badge=document.createElement('span');badge.className=`player-award ${className}`;badge.setAttribute('aria-label',label);badge.title=label;
+ badge.append(icon(pathData,'icon player-award-icon'),document.createTextNode(label));return badge;
+}
 function renderPlayerStrip(s:GameState,activeId:string){
  const strip=el('player-strip');strip.replaceChildren();strip.dataset.playerCount=String(s.players.length);
  for(const player of s.players){
@@ -211,7 +215,10 @@ function renderPlayerStrip(s:GameState,activeId:string){
    playerStat(ACTION_PATHS.road,routeLength,'Longest road length','player-longest-road','LR')
   );
   if(s.longestHolder===player.id)pieces.lastElementChild?.classList.add('award-holder');
-  card.append(header,publicStats,pieces);strip.append(card);
+  const awards=document.createElement('div');awards.className='player-awards';
+  if(s.longestHolder===player.id)awards.append(playerAward('Longest Road',ACTION_PATHS.road,'award-road'));
+  if(s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
+  card.append(header,publicStats,pieces);if(awards.childElementCount)card.append(awards);strip.append(card);
  }
 }
 function drawBoard(){
@@ -272,14 +279,14 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('turn-banner').textContent=turnAnnouncement(activityState(s));
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
- const handCard=el('private-hand-card'),tabs=el('game-tabs');handCard.hidden=spectating;tabs.hidden=spectating;
+ const handCard=el('private-hand-card'),tabs=el('game-tabs');handCard.hidden=spectating;tabs.hidden=spectating;handCard.classList.toggle('active-hand',!spectating&&viewer===active.id);
  if(actor)renderPieceSupply(actor);else el('piece-supply').replaceChildren();
  el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?'Choose cards to discard.':s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
- drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();const targets=el('targets');targets.replaceChildren();
+ drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  if(spectating){activePanel='status';el('actions').hidden=true;el('trade-actions').hidden=true;el('status-panel').hidden=false;return;}
  if(!actor)return;
  if(targetMode){const description=document.createElement('p');description.textContent=`Select a highlighted ${targetMode} target on the board.`;targets.append(description);const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';const choices=legalTargetIds(s,viewer,targetMode);if(choices.length){const choice=select(targets,'Legal target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}else{const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}}
@@ -300,7 +307,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
   action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
   bankTradeButtons(trade,s,actor);
-  const domestic=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Offer to another player';domestic.append(summary);trade.append(domestic);
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);trade.append(domestic);
   const opponent=playerSelect(domestic,'Offer trade to',s.players.filter(p=>p.id!==viewer).map(p=>p.id)), offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');action(domestic,'Make offer','trade',()=>commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:[opponent.value],give:offered(),receive:wanted()}),`${viewer} proposed a trade.`));
   if(s.offer)action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
  }
