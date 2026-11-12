@@ -289,10 +289,12 @@ test('ART-C01 adds non-blocking dice, development-card and shared motion with re
 test('ART-FINAL renders ports as coastal docks and removes the old floating circular badge',()=>{
  const render=readFileSync('src/game/board/render.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(render.includes("line(group,start.x,start.y,shore.x,shore.y,'port-pier-leg')"));
- assert.ok(render.includes("line(group,shore.x,shore.y,stemEnd.x,stemEnd.y,'port-pier-stem')"));
+ assert.ok(render.includes("dockDistance=.78,dockBias=.055"));
+ assert.ok(render.includes("line(group,a.x,a.y,aDock.x,aDock.y,'port-pier-leg port-pier-a')"));
+ assert.ok(render.includes("line(group,b.x,b.y,bDock.x,bDock.y,'port-pier-leg port-pier-b')"));
+ assert.ok(!render.includes("'port-pier-stem'"));
  assert.ok(render.includes("class:'port-dock-board'"));
- assert.ok(render.includes("line(dock,x,-.25,x,.25,'port-dock-plank')"));
+ assert.ok(render.includes("line(dock,x,-.23,x,.23,'port-dock-plank')"));
  assert.ok(render.includes("class:'port-bollard'"));
  assert.ok(render.includes("path(face,'M0 -.18v.23m-.12-.1q.12.16.24 0M-.16-.05h.32','port-anchor-icon')"));
  assert.ok(render.includes("class:'port-boat-decor'"));
@@ -322,4 +324,20 @@ test('all six player UI colors match the authoritative board-piece palette',()=>
  assert.ok(ui.includes("const PLAYER_PIECE_PALETTE=[{body:'#2868b2'"));
  assert.ok(ui.includes("{body:'#d48826',edge:'#9a5d12'}"));
  assert.ok(ui.includes("{body:'#2b9295',edge:'#176b70'}"));
+});
+
+
+test('brick and ore terrain backgrounds read as clay quarry and exposed rock sources',()=>{
+ const render=readFileSync('src/game/board/render.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(render.includes("class:'terrain-art-brick'"));
+ assert.ok(render.includes("'terrain-art-clay-face'"));
+ assert.ok(render.includes("'terrain-art-quarry-cut'"));
+ assert.ok(render.includes("class:'terrain-art-rubble'"));
+ assert.ok(render.includes("'terrain-art-rock-fill'"));
+ assert.ok(render.includes("'terrain-art-quarry-bench'"));
+ assert.ok(css.includes('.terrain-art-hills .terrain-art-clay-face'));
+ assert.ok(css.includes('.terrain-art-hills .terrain-art-brick'));
+ assert.ok(css.includes('.terrain-art-mountains .terrain-art-rock-fill'));
+ assert.ok(css.includes('.terrain-art-mountains .terrain-art-rubble'));
 });
