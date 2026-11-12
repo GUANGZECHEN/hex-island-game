@@ -294,9 +294,12 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
  assert.ok(render.includes("line(group,b.x,b.y,bDock.x,bDock.y,'port-pier-leg port-pier-b')"));
  assert.ok(!render.includes("'port-pier-stem'"));
  assert.ok(render.includes("class:'port-dock-board'"));
- assert.ok(render.includes("line(dock,x,-.23,x,.23,'port-dock-plank')"));
+ assert.ok(render.includes("width:'.96',height:'.64'"));
+ assert.ok(render.includes("line(dock,x,-.27,x,.27,'port-dock-plank')"));
  assert.ok(render.includes("class:'port-bollard'"));
- assert.ok(render.includes("path(face,'M0 -.18v.23m-.12-.1q.12.16.24 0M-.16-.05h.32','port-anchor-icon')"));
+ assert.ok(render.includes("path(face,'M0 -.21v.27m-.14-.11q.14.18.28 0M-.19-.05h.38','port-anchor-icon')"));
+ assert.ok(render.includes("symbol.setAttribute('width','.34')"));
+ assert.ok(css.includes('font-size:.22px'));
  assert.ok(render.includes("class:'port-boat-decor'"));
  assert.ok(!render.includes("class:'port-badge'"));
  assert.ok(!render.includes("class:'port-badge-shadow'"));
@@ -340,4 +343,7 @@ test('brick and ore terrain backgrounds read as clay quarry and exposed rock sou
  assert.ok(css.includes('.terrain-art-hills .terrain-art-brick'));
  assert.ok(css.includes('.terrain-art-mountains .terrain-art-rock-fill'));
  assert.ok(css.includes('.terrain-art-mountains .terrain-art-rubble'));
+ assert.ok(render.includes("L${cx-.18} ${cy-.03}"));
+ assert.ok(render.includes("L${cx+.08} ${cy-.12}"));
+ assert.ok(!render.includes("L${cx+.08} ${cy-.48}"));
 });
