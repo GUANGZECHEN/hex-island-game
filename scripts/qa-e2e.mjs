@@ -16,7 +16,21 @@ const guest=await guestContext.newPage();
 const spectator=await spectatorContext.newPage();
 
 try{
-  // Local-only deterministic bot smoke: one human plus two bots, no pass-device handoff.
+  // Local-only deterministic bot range: one human plus up to five bots.
+  await host.goto(qaUrl,{waitUntil:'networkidle'});
+  await host.locator('#local-bot-count').selectOption('4');
+  if(await host.locator('#seats').inputValue()!=='5'||!(await host.locator('#seats').isDisabled()))throw new Error('Four-bot mode did not lock the game to five players.');
+  await host.locator('#local-bot-count').selectOption('5');
+  if(await host.locator('#seats').inputValue()!=='6'||!(await host.locator('#seats').isDisabled()))throw new Error('Five-bot mode did not lock the game to six players.');
+  await host.locator('#seed').fill('86420');
+  await host.getByRole('button',{name:'Start game'}).click();
+  await host.locator('#game').waitFor({state:'visible'});
+  if(await host.locator('#player-strip .player-summary').count()!==6)throw new Error('Five-bot mode did not create six player cards.');
+  if(await host.locator('#board [data-hex-id]').count()!==24)throw new Error('Five-bot mode did not automatically use the expanded board.');
+  if(!(await host.locator('#connection-summary').textContent())?.includes('5 test bots enabled'))throw new Error('Five-bot mode status was missing.');
+  if(await host.locator('#pass').isVisible()||await host.locator('#switch-player').isVisible())throw new Error('Five-bot mode exposed hot-seat controls.');
+
+  // Restart with two bots for the deeper deterministic gameplay and visual smoke.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
   await host.locator('#local-bot-count').selectOption('2');
   if(await host.locator('#seats').inputValue()!=='3'||!(await host.locator('#seats').isDisabled()))throw new Error('Two-bot mode did not lock the game to three players.');
@@ -58,6 +72,13 @@ try{
   if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
   if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
   if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
+  const dockCount=await host.locator('#board .port-dock-board').count();
+  if(dockCount!==9)throw new Error(`ART-FINAL expected 9 dock ports, found ${dockCount}.`);
+  if(await host.locator('#board .port-pier-leg').count()!==18)throw new Error('ART-FINAL port dock legs do not preserve both coastal vertices.');
+  if(await host.locator('#board .port-badge').count()!==0)throw new Error('ART-FINAL old floating circular port badges are still rendered.');
+  const dockPaint=await host.locator('#board .port-dock-board').first().evaluate(node=>getComputedStyle(node).fill);
+  if(!dockPaint||dockPaint==='none'||dockPaint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-FINAL dock is visually unpainted: ${dockPaint}`);
+  if(await host.locator('#board .port-anchor-icon').count()<1||await host.locator('#board .port-resource-icon').count()<1)throw new Error('ART-FINAL generic/resource port faces are incomplete.');
   const buildingPlacement=await host.locator('#board [data-building-kind]').evaluateAll(groups=>groups.map(group=>{
     const shell=group.querySelector('.game-building-shell'),svg=group.ownerSVGElement;
     if(!shell||!svg)return {visible:false,offset:999};
