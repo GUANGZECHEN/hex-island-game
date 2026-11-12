@@ -50,8 +50,14 @@ try{
   if(await host.locator('#board .island-cell-shadow').count()!==19||await host.locator('#board .island-cell-inset').count()!==19)throw new Error('ART-A01 tabletop hex layers are incomplete.');
   if(await host.locator('#board .island-token-pip').count()<10)throw new Error('ART-A01 number-token probability pips are missing.');
   if(await host.locator('#board .game-building-shadow').count()<2)throw new Error('ART-A01 solid building pieces are missing shadows.');
-  const visibleBuildings=await host.locator('#board [data-building-kind] .game-building-shell').evaluateAll(nodes=>nodes.filter(node=>{const box=node.getBoundingClientRect(),style=getComputedStyle(node);return box.width>=6&&box.height>=6&&style.fill!=='none'&&style.opacity!=='0';}).length);
-  if(visibleBuildings<2)throw new Error(`ART-A01 settlements are present in state but not visibly painted: ${visibleBuildings}`);
+  const buildingPlacement=await host.locator('#board [data-building-kind]').evaluateAll(groups=>groups.map(group=>{
+    const shell=group.querySelector('.game-building-shell'),svg=group.ownerSVGElement;
+    if(!shell||!svg)return {visible:false,offset:999};
+    const box=shell.getBoundingClientRect(),style=getComputedStyle(shell),x=Number(group.getAttribute('data-board-x')),y=Number(group.getAttribute('data-board-y')),point=svg.createSVGPoint();
+    point.x=x;point.y=y;const matrix=svg.getScreenCTM();if(!matrix)return {visible:false,offset:999};const screen=point.matrixTransform(matrix);
+    return {visible:box.width>=8&&box.height>=8&&style.fill!=='none'&&style.opacity!=='0',offset:Math.hypot((box.left+box.width/2)-screen.x,(box.top+box.height/2)-screen.y)};
+  }));
+  if(buildingPlacement.filter(item=>item.visible&&item.offset<18).length<2)throw new Error(`ART-A01 settlements are not visibly centered on their vertices: ${JSON.stringify(buildingPlacement)}`);
   await host.waitForFunction(()=>document.querySelectorAll('#board .game-road-piece').length>=2,null,{timeout:15000});
   const roadPieces=await host.locator('#board .game-road-piece').count();
   if(await host.locator('#board .game-road-shadow').count()!==roadPieces||await host.locator('#board .game-road-highlight').count()!==roadPieces)throw new Error('ART-A01 layered wooden roads are incomplete.');
