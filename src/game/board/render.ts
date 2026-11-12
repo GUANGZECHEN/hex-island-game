@@ -150,7 +150,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     // Push the dock farther offshore and bias it slightly along the coast so its two direct pier legs breathe and differ naturally in length.
     const tx=-uy,ty=ux,dockDistance=.78,dockBias=.055;
     const px=mid.x+ux*dockDistance+tx*dockBias,py=mid.y+uy*dockDistance+ty*dockBias;
-    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.37,dockAttachInset=.08;
+    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.37,dockAttachInset=.255;
     const leftDock={x:px-tx*dockAttachHalf-ux*dockAttachInset,y:py-ty*dockAttachHalf-uy*dockAttachInset};
     const rightDock={x:px+tx*dockAttachHalf-ux*dockAttachInset,y:py+ty*dockAttachHalf-uy*dockAttachInset};
     const aAlong=(a.x-mid.x)*tx+(a.y-mid.y)*ty,bAlong=(b.x-mid.x)*tx+(b.y-mid.y)*ty;
