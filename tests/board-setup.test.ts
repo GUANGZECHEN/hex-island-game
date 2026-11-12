@@ -106,6 +106,17 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class') === 'island-cell-shadow'));
       assert.ok(group.children.some(child => child.tag === 'polygon' && child.attributes.get('class') === 'island-cell-inset'));
       assert.ok(group.children.some(child => child.tag === 'g' && child.attributes.get('data-terrain-art') === hex.terrain));
+      const terrainArt=group.children.find(child=>child.tag==='g'&&child.attributes.get('data-terrain-art')===hex.terrain)!;
+      if(hex.terrain==='hills'){
+        assert.ok(terrainArt.children.some(child=>child.tag==='path'&&child.attributes.get('class')==='terrain-art-clay-face'));
+        assert.ok(terrainArt.children.some(child=>child.tag==='path'&&child.attributes.get('class')==='terrain-art-quarry-cut'));
+        assert.equal(terrainArt.children.filter(child=>child.tag==='rect'&&child.attributes.get('class')==='terrain-art-brick').length,3);
+      }
+      if(hex.terrain==='mountains'){
+        assert.ok(terrainArt.children.some(child=>child.tag==='path'&&child.attributes.get('class')==='terrain-art-rock-fill'));
+        assert.ok(terrainArt.children.some(child=>child.tag==='path'&&child.attributes.get('class')==='terrain-art-quarry-bench'));
+        assert.equal(terrainArt.children.filter(child=>child.tag==='circle'&&child.attributes.get('class')==='terrain-art-rubble').length,4);
+      }
       if (hex.resource) {
         assert.ok(group.children.some(child => child.tag === 'svg' && child.attributes.get('data-resource-icon') === hex.resource));
         assert.ok(!group.children.some(child => child.tag === 'text' && child.attributes.get('class') === 'island-label'));
@@ -128,7 +139,10 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       const port=setup.ports[index],all=descendants(group);
       assert.equal(group.attributes.get('data-port-edge'),port.edgeId);
       assert.equal(group.attributes.get('data-port-type'),port.type);
-      assert.equal(all.filter(child=>child.tag==='line'&&child.attributes.get('class')==='port-pier-leg').length,2);
+      const legs=all.filter(child=>child.tag==='line'&&child.attributes.get('class')?.includes('port-pier-leg'));
+      assert.equal(legs.length,2);
+      assert.notEqual(`${legs[0].attributes.get('x2')},${legs[0].attributes.get('y2')}`,`${legs[1].attributes.get('x2')},${legs[1].attributes.get('y2')}`);
+      assert.equal(all.filter(child=>child.attributes.get('class')==='port-pier-stem').length,0);
       assert.equal(all.filter(child=>child.tag==='rect'&&child.attributes.get('class')==='port-dock-board').length,1);
       if(port.type==='generic'){
         assert.ok(all.some(child=>child.tag==='path'&&child.attributes.get('class')==='port-anchor-icon'));
