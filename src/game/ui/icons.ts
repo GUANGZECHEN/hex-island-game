@@ -65,7 +65,7 @@ export function developmentChip(card:Development,count:number,newCount=0):HTMLEl
   return chip;
 }
 export function resourceChip(resource:Resource,count:number):HTMLElement {
-  const chip=document.createElement('span');chip.className=`resource-chip resource-chip-${resource}`;chip.dataset.resource=resource;chip.setAttribute('role','img');chip.setAttribute('aria-label',`${resource}: ${count}`);
+  const chip=document.createElement('span');chip.className=`resource-chip resource-chip-${resource}`;chip.setAttribute('data-resource',resource);chip.setAttribute('role','img');chip.setAttribute('aria-label',`${resource}: ${count}`);
   const number=document.createElement('span');number.className='resource-count';number.textContent=String(count);chip.append(resourceIcon(resource),number);return chip;
 }
 export function affordable(hand:Record<Resource,number>, cost:Partial<Record<Resource,number>>):boolean {return Object.entries(cost).every(([resource,amount])=>hand[resource as Resource] >= (amount ?? 0));}
