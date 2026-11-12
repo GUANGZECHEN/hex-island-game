@@ -139,3 +139,20 @@ The existing turn handoff alert and three-pulse active-player cue remain. The pl
 ## Accessibility
 
 prefers-reduced-motion: reduce disables dice tumble, card flip, panel reveal and the decorative board-piece/turn motion while retaining all static state and alerts.
+
+
+# ART-FINAL Ports and Board Polish
+
+ART-FINAL closes the board-art pass by replacing floating circular port badges with coastal dock components and aligning their material depth with tokens, roads, buildings and the robber.
+
+## Ports
+
+Each port remains bound to the same two coastal vertices used by game rules. Visually, those two vertices now feed into two short wooden pier legs and a central dock stem. The dock itself is a small plank board that sits close to the shoreline instead of floating as a circular UI badge.
+
+Resource-specific ports show the shared local resource SVG plus a 2:1 label. Generic ports use a small anchor mark plus 3:1. Trade information stays upright even when the physical dock rotates around the island coast.
+
+A very small boat silhouette may appear beyond the dock on desktop as decorative coastal context. Phone layouts hide plank micro-detail, bollards and the boat while retaining the dock shape, resource/anchor symbol and trade ratio.
+
+## Consistency pass
+
+Port shadows, number-token shadows, robber-token shadows, building shadows and road shadows share a restrained physical-component depth. Port information stays below legal-target emphasis and must not obscure vertices, roads, number tokens or buildings.
