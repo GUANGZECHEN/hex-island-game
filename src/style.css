@@ -652,3 +652,422 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .game-building-piece.game-piece-enter,
  .robber-marker.robber-marker-enter{animation:none}
 }
+
+
+/* ART-B01 · tabletop control-surface visual system */
+:root{
+ --ui-paper:#fffaf0;
+ --ui-paper-2:#f7f0e1;
+ --ui-ink:#20372f;
+ --ui-muted:#6d7a72;
+ --ui-border:#d8cdb8;
+ --ui-accent:#b8862b;
+ --ui-accent-soft:#f4e3af;
+ --ui-green:#335f4d;
+ --ui-green-soft:#e7efe7;
+ --ui-shadow:0 8px 22px #3d38290f;
+}
+
+/* Main control panel */
+.control-panel{
+ background:
+  radial-gradient(circle at 15% 0%,#fffdf7 0,transparent 34%),
+  linear-gradient(180deg,#fffaf0 0%,#f8f1e5 100%);
+ border-color:#d8cdb8;
+ box-shadow:0 10px 30px #4f47351a;
+}
+.turn-card{
+ position:relative;
+ overflow:hidden;
+ border:1px solid #d6ccb8;
+ background:linear-gradient(180deg,#eef3e9,#e4ece3);
+ box-shadow:inset 0 1px 0 #ffffffaa;
+}
+.turn-card::before{
+ content:"";
+ position:absolute;
+ inset:0 auto 0 0;
+ width:.28rem;
+ background:#6f8b75;
+ opacity:.9;
+}
+.turn-card #game-status{color:#243d34}
+.turn-card #turn-hint{color:#4f665b;font-weight:700}
+
+/* Player public boards */
+.board-stage .player-summary{
+ border:1px solid color-mix(in srgb,var(--player-color) 26%,#d5d9cf);
+ border-left:5px solid var(--player-color);
+ border-radius:.72rem;
+ background:
+  linear-gradient(180deg,#fffdf7ed,#f8f5ebed);
+ box-shadow:0 5px 16px #273b3218,inset 0 1px 0 #fff;
+}
+.board-stage .player-summary.active-player{
+ background:linear-gradient(180deg,#fff7d4f5,#f9edbaf5);
+ box-shadow:0 7px 20px #6a521b21,inset 0 0 0 2px #d6a83e;
+}
+.player-marker{
+ box-shadow:inset 0 -2px 0 #00000020,0 2px 5px #00000018;
+}
+.player-summary-name{color:#263a32}
+.player-public-stats{
+ padding:.18rem .22rem;
+ border-radius:.45rem;
+ background:#ffffff75;
+}
+.player-piece-stats{
+ border-top:1px dashed #d8d5c8;
+}
+.player-awards{
+ display:flex;
+ gap:.22rem;
+ flex-wrap:wrap;
+ margin-top:.28rem;
+}
+.player-award{
+ display:inline-flex;
+ align-items:center;
+ gap:.16rem;
+ padding:.13rem .28rem;
+ border:1px solid #d2a643;
+ border-radius:999px;
+ background:linear-gradient(180deg,#fff3bd,#f2d77f);
+ color:#6b4a00;
+ font-size:.57rem;
+ line-height:1;
+ font-weight:900;
+ letter-spacing:.02em;
+ box-shadow:inset 0 1px 0 #fff7d8;
+}
+.player-award-icon{width:.7rem;height:.7rem}
+.award-army{border-color:#b78c34}
+.award-road{border-color:#c39e46}
+.player-longest-road.award-holder,
+.player-knight-count.largest-army-holder{
+ background:#f7e5a5;
+ border:1px solid #ddb957;
+ box-shadow:none;
+}
+
+/* Private hand becomes a physical player tray */
+.hand-card{
+ margin:.55rem 0 .45rem;
+ padding:.7rem;
+ border:1px solid #d8cdb8;
+ border-radius:.8rem;
+ background:
+  linear-gradient(180deg,#fffdf7 0%,#fbf5e9 100%);
+ box-shadow:var(--ui-shadow),inset 0 1px 0 #fff;
+ transition:border-color .18s ease,box-shadow .18s ease;
+}
+.hand-card.active-hand{
+ border-color:#c7a049;
+ box-shadow:0 8px 22px #6a531d18,inset 0 0 0 1px #e5c66d;
+}
+.hand-card .panel-heading{
+ padding-bottom:.35rem;
+ border-bottom:1px solid #e6dcc8;
+}
+.hand-card .panel-heading h2{color:#2b4439}
+.resource-row{
+ gap:.4rem;
+}
+.hand-card .resource-chip{
+ min-width:3.35rem;
+ min-height:40px;
+ justify-content:center;
+ padding:.34rem .48rem;
+ border-width:1px;
+ border-style:solid;
+ border-radius:.65rem;
+ background:#fff;
+ box-shadow:inset 0 1px 0 #ffffffcc,0 2px 5px #493d2d12;
+}
+.resource-chip-lumber{border-color:#9bb7a2;background:#edf5ec}
+.resource-chip-brick{border-color:#d4a38c;background:#f8e9df}
+.resource-chip-wool{border-color:#aecba1;background:#eff7e8}
+.resource-chip-grain{border-color:#dbc47c;background:#faf2d4}
+.resource-chip-ore{border-color:#b8bcc5;background:#edf0f3}
+.hand-card .resource-chip .icon{width:1.28rem;height:1.28rem}
+.hand-card .resource-count{font-size:.95rem}
+.development-row{
+ gap:.38rem;
+}
+.development-chip{
+ min-height:40px;
+ padding:.32rem .48rem;
+ border:1px solid #c7c0b5;
+ border-radius:.62rem;
+ background:
+  linear-gradient(145deg,#fffdf7,#eee7da);
+ box-shadow:0 2px 5px #463b2d16,inset 0 1px 0 #fff;
+}
+.development-chip .development-icon{width:1.2rem;height:1.2rem}
+.development-new{background:#e4bd51;color:#4c3500}
+.piece-supply{
+ margin-top:.5rem;
+ padding-top:.45rem;
+ border-top:1px dashed #d9d0c0;
+}
+.piece-supply .player-stat{
+ background:#fffaf1;
+ border-color:#d8cdb8;
+}
+
+/* Segmented tabs */
+.panel-tabs{
+ gap:.22rem;
+ padding:.2rem;
+ border:1px solid #d8cdb8;
+ border-radius:.7rem;
+ background:#ece5d8;
+}
+.panel-tabs button{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:.22rem;
+ min-height:38px;
+ border:1px solid transparent;
+ border-radius:.5rem;
+ color:#59685f;
+ background:transparent;
+}
+.panel-tabs button .icon{margin:0;width:.92rem;height:.92rem}
+.panel-tabs button[aria-pressed=true]{
+ border-color:#cfc3ac;
+ background:#fffaf0;
+ color:#294d3e;
+ box-shadow:0 2px 5px #3c352714,inset 0 1px 0 #fff;
+}
+
+/* Actions as tactile tabletop controls */
+.panel-content{padding-top:.65rem}
+.action-grid{gap:.42rem}
+.action-button{
+ position:relative;
+ min-height:56px;
+ padding:.52rem .6rem;
+ border:1px solid #d4cab7;
+ border-radius:.7rem;
+ background:
+  linear-gradient(180deg,#fffdf8 0%,#f3eddf 100%);
+ color:#29463a;
+ box-shadow:0 2px 5px #463d3010,inset 0 1px 0 #fff;
+ transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease,background .12s ease;
+}
+.action-button>.icon{width:1.3rem;height:1.3rem}
+.action-button:hover:not(:disabled){
+ transform:translateY(-1px);
+ border-color:#b9ac93;
+ background:linear-gradient(180deg,#fffefb,#eee6d7);
+ box-shadow:0 4px 9px #463d3018,inset 0 1px 0 #fff;
+}
+.action-button:active:not(:disabled){transform:translateY(0)}
+.action-button.action-dice{
+ border-color:#cba649;
+ background:linear-gradient(180deg,#fff5c9,#f1d982);
+ color:#5a4205;
+}
+.action-button.action-settlement,
+.action-button.action-city,
+.action-button.action-road{
+ border-color:#b6c7b9;
+ background:linear-gradient(180deg,#f2f7ef,#e2ece0);
+}
+.action-button.action-card,
+.development-action-button{
+ border-color:#c7bfd2;
+ background:linear-gradient(180deg,#f6f1f8,#eae2ef);
+ color:#4c3f59;
+}
+.action-button.action-trade{
+ border-color:#b8cbc4;
+ background:linear-gradient(180deg,#eef6f2,#dfebe6);
+}
+.action-button.action-end{
+ border-color:#d5c7bc;
+ background:linear-gradient(180deg,#faf5ef,#ede3da);
+ color:#665248;
+}
+.action-button:disabled{
+ color:#8b8e88;
+ border-color:#ded8cc;
+ background:#eeeae2;
+ box-shadow:none;
+}
+.action-button:disabled .action-cost{opacity:.65}
+.action-cost{
+ align-items:center;
+ padding-top:.12rem;
+}
+.action-cost .resource-chip{
+ border:1px solid #d7d0c2;
+ border-radius:.35rem;
+ background:#ffffff88;
+}
+.development-actions-inline{
+ margin-top:.75rem;
+ padding:.7rem;
+ border:1px solid #d7ccdc;
+ border-radius:.72rem;
+ background:linear-gradient(180deg,#fbf7fc,#f1eaf4);
+}
+.development-actions-inline h2{
+ margin:0 0 .5rem;
+ color:#594d61;
+}
+.development-effect{
+ border-color:#d4cadd;
+ background:#fffafc;
+}
+
+/* Target selection */
+#targets:not(:empty){
+ margin:.55rem 0;
+ padding:.55rem .6rem;
+ border:1px solid #d4b758;
+ border-radius:.65rem;
+ background:linear-gradient(180deg,#fff6cc,#f8e8a7);
+ color:#5c4606;
+ box-shadow:inset 0 1px 0 #fff9df;
+}
+.target-cancel{
+ border-color:#c9ad62;
+ background:#fff8dd;
+}
+
+/* Trade is a dedicated exchange tray */
+#trade-actions{
+ padding-top:.65rem;
+}
+.bank-trade-section{
+ margin:0 0 .7rem;
+ padding:.65rem;
+ border:1px solid #d5cbb8;
+ border-radius:.72rem;
+ background:linear-gradient(180deg,#fffdf8,#f7f0e3);
+}
+.bank-trade-section h2{color:#304b40}
+.trade-rate-hint{margin:.15rem 0 .5rem}
+.bank-trade-grid{gap:.36rem}
+.bank-trade-button{
+ position:relative;
+ min-height:54px;
+ border-color:#d4c8b4;
+ border-radius:.62rem;
+ background:linear-gradient(180deg,#fffdf8,#f2ebdd);
+ box-shadow:inset 0 1px 0 #fff;
+}
+.bank-trade-button.bank-trade-rate-2{
+ border-color:#d1a94e;
+ background:linear-gradient(180deg,#fff3c0,#f0d77d);
+}
+.bank-trade-button.bank-trade-rate-3{
+ border-color:#9fb7a7;
+ background:linear-gradient(180deg,#eff6ef,#e1ece2);
+}
+.bank-trade-button:hover:not(:disabled),.bank-trade-button:focus-visible:not(:disabled){
+ transform:translateY(-1px);
+ border-color:#8ca693;
+ background:#eef5ec;
+}
+.bank-trade-button:disabled{
+ opacity:.36;
+ filter:saturate(.6);
+}
+.bank-trade-rate{
+ min-width:1.15rem;
+ padding:.11rem .18rem;
+ border-radius:.3rem;
+ background:#ffffffa8;
+}
+.domestic-trade-card{
+ margin-top:.55rem!important;
+ padding:.55rem!important;
+ border:1px solid #d8cdb8!important;
+ border-radius:.72rem;
+ background:#fbf6ec;
+}
+.domestic-trade-card summary{
+ padding:.1rem 0;
+ color:#314c40;
+}
+.resource-stepper-grid{
+ border:1px solid #ddd3c2;
+ border-radius:.65rem;
+ background:#fffaf2;
+}
+.resource-stepper{
+ padding:.18rem .22rem;
+ border-radius:.45rem;
+ background:#ffffff88;
+}
+.stepper-button{
+ border-color:#d2c6b3;
+ background:#f5efe3;
+}
+.incoming-trade{
+ border-color:#d2a83f;
+ background:linear-gradient(180deg,#fff3bd,#f7df91);
+ box-shadow:0 5px 14px #6e55181a;
+}
+
+/* Status / log uses readable paper blocks */
+#status-panel>h2{
+ color:#314a40;
+}
+#players,#bank,#bonuses{
+ margin:.35rem 0;
+ padding:.5rem .55rem;
+ border:1px solid #ded5c5;
+ border-radius:.58rem;
+ background:#fffaf2;
+}
+#bank{
+ display:flex;
+ align-items:center;
+ gap:.24rem;
+ flex-wrap:wrap;
+}
+#bank .resource-chip{
+ min-height:26px;
+ padding:.12rem .27rem;
+}
+#bonuses{
+ color:#5c543f;
+ background:#f7edcf;
+ border-color:#e0ca84;
+}
+#log{
+ margin:.35rem 0;
+ padding:.5rem .5rem .5rem 1.7rem;
+ border:1px solid #ded5c5;
+ border-radius:.58rem;
+ background:#fffdf8;
+}
+#log li+li{margin-top:.22rem}
+
+/* Mobile compaction keeps the new material hierarchy without crowding. */
+@media(max-width:760px){
+ .control-panel{background:linear-gradient(180deg,#fffaf0,#f7f0e4)}
+ .hand-card{padding:.5rem;margin:.35rem 0}
+ .hand-card .resource-chip{min-width:2.9rem;min-height:34px;padding:.22rem .34rem}
+ .hand-card .resource-chip .icon{width:1.05rem;height:1.05rem}
+ .hand-card .resource-count{font-size:.82rem}
+ .development-chip{min-height:34px;padding:.22rem .34rem}
+ .panel-tabs{padding:.14rem}
+ .panel-tabs button{min-height:34px;font-size:.68rem}
+ .action-button{min-height:46px;padding:.4rem .45rem}
+ .action-button>.icon{width:1.08rem;height:1.08rem}
+ .bank-trade-section{padding:.48rem}
+ .bank-trade-button{min-height:46px}
+ .player-award{font-size:.52rem;padding:.1rem .22rem}
+}
+@media(max-width:420px){
+ .hand-card .resource-row{gap:.24rem}
+ .hand-card .resource-chip{min-width:2.65rem}
+ .player-awards{gap:.15rem}
+ .player-award{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
