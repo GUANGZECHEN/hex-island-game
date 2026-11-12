@@ -152,12 +152,45 @@ function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase
  const name=document.createElement('strong');name.className='turn-alert-name';name.textContent=playerName(active.id);alert.append(lead,name);board.append(alert);
  turnAlertTimer=window.setTimeout(()=>{alert.classList.add('turn-alert-out');turnAlertTimer=window.setTimeout(()=>{alert.remove();turnAlertTimer=null;},260);},2200);
 }
+type ActivityMotionKind='dice'|'development'|'card-buy'|'build'|'robber'|'trade'|'generic';
+function activityMotionKind(message:string):ActivityMotionKind {
+ if(/rolled dice/i.test(message))return 'dice';
+ if(/played (Knight|Road Building|Year of Plenty|Monopoly)/i.test(message))return 'development';
+ if(/bought a development card/i.test(message))return 'card-buy';
+ if(/built a road|built a settlement|upgraded a settlement/i.test(message))return 'build';
+ if(/moved the robber|stole 1 card/i.test(message))return 'robber';
+ if(/traded /i.test(message))return 'trade';
+ return 'generic';
+}
+function diceFace(value:number){
+ const die=document.createElement('span');die.className='motion-die';die.dataset.value=String(value);die.setAttribute('role','img');die.setAttribute('aria-label',`Die shows ${value}`);
+ const patterns:Record<number,number[]>={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
+ for(let cell=1;cell<=9;cell++){const pip=document.createElement('i');pip.className='motion-die-cell';if(patterns[value]?.includes(cell))pip.classList.add('motion-die-pip');pip.setAttribute('aria-hidden','true');die.append(pip);}
+ return die;
+}
+function playedDevelopment(message:string):Development|null {
+ for(const [card,label] of Object.entries(DEVELOPMENT_LABELS) as [Development,string][])if(card!=='victory-point'&&message.toLowerCase().includes(`played ${label.toLowerCase()}`))return card;
+ return null;
+}
+function motionCard(card:Development|null,label:string){
+ const visual=document.createElement('span');visual.className=`motion-card${card?` motion-card-${card}`:' motion-card-hidden'}`;visual.setAttribute('aria-hidden','true');
+ const face=document.createElement('span');face.className='motion-card-face';face.append(card?developmentIcon(card):icon(ACTION_PATHS.card,'icon motion-card-icon'));
+ const caption=document.createElement('span');caption.className='motion-card-caption';caption.textContent=label;face.append(caption);visual.append(face);return visual;
+}
 function showActivityAlert(s:GameState){
  if(!pendingActivityAlert||el('game').hidden)return;
+ const activity=pendingActivityAlert;pendingActivityAlert='';
  const board=el('board');board.querySelector('.activity-alert')?.remove();if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}
- const active=s.players[s.currentSeat],alert=document.createElement('div');alert.className=`activity-alert player-${active.seat+1}`;alert.setAttribute('role','status');alert.setAttribute('aria-live','polite');
- const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent='TABLE ACTION';const message=document.createElement('strong');message.className='activity-alert-message';message.textContent=pendingActivityAlert;alert.append(lead,message);board.append(alert);pendingActivityAlert='';
- activityAlertTimer=window.setTimeout(()=>{alert.classList.add('activity-alert-out');activityAlertTimer=window.setTimeout(()=>{alert.remove();activityAlertTimer=null;},220);},1700);
+ const active=s.players[s.currentSeat],kind=activityMotionKind(activity),alert=document.createElement('div');alert.className=`activity-alert activity-${kind} player-${active.seat+1}`;alert.dataset.motionKind=kind;alert.setAttribute('role','status');alert.setAttribute('aria-live','polite');
+ const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent=kind==='dice'?'DICE ROLL':kind==='development'?'CARD PLAY':kind==='card-buy'?'NEW CARD':kind==='build'?'BUILD':kind==='robber'?'ROBBER':kind==='trade'?'TRADE':'TABLE ACTION';
+ const message=document.createElement('strong');message.className='activity-alert-message';message.textContent=activity;
+ if(kind==='dice'&&s.dice){const dice=document.createElement('span');dice.className='motion-dice';dice.append(diceFace(s.dice[0]),diceFace(s.dice[1]));alert.append(lead,dice,message);}
+ else if(kind==='development'){const card=playedDevelopment(activity);alert.append(lead,motionCard(card,card?DEVELOPMENT_LABELS[card]:'Development card'),message);}
+ else if(kind==='card-buy')alert.append(lead,motionCard(null,'Development card'),message);
+ else alert.append(lead,message);
+ board.append(alert);
+ const hold=kind==='dice'||kind==='development'||kind==='card-buy'?1900:1700;
+ activityAlertTimer=window.setTimeout(()=>{alert.classList.add('activity-alert-out');activityAlertTimer=window.setTimeout(()=>{alert.remove();activityAlertTimer=null;},240);},hold);
 }
 function showVictoryAlert(s:GameState){
  if(!s.winner||lastWinnerAlert===s.winner||el('game').hidden)return;
