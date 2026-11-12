@@ -304,3 +304,22 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
  assert.ok(css.includes('.port-boat-decor'));
  assert.ok(css.includes('.port-dock-plank,.port-bollard,.port-boat-decor{display:none}'));
 });
+
+
+test('all six player UI colors match the authoritative board-piece palette',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ const colors=['#2868b2','#c74a42','#4f8b51','#8b55a1','#d48826','#2b9295'];
+ for(const [index,color] of colors.entries()){
+  const seat=index+1;
+  assert.ok(css.includes(`.player-summary.player-${seat}{--player-color:${color}}`));
+  assert.ok(css.includes(`.game-road-piece.player-${seat}{--road-color:${color}`));
+  assert.ok(css.includes(`.game-building-piece.player-${seat}{--piece-color:${color}`));
+  assert.ok(css.includes(`.turn-alert.player-${seat}{--turn-alert-color:${color}}`));
+  assert.ok(css.includes(`.activity-alert.player-${seat}{--turn-alert-color:${color}}`));
+  assert.ok(css.includes(`.victory-alert.player-${seat}{--victory-color:${color}}`));
+ }
+ assert.ok(ui.includes("const PLAYER_PIECE_PALETTE=[{body:'#2868b2'"));
+ assert.ok(ui.includes("{body:'#d48826',edge:'#9a5d12'}"));
+ assert.ok(ui.includes("{body:'#2b9295',edge:'#176b70'}"));
+});
