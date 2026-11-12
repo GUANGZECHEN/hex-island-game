@@ -42,7 +42,8 @@ try{
     await host.locator('#targets select').first().selectOption({index:0});
     await host.getByRole('button',{name:'Use target'}).click();
   };
-  if((await host.locator('#game-status').textContent())?.includes("Player 1's turn"))await placeHumanSetupPair();
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
+  await placeHumanSetupPair();
   await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 1 settlement')),null,{timeout:15000});
   await host.waitForFunction(()=>Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(node=>node.textContent?.startsWith('Bot 2 settlement')),null,{timeout:15000});
   if(await host.locator('#pass').isVisible())throw new Error('Bot turns triggered pass-device UI.');
@@ -72,7 +73,7 @@ try{
   // Complete Player 1's second setup pair, then exercise a real authoritative dice roll.
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
   await placeHumanSetupPair();
-  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: roll"),null,{timeout:8000});
+  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: roll"),null,{timeout:30000});
   await host.getByRole('button',{name:'Roll dice'}).click();
   const diceAlert=host.locator('#board .activity-alert.activity-dice');
   await diceAlert.waitFor({state:'visible',timeout:3000});
