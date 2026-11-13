@@ -34,9 +34,9 @@ export function projectSpectatorState(state:GameState, revision:number, gameId:s
 }
 /** Peer-to-seat binding is established by the room layer, never from the payload. */
 export class HostAuthority {
- private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null;
+ private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private discardBaseRevision:number|null=null;
  private gameId:string; private state:GameState; private random:()=>number;
- constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;}
+ constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;this.discardBaseRevision=state.phase==='discard'?revision:null;}
  static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
   return new HostAuthority(value.gameId,value.state,random,value.revision);
@@ -54,9 +54,11 @@ export class HostAuthority {
   if(typeof message.commandId!=='string'||!idPattern.test(message.commandId))return reject('malformed');
   const dedupe=`${boundPlayer}:${message.commandId}`;
   if(this.seen.has(dedupe))return reject('duplicate');
-  if(!Number.isSafeInteger(message.revision)||message.revision!==this.revision)return reject('stale');
   const command=message.command as Record<string,unknown>;
   if(!command||typeof command!=='object'||Array.isArray(command)||typeof command.type!=='string'||!Object.hasOwn(fields,command.type)||command.playerId!==boundPlayer||Object.keys(command).some(k=>!['type','playerId',...fields[command.type as string]].includes(k)))return reject('malformed');
+  const revision=message.revision;
+  const concurrentDiscard=command.type==='discard'&&this.state.phase==='discard'&&!!this.state.discards[boundPlayer]&&this.discardBaseRevision!==null&&Number.isSafeInteger(revision)&&revision>=this.discardBaseRevision&&revision<=this.revision;
+  if(!Number.isSafeInteger(revision)||(revision!==this.revision&&!concurrentDiscard))return reject('stale');
   let pendingTrade:Omit<PublicTradeSummary,'revision'>|null=null;
   if(command.type==='accept-offer'&&this.state.offer){
    const offer=this.state.offer;
@@ -69,6 +71,9 @@ export class HostAuthority {
    else if(economyTypes.has(command.type))this.state=applyEconomyCommand(this.state,command as EconomyCommand);
    else return reject('malformed');
   }catch{return reject('illegal');}
-  this.seen.add(dedupe);this.revision++;this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;return {ok:true,revision:this.revision};
+  this.seen.add(dedupe);this.revision++;
+  if(command.type==='roll'&&this.state.phase==='discard')this.discardBaseRevision=this.revision;
+  else if(this.state.phase!=='discard')this.discardBaseRevision=null;
+  this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;return {ok:true,revision:this.revision};
  }
 }
