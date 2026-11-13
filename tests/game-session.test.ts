@@ -66,7 +66,7 @@ test('a fifth pre-game visitor gets no seat, while post-start visitors become pu
  const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0);
  const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
  for(const peer of ['p2','p3','p4']){send(peer,{type:'hello'});send(peer,{type:'ready',ready:true});}
- send('p5',{type:'hello'});assert.equal(messages.get('p5')!.at(-1).type,'error');assert.equal(host.lobby().length,4);
+ send('p5',{type:'hello'});assert.equal(messages.get('p5')!.some(x=>x.type==='spectator'),true);assert.equal(host.lobby().length,4);
  host.setHostReady(true);host.start(37);
  send('watcher',{type:'hello'});
  const watcher=messages.get('watcher')!;
@@ -231,7 +231,7 @@ test('expanded room admits six seats and rejects a seventh before start',()=>{
  for(let i=2;i<=6;i++)send(`p${i}`,{type:'hello'});
  assert.equal(host.lobby().length,6);
  send('p7',{type:'hello'});
- assert.equal(messages.get('p7')!.at(-1).type,'error');
+ assert.equal(messages.get('p7')!.some(x=>x.type==='spectator'),true);
  assert.equal(host.lobby().length,6);
 });
 
@@ -242,4 +242,62 @@ test('expanded room cannot start until it has at least five players',()=>{
  for(let i=2;i<=4;i++){send(`p${i}`,{type:'hello'});send(`p${i}`,{type:'ready',ready:true});}
  host.setHostReady(true);
  assert.throws(()=>host.start(1),/Five to six/);
+});
+
+test('host selects map and seed inside the lobby and every player sees the selection',()=>{
+ const messages=new Map<string,any[]>();let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),()=>{},()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ send('p2',{type:'hello'});send('p2',{type:'ready',ready:true});host.setHostReady(true);
+ host.setMapSelection('expanded-5-6',24680);
+ assert.equal(host.lobby().every(s=>!s.ready),true);
+ const lobby=messages.get('p2')!.filter(x=>x.type==='lobby').at(-1).data;
+ assert.equal(lobby.boardLayout,'expanded-5-6');assert.equal(lobby.mapSeed,24680);
+ send('p2',{type:'map',boardLayout:'standard',mapSeed:42});
+ assert.equal(messages.get('p2')!.filter(x=>x.type==='lobby').at(-1).data.mapSeed,24680);
+ for(let i=3;i<=5;i++){send('p'+i,{type:'hello'});send('p'+i,{type:'ready',ready:true});}
+ send('p2',{type:'ready',ready:true});host.setHostReady(true);host.start(24680);
+ assert.equal(host.recovery().authority.state.board.layout,'expanded-5-6');
+ assert.equal(host.recovery().authority.state.board.seed,24680);
+ assert.throws(()=>host.setMapSelection('standard',1),/only available before/);
+});
+test('guests toggle between spectator and player in lobby without losing other seats',()=>{
+ const messages=new Map<string,any[]>();let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),()=>{},()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ send('a',{type:'hello'});const a=messages.get('a')!.find(x=>x.type==='seat').data;
+ send('b',{type:'hello',role:'spectator'});
+ assert.equal(host.spectatorCount(),1);assert.equal(host.lobby().length,2);
+ send('a',{type:'role',role:'spectator'});
+ assert.equal(host.spectatorCount(),2);assert.equal(host.lobby().length,1);
+ send('b',{type:'role',role:'player',name:'Bob'});
+ assert.equal(host.spectatorCount(),1);
+ const next=messages.get('b')!.find(x=>x.type==='seat').data;
+ assert.equal(next.id,'Player 2');assert.notEqual(next.token,a.token);
+ send('a',{type:'hello',token:a.token});assert.equal(messages.get('a')!.at(-1).type,'error');
+ send('a',{type:'role',role:'player',name:'Alice'});assert.equal(host.lobby().length,3);
+ send('b',{type:'ready',ready:true});send('a',{type:'ready',ready:true});host.setHostReady(true);
+ host.start(11);
+ send('a',{type:'role',role:'spectator'});assert.equal(host.lobby().length,3);
+ assert.equal(messages.get('a')!.filter(x=>x.type==='snapshot').at(-1).data.private!==null,true);
+});
+test('host restarts the current game in same room with fresh identity and spectator sync',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
+ send('p2',{type:'hello'});const seat=messages.get('p2')!.find(x=>x.type==='seat').data;
+ send('p2',{type:'ready',ready:true});host.setHostReady(true);host.start(31);
+ const before=host.recovery().authority.gameId;
+ send('spectator',{type:'hello'});const watcher=messages.get('spectator')!.find(x=>x.type==='snapshot').data;assert.equal(watcher.private,null);
+ assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'first-move',0).ok,true);
+ host.restart();
+ const checkpoint=host.recovery();
+ assert.notEqual(checkpoint.authority.gameId,before);
+ assert.equal(checkpoint.authority.revision,0);assert.equal(checkpoint.authority.state.phase,'setup-settlement');
+ assert.equal(checkpoint.authority.state.board.seed,31);assert.equal(checkpoint.seats[1].token,seat.token);
+ const replay=messages.get('p2')!.filter(x=>x.type==='restart').at(-1);
+ assert.equal(replay.data.gameId,checkpoint.authority.gameId);
+ assert.equal(messages.get('spectator')!.filter(x=>x.type==='snapshot').at(-1).data.private,null);
+ assert.equal(published.filter(x=>x.type==='checkpoint').at(-1).replace,true);
+ assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'second-move',0).ok,true);
 });
