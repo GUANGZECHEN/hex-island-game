@@ -160,9 +160,11 @@ try{
 
   // Create the real game after the retry probe.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
-  await host.locator('#room-seed').fill('24680');
-  await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
   await host.getByRole('button',{name:'Create room'}).click();
+  await host.locator('#room-map-lobby').waitFor({state:'visible'});
+  await host.locator('#room-seed').fill('24680');
+  await host.locator('#room-seed').dispatchEvent('change');
+  await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
   await host.locator('#room-invite').waitFor({state:'visible'});
   await host.waitForFunction(()=>((document.querySelector('#room-invite'))?.value??'').length>0);
   const invite=await host.locator('#room-invite').inputValue();
@@ -175,6 +177,18 @@ try{
   await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
+  await guest.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24680',null,{timeout:10000});
+  if(!(await guest.locator('#room-seed').isDisabled()))throw new Error('Guest can change the host-selected map.');
+  if(await guest.locator('#room-map-preview [data-hex-id]').count()!==19)throw new Error('Guest did not receive a shared map preview.');
+  await spectator.goto(invite,{waitUntil:'domcontentloaded'});
+  await spectator.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 3: connected'),null,{timeout:15000});
+  await spectator.locator('#room-role').selectOption('spectator');
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('In the lobby as spectator.'),null,{timeout:15000});
+  await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Spectators: 1'),null,{timeout:15000});
+  await spectator.locator('#room-role').selectOption('player');
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 3'),null,{timeout:15000});
+  await spectator.locator('#room-role').selectOption('spectator');
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('In the lobby as spectator.'),null,{timeout:15000});
 
   // Nicknames are display-only and can be changed before start.
   await host.locator('#room-nickname').fill('Alice');
@@ -366,7 +380,12 @@ try{
   if(!(await hostRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered host did not restore the selected map.');
   if(!(await guestRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered guest did not restore the selected map.');
 
-  console.log('E2E passed: active-turn reconnect, persistent host+guest credentials, full-page shutdown, all-player rejoin and saved-game resume at the authoritative revision.');
+  hostRecovered.once('dialog',dialog=>dialog.accept());
+  await hostRecovered.locator('#game-restart').click();
+  await hostRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});
+  await guestRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});
+  if(await guestRecovered.locator('#player-strip .player-summary').count()!==2)throw new Error('Same-room restart did not preserve player seats.');
+  console.log('E2E passed: lobby map preview, pregame role switch, reconnect, recovery and authoritative same-room restart.');
 } finally {
   await spectatorContext.close();
   await guestContext.close();
