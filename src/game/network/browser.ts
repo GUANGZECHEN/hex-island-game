@@ -242,15 +242,31 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  }
 
  const clearRecoveryUi=()=>{recoveryMode=false;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';el('room-recovery-panel').hidden=true;el('room-recovery-options').replaceChildren();};
+ const boardVersionInput=el<HTMLSelectElement>('room-board-version');
+ const mapSeedInput=el<HTMLInputElement>('room-seed');
+ const updateHostMap=()=>{if(role!=='host'||!host)return;try{host.setMapSelection(boardVersionInput.value as BoardLayout,mapSeedInput.valueAsNumber);}catch(e){status(e instanceof Error?e.message:'Invalid map selection.');}};
+ boardVersionInput.addEventListener('change',updateHostMap);
+ mapSeedInput.addEventListener('change',updateHostMap);
+ el<HTMLSelectElement>('room-role').onchange=()=>{
+  if(role!=='guest'||!open)return;
+  send('host',JSON.stringify({protocol:1,type:'role',role:el<HTMLSelectElement>('room-role').value,name:nickname()}));
+ };
+ const restartInRoom=()=>{
+  if(role!=='host'||!host||recoveryMode)return;
+  if(!window.confirm('Restart the game for every player in this room? Current progress will be replaced.'))return;
+  try{callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;host.restart();status('New game started in the same room.');}
+  catch(e){status(e instanceof Error?e.message:'Could not restart the game.');}
+ };
+ el('room-restart').onclick=restartInRoom;
+ el('game-restart').onclick=restartInRoom;
  el<HTMLButtonElement>('room-create').disabled=!allowed;
  el('room-create').onclick=async()=>{
   try{
-   const mapSeed=el<HTMLInputElement>('room-seed'),boardVersion=el<HTMLSelectElement>('room-board-version');if(!mapSeed.value||!mapSeed.validity.valid)throw new Error('Choose a valid board map seed.');
-   const boardLayout=boardVersion.value as BoardLayout;if(boardLayout!=='standard'&&boardLayout!=='expanded-5-6')throw new Error('Choose a valid board version.');
-   clearRecoveryUi();role='host';spectator=false;playerId='Player 1';host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search),boardLayout});host.setHostName(nickname()||'Player 1');
+   clearRecoveryUi();role='host';spectator=false;playerId='Player 1';
+   host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search),boardLayout:'standard',mapSeed:1});host.setHostName(nickname()||'Player 1');
    const invite=await client.create();const info=client.connectionInfo();if(!info||info.role!=='host')throw new Error('Host room capability was unavailable.');
    room=info.room;saveRoom({version:1,role:'host',room:info.room,capability:info.token});
-   boardVersion.disabled=true;hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');
+   boardVersionInput.disabled=false;mapSeedInput.disabled=false;el('room-map-lobby').hidden=false;hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');
   }catch(error){status(error instanceof RoomError ? error.message : error instanceof Error?error.message:'Signaling WebSocket connection or authentication failed.');}
  };
  el('room-save-nickname').onclick=()=>{try{
@@ -266,6 +282,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    const seed=el<HTMLInputElement>('room-seed');
    if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid board seed.');
    if(role!=='host'||!host)throw new Error('Only the host can start the game.');
+   host.setMapSelection(boardVersionInput.value as BoardLayout,seed.valueAsNumber);
    host.start(seed.valueAsNumber);
    el('room-ready').hidden=true;
    el('room-start').hidden=true;
@@ -275,7 +292,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  async function join(roomId:string,capability:string,rejoining=false){
-  clearRecoveryUi();role='guest';spectator=false;el('room-board-version').setAttribute('disabled','');el('room-map-controls').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
+  clearRecoveryUi();role='guest';spectator=false;boardVersionInput.disabled=true;mapSeedInput.disabled=true;el('room-map-lobby').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;
   saveRoom({version:1,role:'guest',room:roomId,capability});
   if(!rejoining){acceptedGameId='';acceptedRevision=-1;gameId='';setSynchronizing(false);}
   else{
@@ -291,7 +308,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  }
 
  async function restoreHost(roomId:string,capability:string){
-  role='host';spectator=false;el<HTMLSelectElement>('room-board-version').disabled=true;room=roomId;playerId='Player 1';open=false;hostReady=false;host=null;pendingHostMessages.splice(0);recoveryMode=true;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';callbacks.reset?.();
+  role='host';spectator=false;boardVersionInput.disabled=true;room=roomId;playerId='Player 1';open=false;hostReady=false;host=null;pendingHostMessages.splice(0);recoveryMode=true;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';callbacks.reset?.();
   el('room-map-controls').hidden=false;el('room-ready').hidden=true;el('room-start').hidden=true;el('room-recovery-panel').hidden=false;el('room-recovery-status').textContent='Reconnecting hosted room and looking for saved games…';el('room-recovery-options').replaceChildren();
   try{await client.restoreHost(roomId,capability);saveRoom({version:1,role:'host',room:roomId,capability});status('Hosted room reconnected. Looking for saved games…');client.requestCheckpoints();}
   catch{status('Could not rejoin the hosted room.');}
