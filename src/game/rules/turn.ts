@@ -9,27 +9,47 @@ export type TurnCommand =
   | { type: 'end-turn'; playerId: string };
 const size = (hand: Hand) => RESOURCES.reduce((sum, resource) => sum + hand[resource], 0);
 
-/** Resolve production by resource, including the single-recipient shortage exception. */
-export function produce(state: GameState, total: number): void {
-  const geometry = createIslandBoard(state.board.layout);
-  for (const resource of RESOURCES) {
-    const owes = new Map<string, number>();
-    for (const hex of geometry.hexes) {
-      const setup = state.board.hexes.find(item => item.hexId === hex.id)!;
-      if (setup.resource !== resource || setup.token !== total || state.board.robberHexId === hex.id) continue;
-      for (const vertex of hex.vertexIds) {
-        const building = state.buildings[vertex];
-        if (building) owes.set(building.playerId, (owes.get(building.playerId) ?? 0) + (building.kind === 'city' ? 2 : 1));
-      }
-    }
-    const totalOwed = [...owes.values()].reduce((a, b) => a + b, 0);
-    if (owes.size > 1 && totalOwed > state.bank[resource]) continue;
-    for (const [id, amount] of owes) {
-      const player = state.players.find(p => p.id === id)!;
-      const quantity = Math.min(amount, state.bank[resource]);
-      state.bank[resource] -= quantity; player.hand[resource] += quantity;
-    }
+/** Public dice yields: identical resource rules for the reducer and the player-facing announcement.
+ * Depends only on the visible board, bank stock, and dice; private hands are never inspected.
+ */
+export function calculateDiceProduction(
+ state: Pick<GameState,'board'|'buildings'|'bank'> & {players:readonly {id:string}[]},total:number,
+): Record<string,Hand> {
+ const gains:Record<string,Hand>=Object.fromEntries(state.players.map(player=>[player.id,{lumber:0,brick:0,wool:0,grain:0,ore:0} as Hand]));
+ if(total===7)return gains;
+ const geometry=createIslandBoard(state.board.layout);
+ for(const resource of RESOURCES){
+  const owes=new Map<string,number>();
+  for(const hex of geometry.hexes){
+   const setup=state.board.hexes.find(item=>item.hexId===hex.id)!;
+   if(setup.resource!==resource||setup.token!==total||state.board.robberHexId===hex.id)continue;
+   for(const vertex of hex.vertexIds){
+    const building=state.buildings[vertex];
+    if(building)owes.set(building.playerId,(owes.get(building.playerId)??0)+(building.kind==='city'?2:1));
+   }
   }
+  const totalOwed=[...owes.values()].reduce((a,b)=>a+b,0);
+  if(owes.size>1&&totalOwed>state.bank[resource])continue;
+  let available=state.bank[resource];
+  for(const [id,amount] of owes){
+   if(!gains[id])throw new Error('Invalid building owner.');
+   const quantity=Math.min(amount,available);
+   gains[id][resource]+=quantity;
+   available-=quantity;
+  }
+ }
+ return gains;
+}
+/** Apply exactly the publicly computable awards, preserving single-recipient shortage behavior. */
+export function produce(state:GameState,total:number):void {
+ const gains=calculateDiceProduction(state,total);
+ for(const player of state.players){
+  for(const resource of RESOURCES){
+   const quantity=gains[player.id][resource];
+   state.bank[resource]-=quantity;
+   player.hand[resource]+=quantity;
+  }
+ }
 }
 export function applyTurnCommand(original: GameState, command: TurnCommand, secureRandom?: () => number): GameState {
   const state = structuredClone(original), active = state.players[state.currentSeat];

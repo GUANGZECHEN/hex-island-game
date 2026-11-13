@@ -1344,3 +1344,13 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 #pass-local-restart{padding:.55rem .75rem;margin:.45rem 0}
 #local-restart:hover,#pass-local-restart:hover{background:#ffe1d4}
 @media(max-width:760px){.local-room-lobby{padding:.55rem}#local-restart{width:100%}#local-map-preview{max-width:18rem}}
+
+/* Show publicly-produced resource types and quantities for each player after dice. */
+.activity-alert.activity-dice{width:min(90%,34rem)}
+.activity-production-summary{display:grid;gap:.22rem;width:100%;max-height:min(38vh,15rem);overflow:auto;text-align:left;margin:.55rem auto 0;padding:.42rem .55rem;border-radius:.55rem;background:#ffffffce;border:1px solid #d4dfd5;font-size:.79rem}
+.activity-production-row{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;min-height:1.4rem}
+.activity-production-player{font-weight:850;min-width:5.5rem;max-width:11rem;overflow-wrap:anywhere;color:#253d35;margin-right:.15rem}
+.activity-production-chip{display:inline-flex;align-items:center;gap:.15rem;border-radius:.35rem;background:#f1f7ee;padding:.1rem .27rem;font-weight:900;white-space:nowrap}
+.activity-production-chip .resource-icon{width:1rem;height:1rem}
+.activity-production-none{font-size:.72rem;font-weight:700;color:#67766d}
+@media(max-width:760px){.activity-alert.activity-dice{width:min(94%,32rem)}.activity-production-summary{font-size:.71rem;max-height:min(42vh,17rem);padding:.34rem .4rem}.activity-production-player{min-width:4.3rem;max-width:8rem}.activity-production-chip .resource-icon{width:.9rem;height:.9rem}}

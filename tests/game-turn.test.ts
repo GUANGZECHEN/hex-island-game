@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame, drawIndex, RESOURCES, type Hand } from '../src/game/rules/state.ts';
-import { applyTurnCommand, produce } from '../src/game/rules/turn.ts';
+import { applyTurnCommand, produce, calculateDiceProduction } from '../src/game/rules/turn.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 const zero = (): Hand => ({ lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
 
@@ -44,4 +44,45 @@ test('moving robber with no eligible victims completes resolution', () => {
   const state=createGame(7,['a','b','c']);state.currentSeat=0;state.phase='robber';
   const id=state.board.hexes.find(h=>h.hexId!==state.board.robberHexId)!.hexId;
   const result=applyTurnCommand(state,{type:'move-robber',playerId:'a',hexId:id});assert.equal(result.phase,'action');assert.deepEqual(result.victims,[]);
+});
+
+test('public dice yields report exact resource types and amounts without private hand access',()=>{
+ const state=createGame(41,['a','b','c']);
+ const geometry=createIslandBoard();
+ const hex=state.board.hexes.find(item=>item.resource&&item.token!==null&&item.hexId!==state.board.robberHexId)!;
+ const corners=geometry.hexes.find(item=>item.id===hex.hexId)!.vertexIds;
+ const resource=hex.resource!;
+ state.buildings[corners[0]]={playerId:'a',kind:'city'};
+ state.buildings[corners[3]]={playerId:'b',kind:'settlement'};
+ const preBank=structuredClone(state.bank);
+ const publicView={board:state.board,buildings:state.buildings,bank:preBank,players:state.players.map(({id})=>({id}))};
+ const awards=calculateDiceProduction(publicView,hex.token!);
+ const before=state.players.map(player=>structuredClone(player.hand));
+ produce(state,hex.token!);
+ for(const [index,player] of state.players.entries())for(const key of RESOURCES){
+  assert.equal(player.hand[key]-before[index][key],awards[player.id][key]);
+ }
+ assert.equal(awards.a[resource],2);assert.equal(awards.b[resource],1);
+ assert.ok(RESOURCES.every(key=>awards.c[key]===0));
+ assert.deepEqual(preBank,publicView.bank); // pure public calculation does not change the bank
+ assert.ok(!JSON.stringify(publicView).includes('"hand"'));
+});
+test('public dice yields respect the robber, seven and both bank shortage cases',()=>{
+ const state=createGame(41,['a','b']);
+ const hex=state.board.hexes.find(item=>item.resource&&item.token!==null&&item.hexId!==state.board.robberHexId)!;
+ const geometry=createIslandBoard();
+ const corners=geometry.hexes.find(item=>item.id===hex.hexId)!.vertexIds;
+ const resource=hex.resource!;
+ state.buildings[corners[0]]={playerId:'a',kind:'city'};
+ state.buildings[corners[3]]={playerId:'b',kind:'settlement'};
+ state.bank[resource]=2;
+ const preview={board:state.board,buildings:state.buildings,bank:state.bank,players:state.players.map(({id})=>({id}))};
+ assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],0);
+ assert.equal(calculateDiceProduction(preview,hex.token!).b[resource],0);
+ delete state.buildings[corners[3]];state.bank[resource]=1;
+ assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],1);
+ state.bank[resource]=19;state.board={...state.board,robberHexId:hex.hexId};
+ assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],0);
+ const onSeven=calculateDiceProduction(preview,7);
+ assert.ok(Object.values(onSeven).every(hand=>RESOURCES.every(key=>hand[key]===0)));
 });

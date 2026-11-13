@@ -124,6 +124,14 @@ try{
   await host.getByRole('button',{name:'Roll dice'}).click();
   const diceAlert=host.locator('#board .activity-alert.activity-dice');
   await diceAlert.waitFor({state:'visible',timeout:3000});
+  const productionRows=diceAlert.locator('.activity-production-row');
+  if(await productionRows.count()!==3)throw new Error('Dice result did not show resource gain for all three local players.');
+  const productionLabels=await productionRows.evaluateAll(nodes=>nodes.map(row=>row.getAttribute('data-player-production')));
+  if(!['Player 1','Bot 1','Bot 2'].every(player=>productionLabels.includes(player)))throw new Error('Dice production did not identify all local players.');
+  const visibleProduction=await productionRows.locator('.activity-production-chip').count();
+  const blankPlayers=await productionRows.locator('.activity-production-none').count();
+  if(blankPlayers+await productionRows.evaluateAll(nodes=>nodes.filter(row=>row.querySelector('.activity-production-chip')).length)!==3)throw new Error('Dice production results contain empty player rows.');
+  if(visibleProduction>0&&await productionRows.locator('[data-resource-icon]').count()!==visibleProduction)throw new Error('Dice production resource icons are missing.');
   const diceValues=await diceAlert.locator('.motion-die').evaluateAll(nodes=>nodes.map(node=>Number(node.getAttribute('data-value'))));
   if(diceValues.length!==2||diceValues.some(value=>!Number.isInteger(value)||value<1||value>6))throw new Error(`ART-C01 dice motion does not show two authoritative faces: ${JSON.stringify(diceValues)}`);
   const diceAnimation=await diceAlert.locator('.motion-die').first().evaluate(node=>getComputedStyle(node).animationName);

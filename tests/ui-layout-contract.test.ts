@@ -359,12 +359,15 @@ test('brick and ore terrain backgrounds read as clay quarry and exposed rock sou
  assert.ok(!render.includes("L${cx+.08} ${cy-.48}"));
 });
 
-test('dice alerts show each players total resource gain after the roll',()=>{
+test('dice alerts display every player and each publicly-produced resource with its quantity',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(ui.includes('function productionSummary'));
- assert.ok(ui.includes("pendingProductionSummary=productionSummary(beforeActivity,afterActivity)"));
- assert.ok(ui.includes("pendingProductionSummary=productionSummary(previousPublic,nextPublic)"));
- assert.ok(ui.includes("summary.className='activity-production-summary'"));
- assert.ok(css.includes('.activity-production-summary{'));
+ assert.ok(ui.includes('function productionSummary(gains:Readonly<Record<string,Hand>>'));
+ assert.ok(ui.includes('calculateDiceProduction(old,next.dice[0]+next.dice[1])'));
+ assert.ok(ui.includes('calculateDiceProduction(projection.public,value.public.dice[0]+value.public.dice[1])'));
+ assert.ok(ui.includes("row.dataset.playerProduction=player.id"));
+ assert.ok(ui.includes("chip.append(resourceIcon(resource),amount)"));
+ assert.ok(ui.includes("none.textContent='No resources'"));
+ assert.ok(ui.includes("alert.append(productionSummary(pendingProductionSummary,s.players))"));
+ assert.ok(css.includes('.activity-production-chip'));
 });
