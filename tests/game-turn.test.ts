@@ -81,7 +81,7 @@ test('public dice yields respect the robber, seven and both bank shortage cases'
  assert.equal(calculateDiceProduction(preview,hex.token!).b[resource],0);
  delete state.buildings[corners[3]];state.bank[resource]=1;
  assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],1);
- state.bank[resource]=19;state.board={...state.board,robberHexId:hex.hexId};
+ state.bank[resource]=19;state.board={...state.board,robberHexId:hex.hexId};preview.board=state.board;
  assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],0);
  const onSeven=calculateDiceProduction(preview,7);
  assert.ok(Object.values(onSeven).every(hand=>RESOURCES.every(key=>hand[key]===0)));
