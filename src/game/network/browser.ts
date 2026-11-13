@@ -193,9 +193,10 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    let message:{protocol?:number;type?:string;data?:unknown};try{message=JSON.parse(text);}catch{return;}
    if(message.protocol!==1)return;
    if(message.type==='seat'){
-    const value=message.data as {id?:unknown;token?:unknown};
+    const value=message.data as {id?:unknown;token?:unknown;gameId?:unknown};
     if(typeof value?.id==='string'&&typeof value.token==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.token)){
-     spectator=false;playerId=value.id;safeSet(seatKey(room),value.token);
+     if(typeof value.gameId==='string'&&acceptedGameId&&acceptedGameId!==value.gameId){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;}
+     spectator=false;playerId=value.id;safeSet(seatKey(room),value.token);safeSet(roleKey(room),'player');
      el<HTMLButtonElement>('room-ready').disabled=false;
      if(awaitingSnapshot)status(`Seat restored as ${playerId}. Synchronizing game state…`);
      else status(`Connected as ${playerId}.`);
@@ -203,8 +204,16 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     }
    }
    else if(message.type==='spectator'){
-    spectator=true;playerId='';hostReady=false;el('room-ready').hidden=true;el('room-start').hidden=true;
-    clearSyncTimer();syncAttempts=0;setSynchronizing(false);status('Watching live game as spectator.');
+    const info=message.data as {watching?:unknown;gameId?:unknown}|null;
+    if(typeof info?.gameId==='string'&&acceptedGameId&&info.gameId!==acceptedGameId){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;}
+    spectator=true;playerId='';hostReady=false;clearSafe(seatKey(room));safeSet(roleKey(room),'spectator');
+    el('room-ready').hidden=true;el('room-start').hidden=true;
+    clearSyncTimer();syncAttempts=0;setSynchronizing(false);
+    status(info?.watching?'Watching live game as spectator.':'In the lobby as spectator.');
+   }
+   else if(message.type==='restart'){
+    const info=message.data as {gameId?:unknown}|null;
+    if(typeof info?.gameId==='string'){callbacks.reset?.();acceptedGameId=info.gameId;acceptedRevision=-1;gameId=info.gameId;clearSyncTimer();syncAttempts=0;setSynchronizing(true,'Host restarted the game. Synchronizing the new round…');}
    }
    else if(message.type==='resume'){
     const value=message.data as {gameId?:unknown;revision?:unknown};
@@ -222,7 +231,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
      clearSyncTimer();syncAttempts=0;setSynchronizing(false);callbacks.snapshot(snapshot,spectator?'':playerId);status(spectator?'Watching live game as spectator.':`Connected as ${playerId}.`);
     }
    }
-   else if(message.type==='error'||message.type==='rejection')status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);
+   else if(message.type==='error'||message.type==='rejection'){status(`Room action rejected: ${String((message.data as {code?:string})?.code??message.data)}`);el<HTMLSelectElement>('room-role').value=spectator?'spectator':'player';}
   }
  });
 
