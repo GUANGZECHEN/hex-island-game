@@ -1354,3 +1354,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .activity-production-chip .resource-icon{width:1rem;height:1rem}
 .activity-production-none{font-size:.72rem;font-weight:700;color:#67766d}
 @media(max-width:760px){.activity-alert.activity-dice{width:min(94%,32rem)}.activity-production-summary{font-size:.71rem;max-height:min(42vh,17rem);padding:.34rem .4rem}.activity-production-player{min-width:4.3rem;max-width:8rem}.activity-production-chip .resource-icon{width:.9rem;height:.9rem}}
+
+/* Keep Undo visually and in keyboard order below all other Actions controls. */
+.undo-action-row{margin-top:.6rem}
+.undo-action-row .action-button{grid-column:1/-1;background:#f8f5ed;border-color:#ddd4bf}
