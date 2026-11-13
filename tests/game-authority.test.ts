@@ -78,10 +78,22 @@ test('players may submit roll-seven discards concurrently from the same authorit
  assert.equal(send('a',0,'roll7',{type:'roll',playerId:'a'}).ok,true);
  const afterRoll=host.snapshot('a');assert.equal(afterRoll.revision,1);assert.equal(afterRoll.public.phase,'discard');assert.equal(afterRoll.public.discards.b,4);assert.equal(afterRoll.public.discards.c,4);
  const bCards={lumber:4,brick:0,wool:0,grain:0,ore:0},cCards={lumber:0,brick:4,wool:0,grain:0,ore:0};
- assert.equal(send('b',1,'discard-b',{type:'discard',playerId:'b',cards:bCards}).ok,true);
+ const beforeB=host.snapshot('b'),beforeC=host.snapshot('c');
+ const first=send('b',1,'discard-b',{type:'discard',playerId:'b',cards:bCards});
+ assert.equal(first.ok,true);assert.equal(first.pending,true);assert.equal(first.revision,1);
+ assert.equal(host.hasPendingDiscard('b'),true);
+ assert.deepEqual(host.snapshot('b'),beforeB);assert.deepEqual(host.snapshot('c'),beforeC);
+ assert.equal(send('b',1,'repeat',{type:'discard',playerId:'b',cards:bCards}).code,'already-submitted');
+ const saved=host.checkpoint();assert.equal(saved.pendingDiscards?.b.lumber,4);
+ const restored=HostAuthority.fromRecovery(saved,()=>0);
+ assert.equal(restored.hasPendingDiscard('b'),true);assert.deepEqual(restored.snapshot('c'),beforeC);
  const cResult=send('c',1,'discard-c',{type:'discard',playerId:'c',cards:cCards});
- assert.equal(cResult.ok,true);assert.equal(cResult.revision,3);
+ assert.equal(cResult.ok,true);assert.equal(cResult.revision,2);
  const done=host.snapshot('a');assert.equal(done.public.phase,'robber');assert.deepEqual(done.public.discards,{});
+ assert.equal(done.public.players[1].resources,4);assert.equal(done.public.players[2].resources,5);
+ assert.deepEqual(done.private.hand,beforeB.private.hand);
+ const restoredResult=restored.receive('c',JSON.stringify({protocol:1,gameId:'discard-race',revision:1,commandId:'c-from-restore',sender:'c',command:{type:'discard',playerId:'c',cards:cCards}}));
+ assert.equal(restoredResult.ok,true);assert.equal(restored.snapshot('a').public.phase,'robber');
 });
 
 test('safe undo reverts a single deterministic action while preserving revision monotonicity',()=>{
@@ -109,4 +121,19 @@ test('random dice and other irreversible operations clear safe undo eligibility'
  assert.equal(send(0,'roll',{type:'roll',playerId:'a'}).ok,true);
  assert.equal(host.snapshot('a').public.undoPlayerId,null);
  assert.equal(send(1,'undo-roll',{type:'undo',playerId:'a'}).code,'illegal');
+});
+
+test('invalid staged discard is rejected without blocking the other submitter',()=>{
+ const state=createGame(33,['a','b','c']);state.phase='discard';state.currentSeat=0;
+ state.players[1].hand.lumber=8;state.players[2].hand.brick=8;state.discards={b:4,c:4};
+ const host=new HostAuthority('stage-check',state,()=>0,7);
+ const send=(sender:string,id:string,cards:Record<string,number>,revision=7)=>host.receive(sender,JSON.stringify({protocol:1,gameId:'stage-check',revision,commandId:id,sender,command:{type:'discard',playerId:sender,cards}}));
+ assert.equal(send('b','bad',{lumber:3,brick:0,wool:0,grain:0,ore:0}).code,'illegal');
+ assert.equal(host.currentRevision(),7);assert.equal(host.hasPendingDiscard('b'),false);
+ const b={lumber:4,brick:0,wool:0,grain:0,ore:0},c={lumber:0,brick:4,wool:0,grain:0,ore:0};
+ assert.equal(send('c','first-c',c).pending,true);
+ assert.equal(send('b','old-rev',b,6).code,'stale');
+ assert.equal(send('b','last-b',b).ok,true);
+ assert.equal(host.currentRevision(),8);assert.equal(host.snapshot('a').public.phase,'robber');
+ assert.deepEqual(host.checkpoint().pendingDiscards,{});
 });
