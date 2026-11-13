@@ -1,4 +1,4 @@
-import type { GameState } from '../rules/state.ts';
+import type { GameState, Hand } from '../rules/state.ts';
 import type { BoardLayout } from '../board/geometry.ts';
 
 export interface AuthorityRecovery {
@@ -6,6 +6,7 @@ export interface AuthorityRecovery {
   gameId: string;
   revision: number;
   state: GameState;
+  pendingDiscards?: Record<string,Hand>;
 }
 
 export interface RecoverySeat {
