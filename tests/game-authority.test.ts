@@ -91,7 +91,7 @@ test('players may submit roll-seven discards concurrently from the same authorit
  assert.equal(cResult.ok,true);assert.equal(cResult.revision,2);
  const done=host.snapshot('a');assert.equal(done.public.phase,'robber');assert.deepEqual(done.public.discards,{});
  assert.equal(done.public.players[1].resources,4);assert.equal(done.public.players[2].resources,5);
- assert.deepEqual(done.private.hand,beforeB.private.hand);
+ assert.deepEqual(done.private.hand,afterRoll.private.hand);
  const restoredResult=restored.receive('c',JSON.stringify({protocol:1,gameId:'discard-race',revision:1,commandId:'c-from-restore',sender:'c',command:{type:'discard',playerId:'c',cards:cCards}}));
  assert.equal(restoredResult.ok,true);assert.equal(restored.snapshot('a').public.phase,'robber');
 });
