@@ -1314,3 +1314,18 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 
 .activity-production-summary{display:block;margin-top:.22rem;font-size:.78rem;font-weight:800;line-height:1.35;opacity:.92;letter-spacing:.01em}
 @media(max-width:760px){.activity-production-summary{font-size:.7rem}}
+
+/* GAME-ROOM: shared lobby map and safe in-room controls */
+.room-map-lobby{margin:1rem 0;padding:.85rem;border:1px solid #b1cbd1;border-radius:.7rem;background:#eef6f4}
+.room-map-lobby h3{font-size:.92rem;margin:.1rem 0 .55rem;color:#254956}
+.room-map-lobby .room-map-controls{margin:.15rem 0 .65rem}
+#room-role-picker{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;margin:.6rem 0}
+#room-role-picker[hidden]{display:none}
+#room-role-picker label{font-weight:800}
+#room-role-picker select{min-width:7.6rem}
+#room-role-picker p{font-size:.78rem;color:#455c60;flex-basis:100%;margin:0}
+#room-restart,#game-restart{font-weight:850;border:1px solid #ab6759;background:#fff1e9;color:#813d30;border-radius:.55rem;cursor:pointer}
+#room-restart{margin:.5rem .35rem .5rem 0;padding:.55rem .8rem}
+#game-restart{padding:.42rem .65rem;font-size:.77rem;margin-top:.55rem}
+#room-restart:hover,#game-restart:hover{background:#ffe1d4}
+@media(max-width:760px){.room-map-lobby{padding:.55rem}.room-map-lobby h3{font-size:.82rem}#game-restart{width:100%}}
