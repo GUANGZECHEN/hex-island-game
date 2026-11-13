@@ -56,7 +56,7 @@ export class HostAuthority {
   if(this.seen.has(dedupe))return reject('duplicate');
   const command=message.command as Record<string,unknown>;
   if(!command||typeof command!=='object'||Array.isArray(command)||typeof command.type!=='string'||!Object.hasOwn(fields,command.type)||command.playerId!==boundPlayer||Object.keys(command).some(k=>!['type','playerId',...fields[command.type as string]].includes(k)))return reject('malformed');
-  const revision=message.revision;
+  const revision=typeof message.revision==='number'?message.revision:NaN;
   const concurrentDiscard=command.type==='discard'&&this.state.phase==='discard'&&!!this.state.discards[boundPlayer]&&this.discardBaseRevision!==null&&Number.isSafeInteger(revision)&&revision>=this.discardBaseRevision&&revision<=this.revision;
   if(!Number.isSafeInteger(revision)||(revision!==this.revision&&!concurrentDiscard))return reject('stale');
   let pendingTrade:Omit<PublicTradeSummary,'revision'>|null=null;
