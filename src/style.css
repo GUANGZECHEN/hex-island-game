@@ -1329,3 +1329,18 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 #game-restart{padding:.42rem .65rem;font-size:.77rem;margin-top:.55rem}
 #room-restart:hover,#game-restart:hover{background:#ffe1d4}
 @media(max-width:760px){.room-map-lobby{padding:.55rem}.room-map-lobby h3{font-size:.82rem}#game-restart{width:100%}}
+
+/* LOCAL-ROOM: choose and preview a map after entering the offline room. */
+.local-room-intro{font-size:.84rem;color:#516d60;max-width:38rem}
+.local-room-lobby{max-width:42rem}
+.local-room-lobby>label{display:block;font-size:.85rem;font-weight:750;margin:.5rem 0 .25rem}
+.local-room-lobby>.local-bot-option{display:flex}
+#local-board-layout{font-size:.82rem;font-weight:800;color:#315c50;margin:.45rem 0}
+#local-map-preview{margin:.6rem auto 0;max-width:23rem;pointer-events:none}
+#local-map-preview .island-board{max-width:23rem;min-width:0}
+#local-map-preview ul{display:none}
+#local-restart,#pass-local-restart{font-weight:850;border:1px solid #ab6759;background:#fff1e9;color:#813d30;border-radius:.55rem;cursor:pointer}
+#local-restart{padding:.42rem .65rem;font-size:.77rem;margin-top:.55rem}
+#pass-local-restart{padding:.55rem .75rem;margin:.45rem 0}
+#local-restart:hover,#pass-local-restart:hover{background:#ffe1d4}
+@media(max-width:760px){.local-room-lobby{padding:.55rem}#local-restart{width:100%}#local-map-preview{max-width:18rem}}

@@ -7,6 +7,7 @@ import { initializeNetwork, type BrowserGame } from './game/network/browser';
 import type { projectState, projectSpectatorState } from './game/network/authority';
 import { createIslandBoard } from './game/board/geometry';
 import { generateBoardSetup } from './game/board/setup';
+import { createLocalRoomSettings, type LocalRoomSettings } from './game/ui/local-room';
 import { createBoardView } from './game/board/presentation';
 import { renderIslandBoard } from './game/board/render';
 import { createGame, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
@@ -21,6 +22,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let activePanel:'actions'|'trade'|'status'='actions';
+let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingProductionSummary='', lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
@@ -109,7 +111,13 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function setPanel(panel:'actions'|'trade'|'status') {activePanel=panel;for(const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]')))button.setAttribute('aria-pressed',String(button.dataset.panel===panel));el('actions').hidden=panel!=='actions';el('trade-actions').hidden=panel!=='trade';el('status-panel').hidden=panel!=='status';}
-function enterGame(){document.body.classList.add('playing');if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}else el('connection-summary').textContent=localBotIds.size?`Local game · ${localBotIds.size} test bot${localBotIds.size===1?'':'s'} enabled`:'Local game';}
+function enterGame(){
+ document.body.classList.add('playing');
+ const local=!remote&&activeLocalRoom!==null;
+ el('local-restart').hidden=!local;el('pass-local-restart').hidden=!local;
+ if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}
+ else el('connection-summary').textContent=localBotIds.size?`Local game · ${localBotIds.size} test bot${localBotIds.size===1?'':'s'} enabled`:'Local game';
+}
 function connectionStatus(value:string){const lower=value.toLowerCase();el('connection-summary').textContent=lower.includes('watching')?'Spectating':lower.includes('paused')||lower.includes('unavailable')||lower.includes('failed')?'Disconnected · rejoin may be required':lower.includes('reconnected')?'Reconnected':lower.includes('reconnect')||lower.includes('interrupted')?'Reconnecting…':lower.includes('connected')||lower.includes('started')?'Connected':lower.includes('connecting')?'Connecting…':'';}
 function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
  const field=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent=label;field.append(legend);field.className='resource-stepper-grid';
@@ -380,18 +388,71 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  setPanel(activePanel);
 }
-function localBotNames(count:number):string[]{if(count<=0)return[];return count===1?['Bot']:Array.from({length:count},(_,i)=>`Bot ${i+1}`);}
-el('start').onclick=()=>attempt(()=>{const input=el<HTMLInputElement>('seed');if(!input.value||!input.validity.valid)throw new Error('Enter a valid seed.');const botCount=Number(el<HTMLSelectElement>('local-bot-count').value),n=botCount>0?botCount+1:Number(el<HTMLSelectElement>('seats').value);clearBotTimer();remote=null;projection=null;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';const bots=localBotNames(botCount);localBotIds=new Set(bots);botTurnKey='';botActionCount=0;el('switch-player').hidden=botCount>0;const ids=botCount>0?['Player 1',...bots]:Array.from({length:n},(_,i)=>`Player ${i+1}`);state=createGame(input.valueAsNumber,ids,undefined,{boardLayout:n>=5?'expanded-5-6':'standard'});log=[];publicActivity='Game started.';lastTurnCue='';pendingActivityAlert='';lastWinnerAlert='';if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.victory-alert')?.remove();activePanel='actions';enterGame();if(botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}else{handoff(state.players[state.currentSeat].id);render();}});
+function refreshLocalMapPreview(){
+ if(!localRoomOpen)return;
+ const input=el<HTMLInputElement>('seed'),preview=el('local-map-preview');
+ const bots=Number(el<HTMLSelectElement>('local-bot-count').value),selected=Number(el<HTMLSelectElement>('seats').value);
+ const count=bots>0?bots+1:selected,layout=count>=5?'expanded-5-6':'standard';
+ el('local-board-layout').textContent=`${count} players · ${layout==='standard'?'standard 19-hex board':'expanded 24-hex board'}`;
+ if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
+ try{
+  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots);
+  renderIslandBoard(preview,generateBoardSetup(settings.seed,settings.boardLayout));
+  const svg=preview.querySelector('svg');
+  if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Local map preview, seed ${settings.seed}, ${count} players`);}
+ }catch(error){preview.textContent=error instanceof Error?error.message:'Invalid local room settings.';}
+}
+function startLocalRound(settings:LocalRoomSettings){
+ clearBotTimer();remote=null;projection=null;networkRevision=0;
+ localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;targetMode=null;
+ renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';
+ localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
+ botTurnKey='';botActionCount=0;viewer='';
+ state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout});
+ log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary='';lastWinnerAlert='';
+ for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
+ turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
+ for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
+ activePanel='actions';el('switch-player').hidden=settings.botCount>0;
+ enterGame();
+ if(settings.botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}
+ else{handoff(state.players[state.currentSeat].id);render();}
+}
+el('local-room-create').onclick=()=>{
+ localRoomOpen=true;
+ el('local-room-create').hidden=true;
+ el('local-room-lobby').hidden=false;
+ refreshLocalMapPreview();
+};
+el('start').onclick=()=>attempt(()=>{
+ if(!localRoomOpen)throw new Error('Create a local room first.');
+ const seed=el<HTMLInputElement>('seed');
+ if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid map seed.');
+ const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value));
+ activeLocalRoom=settings;startLocalRound(settings);
+});
+const restartLocal=()=>{
+ if(remote||!activeLocalRoom||!state)return;
+ if(!window.confirm('Restart this local game? All progress will be lost. The map, players and bots will stay the same.'))return;
+ startLocalRound(activeLocalRoom);
+};
+el('local-restart').onclick=restartLocal;
+el('pass-local-restart').onclick=restartLocal;
+el<HTMLInputElement>('seed').addEventListener('input',refreshLocalMapPreview);
+el('local-randomize-map').onclick=()=>{
+ el<HTMLInputElement>('seed').value=String(crypto.getRandomValues(new Uint32Array(1))[0]);
+ refreshLocalMapPreview();
+};
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
 for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]'))){if(tab.dataset.panel==='actions')tab.prepend(icon(ACTION_PATHS.dice));if(tab.dataset.panel==='trade')tab.prepend(icon(ACTION_PATHS.trade));if(tab.dataset.panel==='status')tab.prepend(icon(ACTION_PATHS.hand));tab.onclick=()=>setPanel(tab.dataset.panel as 'actions'|'trade'|'status');}
-const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title=count>=4?'Expanded 5–6 player board selected automatically.':'Standard board selected automatically.';}else{localSeats.disabled=false;localSeats.title='';}};
+const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title=count>=4?'Expanded 5–6 player board selected automatically.':'Standard board selected automatically.';}else{localSeats.disabled=false;localSeats.title='';}refreshLocalMapPreview();};localSeats.addEventListener('change',refreshLocalMapPreview);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
+  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;

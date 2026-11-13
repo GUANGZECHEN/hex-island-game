@@ -18,8 +18,13 @@ const spectator=await spectatorContext.newPage();
 try{
   // Local-only deterministic bot range: one human plus up to five bots.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
+  if(await host.locator('#local-room-lobby').isVisible())throw new Error('Local map controls were exposed before creating a local room.');
+  await host.getByRole('button',{name:'Create local room'}).click();
+  await host.locator('#local-room-lobby').waitFor({state:'visible'});
+  if(await host.locator('#local-map-preview [data-hex-id]').count()!==19)throw new Error('Local room initial preview did not show the standard map.');
   await host.locator('#local-bot-count').selectOption('4');
   if(await host.locator('#seats').inputValue()!=='5'||!(await host.locator('#seats').isDisabled()))throw new Error('Four-bot mode did not lock the game to five players.');
+  if(await host.locator('#local-map-preview [data-hex-id]').count()!==24)throw new Error('Local room did not switch to expanded preview for five seats.');
   await host.locator('#local-bot-count').selectOption('5');
   if(await host.locator('#seats').inputValue()!=='6'||!(await host.locator('#seats').isDisabled()))throw new Error('Five-bot mode did not lock the game to six players.');
   await host.locator('#seed').fill('86420');
@@ -28,10 +33,18 @@ try{
   if(await host.locator('#player-strip .player-summary').count()!==6)throw new Error('Five-bot mode did not create six player cards.');
   if(await host.locator('#board [data-hex-id]').count()!==24)throw new Error('Five-bot mode did not automatically use the expanded board.');
   if(!(await host.locator('#connection-summary').textContent())?.includes('5 test bots enabled'))throw new Error('Five-bot mode status was missing.');
+  if(!(await host.locator('#local-restart').isVisible()))throw new Error('Local restart was not available during an active bot game.');
+  host.once('dialog',dialog=>dialog.accept());
+  await host.locator('#local-restart').click();
+  await host.locator('#game').waitFor({state:'visible'});
+  if(await host.locator('#player-strip .player-summary').count()!==6)throw new Error('Local restart lost the five bots.');
+  if(!(await host.locator('#game-status').textContent())?.includes('Seed 86420'))throw new Error('Local restart lost the selected room map.');
+  if(await host.locator('#board [data-hex-id]').count()!==24)throw new Error('Local restart lost the expanded board.');
   if(await host.locator('#pass').isVisible()||await host.locator('#switch-player').isVisible())throw new Error('Five-bot mode exposed hot-seat controls.');
 
   // Restart with two bots for the deeper deterministic gameplay and visual smoke.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
+  await host.getByRole('button',{name:'Create local room'}).click();
   await host.locator('#local-bot-count').selectOption('2');
   if(await host.locator('#seats').inputValue()!=='3'||!(await host.locator('#seats').isDisabled()))throw new Error('Two-bot mode did not lock the game to three players.');
   await host.locator('#seed').fill('13579');
