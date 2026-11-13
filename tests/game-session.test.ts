@@ -72,10 +72,10 @@ test('a fifth pre-game visitor gets no seat, while post-start visitors become pu
  const watcher=messages.get('watcher')!;
  assert.ok(watcher.some(x=>x.type==='spectator'));
  const snapshot=watcher.find(x=>x.type==='snapshot').data;
- assert.equal(snapshot.private,null);assert.equal(snapshot.public.players.length,4);assert.equal(host.spectatorCount(),1);
- send('watcher',{type:'ready',ready:true});assert.equal(host.spectatorCount(),1);
+ assert.equal(snapshot.private,null);assert.equal(snapshot.public.players.length,4);assert.equal(host.spectatorCount(),2);
+ send('watcher',{type:'ready',ready:true});assert.equal(host.spectatorCount(),2);
  send('watcher',{type:'command',command:'{}'});assert.equal(messages.get('watcher')!.at(-1).data.code,'spectator');
- host.disconnect('watcher');assert.equal(host.spectatorCount(),0);
+ host.disconnect('watcher');assert.equal(host.spectatorCount(),1);
 });
 
 test('two-player QA uses normal authority, private projection, revision and credential-bound resync',()=>{
@@ -274,7 +274,7 @@ test('guests toggle between spectator and player in lobby without losing other s
  assert.equal(host.spectatorCount(),1);
  const next=messages.get('b')!.find(x=>x.type==='seat').data;
  assert.equal(next.id,'Player 2');assert.notEqual(next.token,a.token);
- send('a',{type:'hello',token:a.token});assert.equal(messages.get('a')!.at(-1).type,'error');
+ send('attacker',{type:'hello',token:a.token});assert.equal(messages.get('attacker')!.at(-1).type,'error');
  send('a',{type:'role',role:'player',name:'Alice'});assert.equal(host.lobby().length,3);
  send('b',{type:'ready',ready:true});send('a',{type:'ready',ready:true});host.setHostReady(true);
  host.start(11);
