@@ -19,6 +19,8 @@ const safeGet=(key:string)=>{try{return localStorage.getItem(key)??sessionStorag
 const safeSet=(key:string,value:string)=>{try{localStorage.setItem(key,value)}catch{}try{sessionStorage.setItem(key,value)}catch{}};
 const seatKey=(room:string)=>`hex-seat:${room}`;
 const gameKey=(room:string)=>`hex-game:${room}`;
+const roleKey=(room:string)=>`hex-room-role:${room}`;
+const clearSafe=(key:string)=>{try{localStorage.removeItem(key)}catch{}try{sessionStorage.removeItem(key)}catch{}};
 const saveRoom=(value:SavedRoom)=>safeSet(ROOM_STORAGE,JSON.stringify(value));
 const loadRoom=():SavedRoom|null=>{
  try{
@@ -80,14 +82,34 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  const showLobby=(data:unknown)=>{
-  const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;recovering?:unknown;spectators?:unknown};
+  const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
   if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean'||(lobby.boardLayout!=='standard'&&lobby.boardLayout!=='expanded-5-6'))return;
   const seats=lobby.seats as Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
   el('qa-indicator').hidden=!lobby.qaTwoPlayers;
-  const boardLayout=lobby.boardLayout as BoardLayout,boardVersion=el<HTMLSelectElement>('room-board-version');boardVersion.value=boardLayout;boardVersion.disabled=true;
+  const boardLayout=lobby.boardLayout as BoardLayout,boardVersion=el<HTMLSelectElement>('room-board-version');boardVersion.value=boardLayout;
+  const mapSeed=el<HTMLInputElement>('room-seed');
+  if(Number.isSafeInteger(lobby.mapSeed)&&Number(lobby.mapSeed)>=0&&Number(lobby.mapSeed)<=0xffffffff)mapSeed.value=String(lobby.mapSeed);
+  const canEditMap=role==='host'&&!lobby.started&&!lobby.recovering;
+  boardVersion.disabled=!canEditMap;mapSeed.disabled=!canEditMap;
+  el('room-map-lobby').hidden=!room;
+  const rolePicker=el('room-role-picker'),roleSelect=el<HTMLSelectElement>('room-role');
+  rolePicker.hidden=role!=='guest'||!!lobby.started||!!lobby.recovering;
+  roleSelect.value=spectator?'spectator':'player';
+  document.dispatchEvent(new Event('hex-room-map-updated'));
+  const running=!!lobby.started&&!lobby.recovering;
+  el('room-restart').hidden=role!=='host'||!running;
+  el('game-restart').hidden=role!=='host'||!running;
+  if(running){el('room-ready').hidden=true;el('room-start').hidden=true;}
+  else if(!lobby.recovering){
+   const own=seats.find(seat=>seat.id===playerId);
+   if(own&&typeof own.ready==='boolean'){hostReady=own.ready;el('room-ready').textContent=hostReady?'Mark not ready':'Mark ready';}
+   el('room-ready').hidden=role==='guest'?spectator:false;
+   el<HTMLButtonElement>('room-ready').disabled=role==='guest'&&(!own||own.connected!==true);
+   el('room-start').hidden=role!=='host';
+  }
   const spectatorCount=Number.isSafeInteger(lobby.spectators)?Number(lobby.spectators):0;
-  el('lobby').textContent=[boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
+  el('lobby').textContent=[boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),`Map seed: ${mapSeed.value}`,spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
   if(role==='guest'&&lobby.recovering===true&&(playerId||spectator)){
    clearSyncTimer();syncAttempts=0;setSynchronizing(true,spectator?'Spectating paused saved game. Waiting for host to resume.':`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
    el('room-ready').hidden=true;
@@ -152,7 +174,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
      open=true;
      if(acceptedRevision>=0)setSynchronizing(true,'Room connection restored. Synchronizing game state…');
      const credential=safeGet(seatKey(room))??'';
-     send('host',JSON.stringify({protocol:1,type:'hello',token:credential,name:nickname()}));
+     send('host',JSON.stringify({protocol:1,type:'hello',token:credential,name:nickname(),role:safeGet(roleKey(room))==='spectator'?'spectator':'player'}));
     }else if(!isOpen&&open){
      open=false;clearSyncTimer();
      if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');
