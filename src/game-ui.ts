@@ -25,10 +25,18 @@ let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, log
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
-const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => remote ? (remote.submit(c,networkRevision), null) : localSetup(s,c);
-const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => remote ? (remote.submit(c,networkRevision), null) : localTurn(s,c);
-const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => remote ? (remote.submit(c,networkRevision), null) : localBuild(s,c);
-const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => remote ? (remote.submit(c,networkRevision), null) : localEconomy(s,c);
+const reversibleActions=new Set(['place-settlement','place-road','build-road','build-settlement','build-city','bank-trade','free-road']);
+let localUndoState:GameState|null=null,localUndoPlayerId='',pendingLocalUndo:{state:GameState;playerId:string}|null=null;
+function applyWithLocalUndo<C extends {type:string;playerId:string}>(s:GameState,c:C,apply:(s:GameState,c:C)=>GameState):GameState|null{
+ if(remote){remote.submit(c,networkRevision);return null;}
+ const result=apply(s,c);
+ pendingLocalUndo=reversibleActions.has(c.type)?{state:structuredClone(s),playerId:c.playerId}:null;
+ return result;
+}
+const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => applyWithLocalUndo(s,c,localSetup);
+const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => applyWithLocalUndo(s,c,localTurn);
+const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => applyWithLocalUndo(s,c,localBuild);
+const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => applyWithLocalUndo(s,c,localEconomy);
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
@@ -39,7 +47,7 @@ function centralActivity(message:string){return /rolled dice|built a road|built 
 function productionSummary(before:{players:readonly {id:string;resources:number}[]},after:{players:readonly {id:string;resources:number}[]}){
  return after.players.map(player=>`${playerName(player.id)} +${Math.max(0,player.resources-(before.players.find(old=>old.id===player.id)?.resources??player.resources))}`).join(' · ');
 }
-function commit(next:GameState | null, description:string){if(!next)return;const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=productionSummary(beforeActivity,afterActivity);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff(next.players[next.currentSeat].id);render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=productionSummary(beforeActivity,afterActivity);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff(next.players[next.currentSeat].id);render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -57,7 +65,7 @@ function runLocalBotStep(){
   if(state.players[state.currentSeat]?.id===botId&&state.phase==='action')command={type:'end-turn',playerId:botId};
   else{log.unshift(`${playerName(botId)} action limit reached; automation paused.`);publicActivity=`${playerName(botId)} automation paused.`;render();return;}
  }
- botActionCount++;const before=state,description=botDescription(command,before);commit(applyBotCommand(before,command),description);
+ botActionCount++;const before=state,description=botDescription(command,before);pendingLocalUndo=null;commit(applyBotCommand(before,command),description);
 }
 function scheduleLocalBot(){
  if(remote||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null)return;
@@ -142,6 +150,7 @@ function renderRoomMapPreview(){
  const boardVersion=el<HTMLSelectElement>('room-board-version').value;
  renderIslandBoard(preview,generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard'));const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
 }
+document.addEventListener('hex-room-map-updated',renderRoomMapPreview);
 function moveTarget(id:string){if(!state)return;const current=state.players[state.currentSeat].id;if(viewer!==current)return;
  if(targetMode==='settlement')commit(state.phase==='setup-settlement'?applySetupCommand(state,{type:'place-settlement',playerId:viewer,vertexId:id}):applyBuildCommand(state,{type:'build-settlement',playerId:viewer,vertexId:id}),`${viewer} placed a settlement.`);
  else if(targetMode==='city')commit(applyBuildCommand(state,{type:'build-city',playerId:viewer,vertexId:id}),`${viewer} upgraded a city.`);
@@ -329,6 +338,13 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
 
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
+ const canUndo=remote?projection?.public.undoPlayerId===viewer:localUndoState!==null&&localUndoPlayerId===viewer;
+ if(canUndo)action(grid,'Undo last action','end',()=>{
+  if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
+  if(!localUndoState)throw new Error('Nothing safe to undo.');
+  const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
+  commit(previous,`${playerName(viewer)} undid the last action.`);
+ });
  if(s.discards[viewer]&&s.phase==='discard'){const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
  if(s.offer?.targets.includes(viewer)){activePanel='actions';incomingTradeCard(actions,s.offer);action(grid,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(grid,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
  if(viewer!==active.id){setPanel(activePanel);return;}
@@ -375,7 +391,7 @@ const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectE
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,reset:()=>{
-  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
+  clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary='';lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
