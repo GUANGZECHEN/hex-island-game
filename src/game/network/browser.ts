@@ -6,7 +6,7 @@ import { isTwoPlayerQa } from './qa';
 import type { BoardLayout } from '../board/geometry';
 
 type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
-type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; reset?:()=>void };
+type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; discardPending?:()=>void; reset?:()=>void };
 export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
@@ -127,6 +127,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   const x=event as {type:string;lobby?:unknown;data?:unknown;revision?:unknown;round?:unknown;replace?:unknown};
   if(x.type==='lobby')showLobby(x.lobby);
   if(x.type==='snapshot'&&x.data){const snapshot=x.data as Snapshot;gameId=snapshot.gameId;callbacks.snapshot(snapshot,'Player 1');}
+  if(x.type==='discard-pending')callbacks.discardPending?.();
   if(x.type==='checkpoint'&&x.data&&Number.isSafeInteger(x.revision)&&Number.isSafeInteger(x.round)&&typeof x.replace==='boolean'){
    try{client.saveCheckpoint(JSON.stringify(x.data),Number(x.revision),Number(x.round),x.replace);}catch{status('Game continues, but the recovery checkpoint could not be saved.');}
   }
@@ -222,6 +223,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     }
    }
    else if(message.type==='lobby')showLobby(message.data);
+   else if(message.type==='discard-pending'&&playerId&&!spectator){callbacks.discardPending?.();status('Discard submitted. Waiting for the other players.');}
    else if(message.type==='snapshot'&&(playerId||spectator)){
     const snapshot=message.data as Snapshot;
     if(snapshot?.protocol===1&&typeof snapshot.gameId==='string'&&Number.isSafeInteger(snapshot.revision)){
