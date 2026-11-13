@@ -1,4 +1,4 @@
-import { applySetupCommand, type GameState, type SetupCommand } from '../rules/state.ts';
+import { applySetupCommand, RESOURCES, type GameState, type SetupCommand, type Hand } from '../rules/state.ts';
 import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
@@ -35,18 +35,29 @@ export function projectSpectatorState(state:GameState, revision:number, gameId:s
 }
 /** Peer-to-seat binding is established by the room layer, never from the payload. */
 export class HostAuthority {
- private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private discardBaseRevision:number|null=null; private lastUndo:{playerId:string;previous:GameState}|null=null;
+ private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private pendingDiscards:Record<string,Hand>={}; private lastUndo:{playerId:string;previous:GameState}|null=null;
  private gameId:string; private state:GameState; private random:()=>number;
- constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;this.discardBaseRevision=state.phase==='discard'?revision:null;}
+ constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;}
  static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
-  return new HostAuthority(value.gameId,value.state,random,value.revision);
+  const restored=new HostAuthority(value.gameId,value.state,random,value.revision);
+  const pending=value.pendingDiscards??{};
+  if(!pending||typeof pending!=='object'||Array.isArray(pending))throw new Error('Invalid saved pending discards.');
+  for(const [playerId,cards] of Object.entries(pending)){
+   if(value.state.phase!=='discard'||!value.state.discards[playerId]||!cards||typeof cards!=='object'||Array.isArray(cards)||
+      Object.keys(cards).sort().join(',')!==[...RESOURCES].sort().join(',')||
+      RESOURCES.some(resource=>!Number.isSafeInteger(cards[resource])||cards[resource]<0))throw new Error('Invalid saved pending discards.');
+   try{applyTurnCommand(value.state,{type:'discard',playerId,cards});}catch{throw new Error('Invalid saved pending discards.');}
+  }
+  restored.pendingDiscards=structuredClone(pending);
+  return restored;
  }
- checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state)};}
+ checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state),pendingDiscards:structuredClone(this.pendingDiscards)};}
+ hasPendingDiscard(playerId:string):boolean{return this.state.phase==='discard'&&Object.hasOwn(this.pendingDiscards,playerId);}
  currentRevision():number{return this.revision;}
  snapshot(playerId:string){const result=projectState(this.state,playerId,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;return structuredClone(result);}
  spectatorSnapshot(){const result=projectSpectatorState(this.state,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;return structuredClone(result);}
- receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number} {
+ receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number;pending?:boolean} {
   const reject=(code:string)=>({ok:false,code,revision:this.revision});
   if(typeof text!=='string'||new TextEncoder().encode(text).length>MAX_MESSAGE_BYTES)return reject('malformed');
   let message:Record<string,unknown>;try{message=JSON.parse(text);}catch{return reject('malformed');}
@@ -58,13 +69,29 @@ export class HostAuthority {
   const command=message.command as Record<string,unknown>;
   if(!command||typeof command!=='object'||Array.isArray(command)||typeof command.type!=='string'||!Object.hasOwn(fields,command.type)||command.playerId!==boundPlayer||Object.keys(command).some(k=>!['type','playerId',...fields[command.type as string]].includes(k)))return reject('malformed');
   const revision=typeof message.revision==='number'?message.revision:NaN;
-  const concurrentDiscard=command.type==='discard'&&this.state.phase==='discard'&&!!this.state.discards[boundPlayer]&&this.discardBaseRevision!==null&&Number.isSafeInteger(revision)&&revision>=this.discardBaseRevision&&revision<=this.revision;
-  if(!Number.isSafeInteger(revision)||(revision!==this.revision&&!concurrentDiscard))return reject('stale');
+  if(!Number.isSafeInteger(revision)||revision!==this.revision)return reject('stale');
+  if(command.type==='discard'&&this.state.phase==='discard'){
+   if(!this.state.discards[boundPlayer])return reject('illegal');
+   if(this.hasPendingDiscard(boundPlayer))return reject('already-submitted');
+   const cards=(command as {cards:Hand}).cards;
+   try{applyTurnCommand(this.state,command as TurnCommand);}catch{return reject('illegal');}
+   this.pendingDiscards[boundPlayer]=structuredClone(cards);
+   this.seen.add(dedupe);
+   if(Object.keys(this.pendingDiscards).length<Object.keys(this.state.discards).length)return {ok:true,revision:this.revision,pending:true};
+   // Settle every valid discard as a single host-owned state transition.
+   let resolved=this.state;
+   for(const player of this.state.players){
+    const amount=this.pendingDiscards[player.id];
+    if(amount)resolved=applyTurnCommand(resolved,{type:'discard',playerId:player.id,cards:amount});
+   }
+   this.state=resolved;this.pendingDiscards={};this.lastUndo=null;this.lastTradeSummary=null;this.revision++;
+   return {ok:true,revision:this.revision};
+  }
   if(command.type==='undo'){
    if(revision!==this.revision)return reject('stale');
    if(!this.lastUndo||this.lastUndo.playerId!==boundPlayer)return reject('illegal');
    this.state=structuredClone(this.lastUndo.previous);
-   this.lastUndo=null;this.discardBaseRevision=null;this.lastTradeSummary=null;
+   this.lastUndo=null;this.pendingDiscards={};this.lastTradeSummary=null;
    this.seen.add(dedupe);this.revision++;return {ok:true,revision:this.revision};
   }
   const reversible=reversibleTypes.has(command.type);
@@ -83,8 +110,7 @@ export class HostAuthority {
   }catch{return reject('illegal');}
   this.lastUndo=before?{playerId:boundPlayer,previous:before}:null;
   this.seen.add(dedupe);this.revision++;
-  if(command.type==='roll'&&this.state.phase==='discard')this.discardBaseRevision=this.revision;
-  else if(this.state.phase!=='discard')this.discardBaseRevision=null;
+  if(this.state.phase!=='discard')this.pendingDiscards={};
   this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;return {ok:true,revision:this.revision};
  }
 }
