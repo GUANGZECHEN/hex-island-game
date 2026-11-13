@@ -93,7 +93,10 @@ export class HostSession {
    seat.peer=peer;seat.connected=true;seat.ready=false;
    this.output(peer,'seat',{id:seat.id,token:seat.token,gameId:this.gameId||null});this.announce();
    if(stalePeer&&stalePeer!==peer){/* stale peer no longer controls the credential */}
-   if(this.authority&&!this.recovering)this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
+   if(this.authority&&!this.recovering){
+    this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
+    if(this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+   }
    return;
   }
   const seat=this.seats.find(s=>s.peer===peer&&s.connected);
@@ -115,13 +118,19 @@ export class HostSession {
   // Only the host controls the selected board. Guests receive an identical preview in lobby announcements.
   if(msg.type==='map')return;
   if(msg.type==='sync' && this.authority && !this.recovering){
-   this.output(peer,'snapshot',seat?this.decorate(this.authority.snapshot(seat.id)):this.decorate(this.authority.spectatorSnapshot()));return;
+   this.output(peer,'snapshot',seat?this.decorate(this.authority.snapshot(seat.id)):this.decorate(this.authority.spectatorSnapshot()));
+   if(seat&&this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+   return;
   }
   if(msg.type==='command' && this.authority && typeof msg.command==='string'){
    if(!seat){this.output(peer,'rejection',{ok:false,code:'spectator',revision:this.authority.currentRevision()});return;}
    if(this.recovering){this.output(peer,'rejection',{ok:false,code:'recovery-pending',revision:this.authority.currentRevision()});return;}
    const result=this.authority.receive(seat.id,msg.command);
-   if(!result.ok)this.output(peer,'rejection',result);else{this.emitCheckpoint();this.broadcast();}
+   if(!result.ok)this.output(peer,'rejection',result);
+   else if(result.pending){
+    this.emitCheckpoint(true);
+    this.output(peer,'discard-pending',{revision:result.revision});
+   }else{this.emitCheckpoint();this.broadcast();}
   }
  }
  setHostName(name:string){if(this.authority)throw new Error('Game started.');this.seats[0].name=cleanName(name,this.seats[0].name);this.announce();}
@@ -167,7 +176,12 @@ export class HostSession {
   if(!this.authority)throw new Error('Game not started.');
   if(this.recovering)throw new Error('Saved game is waiting to resume.');
   const message=JSON.stringify({protocol:1,gameId:this.gameId,revision,commandId,sender:'Player 1',command:{...command,playerId:'Player 1'}});
-  const result=this.authority.receive('Player 1',message);if(result.ok){this.emitCheckpoint();this.broadcast();}return result;
+  const result=this.authority.receive('Player 1',message);
+  if(result.pending){
+   this.emitCheckpoint(true);
+   this.publish({type:'discard-pending',data:{revision:result.revision}});
+  }else if(result.ok){this.emitCheckpoint();this.broadcast();}
+  return result;
  }
  private decorate<T extends {public:{players:Array<{id:string;name:string}>}}>(snapshot:T):T {
   const names=new Map(this.seats.map(seat=>[seat.id,seat.name]));
@@ -178,6 +192,7 @@ export class HostSession {
  private broadcast(){
   if(!this.authority||this.recovering)return;
   this.publish({type:'snapshot',data:this.decorate(this.authority.snapshot('Player 1'))});
+  if(this.authority.hasPendingDiscard('Player 1'))this.publish({type:'discard-pending',data:{revision:this.authority.currentRevision()}});
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
   const spectatorSnapshot=this.decorate(this.authority.spectatorSnapshot());
   for(const peer of this.spectators)this.output(peer,'snapshot',spectatorSnapshot);
