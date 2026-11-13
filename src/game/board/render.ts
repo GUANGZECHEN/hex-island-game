@@ -150,7 +150,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     // Push the dock farther offshore and bias it slightly along the coast so its two direct pier legs breathe and differ naturally in length.
     const tx=-uy,ty=ux,dockDistance=.78,dockBias=.055;
     const px=mid.x+ux*dockDistance+tx*dockBias,py=mid.y+uy*dockDistance+ty*dockBias;
-    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.43,dockAttachInset=.305;
+    const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.49,dockAttachInset=.335;
     const leftDock={x:px-tx*dockAttachHalf-ux*dockAttachInset,y:py-ty*dockAttachHalf-uy*dockAttachInset};
     const rightDock={x:px+tx*dockAttachHalf-ux*dockAttachInset,y:py+ty*dockAttachHalf-uy*dockAttachInset};
     const aAlong=(a.x-mid.x)*tx+(a.y-mid.y)*ty,bAlong=(b.x-mid.x)*tx+(b.y-mid.y)*ty;
@@ -163,21 +163,20 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     line(group,b.x,b.y,bDock.x,bDock.y,'port-pier-leg port-pier-b');
 
     const dock=node('g',{class:'port-dock',transform:`translate(${px} ${py}) rotate(${angle})`});
-    dock.append(node('rect',{x:'-.48',y:'-.32',width:'.96',height:'.64',rx:'.11',class:'port-dock-shadow',transform:'translate(0 .04)'}));
-    dock.append(node('rect',{x:'-.48',y:'-.32',width:'.96',height:'.64',rx:'.11',class:'port-dock-board'}));
-    for(const x of [-.31,-.10,.10,.31])line(dock,x,-.27,x,.27,'port-dock-plank');
-    dock.append(node('circle',{cx:'-.39',cy:'-.24',r:'.035',class:'port-bollard'}),node('circle',{cx:'.39',cy:'-.24',r:'.035',class:'port-bollard'}));
+    dock.append(node('rect',{x:'-.56',y:'-.36',width:'1.12',height:'.72',rx:'.12',class:'port-dock-shadow',transform:'translate(0 .04)'}));
+    dock.append(node('rect',{x:'-.56',y:'-.36',width:'1.12',height:'.72',rx:'.12',class:'port-dock-board'}));
+    for(const x of [-.38,-.13,.13,.38])line(dock,x,-.31,x,.31,'port-dock-plank');
+    dock.append(node('circle',{cx:'-.46',cy:'-.27',r:'.035',class:'port-bollard'}),node('circle',{cx:'.46',cy:'-.27',r:'.035',class:'port-bollard'}));
     group.append(dock);
 
     // Keep trade information upright even when the dock rotates around the coast.
     const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
     const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
     if(port.type==='generic'){
-      path(face,'M0 -.21v.27m-.14-.11q.14.18.28 0M-.19-.05h.38','port-anchor-icon');
-      label.setAttribute('y','.20');label.textContent='3:1';face.append(label);
+      label.setAttribute('y','.02');label.textContent='3:1';label.classList.add('port-label-generic');face.append(label);
     }else{
-      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.17');symbol.setAttribute('y','-.28');symbol.setAttribute('width','.34');symbol.setAttribute('height','.34');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
-      label.setAttribute('y','.21');label.textContent='2:1';face.append(label);
+      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.20');symbol.setAttribute('y','-.31');symbol.setAttribute('width','.40');symbol.setAttribute('height','.40');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
+      label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
     }
     group.append(face);
 
