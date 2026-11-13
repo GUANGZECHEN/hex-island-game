@@ -1358,3 +1358,6 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 /* Keep Undo visually and in keyboard order below all other Actions controls. */
 .undo-action-row{margin-top:.6rem}
 .undo-action-row .action-button{grid-column:1/-1;background:#f8f5ed;border-color:#ddd4bf}
+
+/* Waiting-for-discard confirmation is visible only to the submitting player. */
+.discard-submitted{padding:.6rem .75rem;border:1px solid #b7d6be;border-radius:.55rem;background:#f0f8ef;color:#29563b;font-size:.86rem;font-weight:800}
