@@ -78,13 +78,13 @@ export class HostSession {
    if(typeof msg.token==='string'&&msg.token)seat=this.seats.find(s=>s.token===msg.token);
    else if(msg.token===undefined||msg.token===''){
     if(this.authority||msg.role==='spectator'){
-     this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority});this.announce();
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});this.announce();
      if(this.authority&&!this.recovering)this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));
      return;
     }
     seat=this.claimSeat(peer,msg.name)??undefined;
     if(!seat){
-     this.spectators.add(peer);this.output(peer,'spectator',{watching:false});this.announce();return;
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:false,gameId:null});this.announce();return;
     }
    }
    if(!seat){this.output(peer,'error','Seat unavailable.');return;}
