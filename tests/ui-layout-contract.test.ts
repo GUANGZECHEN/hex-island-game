@@ -384,3 +384,15 @@ test('safe Undo action is appended last in Actions for active and non-active pla
  assert.ok(ui.slice(start,end).includes('appendUndoAction();'));
  assert.ok(css.includes('.undo-action-row .action-button{grid-column:1/-1'));
 });
+
+test('multi-discard stage uses a private acknowledgement and keeps other players on the original revision',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const session=readFileSync('src/game/network/session.ts','utf8');
+ const authority=readFileSync('src/game/network/authority.ts','utf8');
+ assert.ok(ui.includes('discardPending:()=>{'));
+ assert.ok(ui.includes("note.className='discard-submitted'"));
+ assert.ok(ui.includes("discardSubmitted?'Your discard is submitted."));
+ assert.ok(session.includes("this.output(peer,'discard-pending'"));
+ assert.ok(session.includes("this.emitCheckpoint(true);"));
+ assert.ok(authority.includes('if(Object.keys(this.pendingDiscards).length<Object.keys(this.state.discards).length)'));
+});
