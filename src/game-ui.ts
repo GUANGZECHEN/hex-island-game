@@ -365,15 +365,19 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
  const canUndo=remote?projection?.public.undoPlayerId===viewer:localUndoState!==null&&localUndoPlayerId===viewer;
- if(canUndo)action(grid,'Undo last action','end',()=>{
-  if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
-  if(!localUndoState)throw new Error('Nothing safe to undo.');
-  const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
-  commit(previous,`${playerName(viewer)} undid the last action.`);
- });
+ const appendUndoAction=()=>{
+  if(!canUndo)return;
+  const undoRow=document.createElement('div');undoRow.className='action-grid undo-action-row';actions.append(undoRow);
+  action(undoRow,'Undo last action','end',()=>{
+   if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
+   if(!localUndoState)throw new Error('Nothing safe to undo.');
+   const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
+   commit(previous,`${playerName(viewer)} undid the last action.`);
+  });
+ };
  if(s.discards[viewer]&&s.phase==='discard'){const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
  if(s.offer?.targets.includes(viewer)){activePanel='actions';incomingTradeCard(actions,s.offer);action(grid,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(grid,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
- if(viewer!==active.id){setPanel(activePanel);return;}
+ if(viewer!==active.id){appendUndoAction();setPanel(activePanel);return;}
  if(s.phase==='setup-settlement')action(grid,'Place settlement','settlement',()=>mode('settlement'));
  if(s.phase==='setup-road'||s.phase==='free-road'){action(grid,'Place road','road',()=>mode('road'));if(s.phase==='free-road')action(grid,'Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'));}
  if(s.phase==='roll')action(grid,'Roll dice','dice',()=>commit(applyTurnCommand(s,{type:'roll',playerId:viewer}),`${viewer} rolled.`));
@@ -404,6 +408,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   }
  }
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
+ appendUndoAction();
  setPanel(activePanel);
 }
 function refreshLocalMapPreview(){
