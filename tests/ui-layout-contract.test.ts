@@ -294,18 +294,21 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
  assert.ok(render.includes("line(group,b.x,b.y,bDock.x,bDock.y,'port-pier-leg port-pier-b')"));
  assert.ok(!render.includes("'port-pier-stem'"));
  assert.ok(render.includes("class:'port-dock-board'"));
- assert.ok(render.includes("width:'.96',height:'.64'"));
- assert.ok(render.includes("line(dock,x,-.27,x,.27,'port-dock-plank')"));
+ assert.ok(render.includes("width:'1.12',height:'.72'"));
+ assert.ok(render.includes("line(dock,x,-.31,x,.31,'port-dock-plank')"));
  assert.ok(render.includes("class:'port-bollard'"));
- assert.ok(render.includes("path(face,'M0 -.21v.27m-.14-.11q.14.18.28 0M-.19-.05h.38','port-anchor-icon')"));
- assert.ok(render.includes("symbol.setAttribute('width','.34')"));
- assert.ok(css.includes('font-size:.22px'));
+ assert.ok(!render.includes("'port-anchor-icon'"));
+ assert.ok(render.includes("label.classList.add('port-label-generic')"));
+ assert.ok(render.includes("symbol.setAttribute('width','.40')"));
+ assert.ok(css.includes('font-size:.27px'));
+ assert.ok(css.includes('.port-label-generic{font-size:.31px'));
+ assert.ok(css.includes('.activity-production-summary{'));
  assert.ok(render.includes("class:'port-boat-decor'"));
  assert.ok(!render.includes("class:'port-badge'"));
  assert.ok(!render.includes("class:'port-badge-shadow'"));
  assert.ok(css.includes('/* ART-FINAL · coastal ports and board consistency pass */'));
  assert.ok(css.includes('.port-dock-board'));
- assert.ok(css.includes('.port-anchor-icon'));
+ assert.ok(!render.includes("class:'port-anchor-icon'"));
  assert.ok(css.includes('.port-boat-decor'));
  assert.ok(css.includes('.port-dock-plank,.port-bollard,.port-boat-decor{display:none}'));
 });
@@ -346,4 +349,14 @@ test('brick and ore terrain backgrounds read as clay quarry and exposed rock sou
  assert.ok(render.includes("L${cx-.18} ${cy-.03}"));
  assert.ok(render.includes("L${cx+.08} ${cy-.12}"));
  assert.ok(!render.includes("L${cx+.08} ${cy-.48}"));
+});
+
+test('dice alerts show each players total resource gain after the roll',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('function productionSummary'));
+ assert.ok(ui.includes("pendingProductionSummary=productionSummary(beforeActivity,afterActivity)"));
+ assert.ok(ui.includes("pendingProductionSummary=productionSummary(previousPublic,nextPublic)"));
+ assert.ok(ui.includes("summary.className='activity-production-summary'"));
+ assert.ok(css.includes('.activity-production-summary{'));
 });
