@@ -83,3 +83,30 @@ test('players may submit roll-seven discards concurrently from the same authorit
  assert.equal(cResult.ok,true);assert.equal(cResult.revision,3);
  const done=host.snapshot('a');assert.equal(done.public.phase,'robber');assert.deepEqual(done.public.discards,{});
 });
+
+test('safe undo reverts a single deterministic action while preserving revision monotonicity',()=>{
+ const state=createGame(33,['a','b','c']);state.currentSeat=0;
+ const host=new HostAuthority('undo-game',state,()=>1);
+ const send=(sender:string,revision:number,commandId:string,command:Record<string,unknown>)=>
+  host.receive(sender,JSON.stringify({protocol:1,gameId:'undo-game',revision,commandId,sender,command}));
+ const vertex=createIslandBoard().vertices[0].id;
+ const before=host.snapshot('a');
+ assert.equal(send('a',0,'place',{type:'place-settlement',playerId:'a',vertexId:vertex}).ok,true);
+ assert.equal(host.snapshot('a').public.undoPlayerId,'a');
+ assert.equal(send('b',1,'steal-undo',{type:'undo',playerId:'b'}).code,'illegal');
+ assert.equal(send('a',0,'old-undo',{type:'undo',playerId:'a'}).code,'stale');
+ assert.equal(send('a',1,'undo',{type:'undo',playerId:'a'}).ok,true);
+ const restored=host.snapshot('a');
+ assert.equal(restored.revision,2);assert.deepEqual(restored.public.buildings,before.public.buildings);
+ assert.deepEqual(restored.private.hand,before.private.hand);assert.equal(restored.public.undoPlayerId,null);
+ assert.equal(send('a',2,'undo-again',{type:'undo',playerId:'a'}).code,'illegal');
+});
+test('random dice and other irreversible operations clear safe undo eligibility',()=>{
+ const state=createGame(33,['a','b']);state.phase='roll';state.currentSeat=0;
+ const host=new HostAuthority('no-undo',state,()=>0);
+ const send=(revision:number,commandId:string,command:Record<string,unknown>)=>
+  host.receive('a',JSON.stringify({protocol:1,gameId:'no-undo',revision,commandId,sender:'a',command}));
+ assert.equal(send(0,'roll',{type:'roll',playerId:'a'}).ok,true);
+ assert.equal(host.snapshot('a').public.undoPlayerId,null);
+ assert.equal(send(1,'undo-roll',{type:'undo',playerId:'a'}).code,'illegal');
+});
