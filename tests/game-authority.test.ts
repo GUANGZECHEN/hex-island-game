@@ -69,3 +69,17 @@ test('standard authority supports two-player games',()=>{
  const host=new HostAuthority('twoplayer',state,()=>0);
  assert.equal(host.snapshot('a').public.players.length,2);
 });
+
+test('players may submit roll-seven discards concurrently from the same authoritative snapshot',()=>{
+ const state=createGame(29,['a','b','c']);state.phase='roll';state.currentSeat=0;state.turn=3;
+ state.players[1].hand.lumber=8;state.players[2].hand.brick=9;state.bank.lumber-=8;state.bank.brick-=9;
+ const entropy=[2,3];const host=new HostAuthority('discard-race',state,()=>entropy.shift()??0);
+ const send=(sender:string,revision:number,commandId:string,command:Record<string,unknown>)=>host.receive(sender,JSON.stringify({protocol:1,gameId:'discard-race',revision,commandId,sender,command}));
+ assert.equal(send('a',0,'roll7',{type:'roll',playerId:'a'}).ok,true);
+ const afterRoll=host.snapshot('a');assert.equal(afterRoll.revision,1);assert.equal(afterRoll.public.phase,'discard');assert.equal(afterRoll.public.discards.b,4);assert.equal(afterRoll.public.discards.c,4);
+ const bCards={lumber:4,brick:0,wool:0,grain:0,ore:0},cCards={lumber:0,brick:4,wool:0,grain:0,ore:0};
+ assert.equal(send('b',1,'discard-b',{type:'discard',playerId:'b',cards:bCards}).ok,true);
+ const cResult=send('c',1,'discard-c',{type:'discard',playerId:'c',cards:cCards});
+ assert.equal(cResult.ok,true);assert.equal(cResult.revision,3);
+ const done=host.snapshot('a');assert.equal(done.public.phase,'robber');assert.deepEqual(done.public.discards,{});
+});
