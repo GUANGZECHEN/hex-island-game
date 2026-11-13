@@ -91,7 +91,7 @@ try{
   if(await host.locator('#board .port-badge').count()!==0)throw new Error('ART-FINAL old floating circular port badges are still rendered.');
   const dockPaint=await host.locator('#board .port-dock-board').first().evaluate(node=>getComputedStyle(node).fill);
   if(!dockPaint||dockPaint==='none'||dockPaint.includes('rgba(0, 0, 0, 0)'))throw new Error(`ART-FINAL dock is visually unpainted: ${dockPaint}`);
-  if(await host.locator('#board .port-anchor-icon').count()<1||await host.locator('#board .port-resource-icon').count()<1)throw new Error('ART-FINAL generic/resource port faces are incomplete.');
+  if(await host.locator('#board .port-anchor-icon').count()!==0||await host.locator('#board .port-label-generic').count()<1||await host.locator('#board .port-resource-icon').count()<1)throw new Error('ART-FINAL generic text-only/resource port faces are incomplete.');
   const buildingPlacement=await host.locator('#board [data-building-kind]').evaluateAll(groups=>groups.map(group=>{
     const shell=group.querySelector('.game-building-shell'),svg=group.ownerSVGElement;
     if(!shell||!svg)return {visible:false,offset:999};
