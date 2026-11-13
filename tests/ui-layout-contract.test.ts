@@ -371,3 +371,16 @@ test('dice alerts display every player and each publicly-produced resource with 
  assert.ok(ui.includes("alert.append(productionSummary(pendingProductionSummary,s.players))"));
  assert.ok(css.includes('.activity-production-chip'));
 });
+
+test('safe Undo action is appended last in Actions for active and non-active players',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes('const appendUndoAction=()=>'));
+ assert.ok(ui.includes("undoRow.className='action-grid undo-action-row';actions.append(undoRow)"));
+ assert.ok(ui.includes('if(viewer!==active.id){appendUndoAction();setPanel(activePanel);return;}'));
+ const start=ui.indexOf("if(!['setup-settlement','setup-road','finished'].includes(s.phase)");
+ const end=ui.indexOf('setPanel(activePanel);',start);
+ assert.ok(start>=0&&end>start);
+ assert.ok(ui.slice(start,end).includes('appendUndoAction();'));
+ assert.ok(css.includes('.undo-action-row .action-button{grid-column:1/-1'));
+});
