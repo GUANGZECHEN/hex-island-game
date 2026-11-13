@@ -1266,7 +1266,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .port-label{
  fill:#3f3222;
- font-size:.22px;
+ font-size:.27px;
  font-weight:950;
  letter-spacing:.01em;
  paint-order:stroke;
@@ -1274,6 +1274,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  stroke-width:.025;
  stroke-linejoin:round;
 }
+.port-label-generic{font-size:.31px;letter-spacing:.015em}
 .port-resource-icon{
  color:#31493f;
  filter:drop-shadow(0 .015px .01px #20352f30);
@@ -1306,6 +1307,10 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .port-pier-leg{stroke-width:.058;opacity:.62}
  .port-dock-plank,.port-bollard,.port-boat-decor{display:none}
  .port-dock-board{stroke-width:.035}
- .port-label{font-size:.205px;stroke-width:.022}
- .port-resource-icon{transform:scale(.98);transform-origin:center}
+ .port-label{font-size:.245px;stroke-width:.022}
+ .port-label-generic{font-size:.285px}
+ .port-resource-icon{transform:scale(1.02);transform-origin:center}
 }
+
+.activity-production-summary{display:block;margin-top:.22rem;font-size:.78rem;font-weight:800;line-height:1.35;opacity:.92;letter-spacing:.01em}
+@media(max-width:760px){.activity-production-summary{font-size:.7rem}}
