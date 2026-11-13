@@ -145,7 +145,8 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       assert.equal(all.filter(child=>child.attributes.get('class')==='port-pier-stem').length,0);
       assert.equal(all.filter(child=>child.tag==='rect'&&child.attributes.get('class')==='port-dock-board').length,1);
       if(port.type==='generic'){
-        assert.ok(all.some(child=>child.tag==='path'&&child.attributes.get('class')==='port-anchor-icon'));
+        assert.ok(!all.some(child=>child.attributes.get('class')==='port-anchor-icon'));
+        assert.ok(all.some(child=>child.tag==='text'&&child.attributes.get('class')?.includes('port-label-generic')));
         assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='3:1'));
       }else{
         assert.ok(all.some(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type));
