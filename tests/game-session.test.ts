@@ -301,3 +301,46 @@ test('host restarts the current game in same room with fresh identity and specta
  assert.equal(published.filter(x=>x.type==='checkpoint').at(-1).replace,true);
  assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'second-move',0).ok,true);
 });
+
+test('seven discards do not broadcast a refreshed game until all players submit',()=>{
+ const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const output=(peer:string,text:string)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]);
+ const token=()=>String(++serial).padStart(43,'a');
+ const send=(room:HostSession,peer:string,message:object)=>room.receive(peer,JSON.stringify({protocol:1,...message}));
+ const started=new HostSession(output,value=>published.push(value),token,()=>0);
+ send(started,'b-peer',{type:'hello'});send(started,'c-peer',{type:'hello'});
+ const bToken=messages.get('b-peer')!.find(m=>m.type==='seat').data.token;
+ const cToken=messages.get('c-peer')!.find(m=>m.type==='seat').data.token;
+ send(started,'b-peer',{type:'ready',ready:true});send(started,'c-peer',{type:'ready',ready:true});
+ started.setHostReady(true);started.start(44);
+ const saved=started.recovery();
+ saved.authority.state.phase='discard';saved.authority.state.currentSeat=0;
+ saved.authority.state.discards={'Player 2':4,'Player 3':4};
+ saved.authority.state.players[1].hand.lumber=8;
+ saved.authority.state.players[2].hand.brick=8;
+ saved.authority.state.bank.lumber-=8;saved.authority.state.bank.brick-=8;
+ const room=HostSession.fromRecovery(output,value=>published.push(value),token,()=>0,saved);
+ send(room,'b-new',{type:'hello',token:bToken});send(room,'c-new',{type:'hello',token:cToken});room.resume(saved);
+ const revision=saved.authority.revision,gameId=saved.authority.gameId;
+ const sendDiscard=(peer:string,playerId:string,id:string,cards:object)=>
+  send(room,peer,{type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId:id,sender:playerId,command:{type:'discard',playerId,cards}})});
+ const b={lumber:4,brick:0,wool:0,grain:0,ore:0},c={lumber:0,brick:4,wool:0,grain:0,ore:0};
+ const snapshots=(peer:string)=>messages.get(peer)!.filter(m=>m.type==='snapshot').length;
+ const startB=snapshots('b-new'),startC=snapshots('c-new'),startPublic=published.filter(m=>m.type==='snapshot').length;
+ sendDiscard('b-new','Player 2','submit-b',b);
+ assert.equal(snapshots('b-new'),startB);assert.equal(snapshots('c-new'),startC);
+ assert.equal(published.filter(m=>m.type==='snapshot').length,startPublic);
+ assert.equal(messages.get('b-new')!.at(-1).type,'discard-pending');
+ assert.equal(room.recovery().authority.revision,revision);
+ assert.equal(room.recovery().authority.pendingDiscards?.['Player 2'].lumber,4);
+ assert.equal(room.recovery().authority.state.players[1].hand.lumber,8);
+ send(room,'b-new',{type:'sync'});
+ assert.equal(messages.get('b-new')!.at(-1).type,'discard-pending');
+ sendDiscard('c-new','Player 3','submit-c',c);
+ assert.equal(snapshots('c-new'),startC+1);assert.equal(snapshots('b-new'),startB+2);
+ assert.equal(published.filter(m=>m.type==='snapshot').length,startPublic+1);
+ assert.equal(room.recovery().authority.revision,revision+1);
+ assert.equal(room.recovery().authority.state.phase,'robber');
+ assert.equal(room.recovery().authority.state.players[1].hand.lumber,4);
+ assert.equal(room.recovery().authority.state.players[2].hand.brick,4);
+});
