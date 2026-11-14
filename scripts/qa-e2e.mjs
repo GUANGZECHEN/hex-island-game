@@ -359,7 +359,7 @@ try{
     }else{
       if(responsive.mapTop<responsive.playerTop||responsive.controlTop<responsive.mapBottom-6)throw new Error(`Mobile board/control order incorrect at ${width}px.`);
       if(responsive.actionLeft>=responsive.tradeLeft||Math.abs(responsive.tradeTop-responsive.actionTop)>8)throw new Error(`Mobile Actions and Trade are not side-by-side at ${width}px.`);
-      if(responsive.tradeRight>innerWidth+1)throw new Error(`Mobile trade panel overflows at ${width}px.`);
+      if(responsive.tradeRight>width+1)throw new Error(`Mobile trade panel overflows at ${width}px.`);
     }
     const before=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
     if(await actor.locator('[data-panel]').count()!==0)throw new Error('Obsolete tab navigation returned.');
