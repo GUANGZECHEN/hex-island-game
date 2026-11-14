@@ -46,7 +46,7 @@ test('turn changes flash the central cue and active player card exactly three ti
   const ui=readFileSync('src/game-ui.ts','utf8');
   const css=readFileSync('src/style.css','utf8');
   assert.ok(ui.includes("function flashTurnCue"));
-  assert.ok(ui.includes("drawBoard();flashTurnCue(s);"));
+  assert.ok(ui.includes("drawBoard();scheduleDesktopBoardFit();flashTurnCue(s);"));
   assert.ok(css.includes('.turn-banner.turn-cue-flash'));
   assert.ok(css.includes('.player-summary.active-player.turn-cue-flash'));
   assert.ok(css.includes('animation:turn-cue-pulse .55s ease-in-out 3'));
@@ -122,7 +122,7 @@ test('public gameplay actions surface as centered board alerts without replacing
  assert.ok(ui.includes("kind==='build'?'BUILD'"));
  assert.ok(ui.includes("kind==='robber'?'ROBBER'"));
  assert.ok(ui.includes("kind==='trade'?'TRADE'"));
- assert.ok(ui.includes('drawBoard();flashTurnCue(s);showActivityAlert(s);'));
+ assert.ok(ui.includes('drawBoard();scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);'));
  assert.ok(ui.includes('rolled dice|built a road|built a settlement'));
  assert.ok(css.includes('.activity-alert{'));
  assert.ok(css.includes('.activity-alert-message{'));
@@ -204,7 +204,7 @@ test('a winner gets a one-shot animated board-centered victory celebration',()=>
  assert.ok(ui.includes('WINS!'));
  assert.ok(ui.includes("alert.classList.add('victory-alert-out')"));
  assert.ok(ui.includes('},5000)'));
- assert.ok(ui.includes('drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
+ assert.ok(ui.includes('drawBoard();scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
  assert.ok(css.includes('.victory-alert{'));
  assert.ok(css.includes('@keyframes victory-confetti-pop'));
  assert.ok(css.includes('.victory-alert.victory-alert-out'));
