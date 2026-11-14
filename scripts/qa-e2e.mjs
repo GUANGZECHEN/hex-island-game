@@ -54,7 +54,8 @@ try{
   if(await host.locator('#switch-player').isVisible())throw new Error('Two-bot mode exposed manual player switching.');
   if(!(await host.locator('#connection-summary').textContent())?.includes('2 test bots enabled'))throw new Error('Two-bot mode status was missing.');
   if(await host.locator('#player-strip .player-summary').count()!==3)throw new Error('Two-bot mode did not create three player cards.');
-  if(await host.locator('#game-tabs button .icon').count()!==3)throw new Error('ART-B01 control tabs do not all have icons.');
+  if(await host.locator('#game-tabs').count()!==0)throw new Error('The obsolete navigation tabs are still rendered.');
+  if(await host.locator('#board-action-pane').count()!==1||await host.locator('#board-trade-pane').count()!==1)throw new Error('Both board action regions are required.');
   if(await host.locator('#private-hand-card .resource-chip').count()!==5)throw new Error('ART-B01 hand does not expose five resource tokens.');
   const handClasses=await host.locator('#private-hand-card .resource-chip').evaluateAll(nodes=>nodes.map(node=>node.className));
   if(!['lumber','brick','wool','grain','ore'].every(resource=>handClasses.some(value=>String(value).includes(`resource-chip-${resource}`))))throw new Error(`ART-B01 resource-specific hand styling is incomplete: ${handClasses.join(' | ')}`);
@@ -240,7 +241,7 @@ try{
   await spectator.locator('#game').waitFor({state:'visible',timeout:20000});
   await spectator.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:20000});
   if(!(await spectator.locator('#private-hand-card').getAttribute('hidden'))&&await spectator.locator('#private-hand-card').isVisible())throw new Error('Spectator private hand was visible.');
-  if(await spectator.locator('#game-tabs').isVisible())throw new Error('Spectator action tabs were visible.');
+  if(await spectator.locator('#board-action-pane').isVisible()||await spectator.locator('#board-trade-pane').isVisible())throw new Error('Spectator was offered gameplay controls.');
   if(await spectator.locator('#room-ready').isVisible())throw new Error('Spectator ready control was visible.');
   if(await spectator.locator('#player-strip .player-summary').count()!==2)throw new Error('Spectator did not receive public player state.');
 
@@ -340,38 +341,30 @@ try{
     if(await actor.getByRole('button',{name:'Place road',exact:true}).count()!==1)throw new Error('Expected one primary setup action.');
     if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error(`Page overflow at ${width}px.`);
     const responsive=await actor.evaluate(()=>{
-      const main=document.querySelector('main')?.getBoundingClientRect();
-      const board=document.querySelector('.board-panel')?.getBoundingClientRect();
-      const controls=document.querySelector('.control-panel')?.getBoundingClientRect();
-      const strip=document.querySelector('.board-stage #player-strip');
-      return {
-        mainWidth:main?.width??0,
-        boardWidth:board?.width??0,
-        boardTop:board?.top??0,
-        boardBottom:board?.bottom??0,
-        boardRight:board?.right??0,
-        controlWidth:controls?.width??0,
-        controlTop:controls?.top??0,
-        controlLeft:controls?.left??0,
-        stripPosition:strip?getComputedStyle(strip).position:'',
-      };
+      const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();
+      const main=rect('main'),stage=rect('.board-stage'),players=rect('.board-player-column'),map=rect('.board-map-column'),board=rect('#board'),controls=rect('.board-command-column'),actions=rect('#board-action-pane'),trade=rect('#board-trade-pane');
+      return {mainWidth:main?.width??0,stageWidth:stage?.width??0,
+       playerLeft:players?.left??0,playerRight:players?.right??0,playerTop:players?.top??0,
+       mapLeft:map?.left??0,mapRight:map?.right??0,mapTop:map?.top??0,mapBottom:map?.bottom??0,
+       boardWidth:board?.width??0,controlLeft:controls?.left??0,controlTop:controls?.top??0,
+       actionLeft:actions?.left??0,actionTop:actions?.top??0,actionBottom:actions?.bottom??0,
+       tradeLeft:trade?.left??0,tradeTop:trade?.top??0,tradeRight:trade?.right??0};
     });
     if(width>=1200){
-      if(responsive.mainWidth<1000)throw new Error(`Invite game stayed artificially narrow at ${width}px: main ${responsive.mainWidth}.`);
-      if(responsive.boardWidth<520)throw new Error(`Desktop board column is too narrow at ${width}px: ${responsive.boardWidth}.`);
-      if(responsive.controlLeft<responsive.boardRight-8)throw new Error(`Desktop controls did not sit to the right of the board at ${width}px.`);
-      if(responsive.stripPosition!=='absolute')throw new Error(`Desktop player HUD did not use board-corner layout at ${width}px.`);
-    } else {
-      if(responsive.controlTop<responsive.boardBottom-4)throw new Error(`Stacked control panel overlapped the board at ${width}px.`);
-      if(Math.abs(responsive.boardWidth-responsive.controlWidth)>12)throw new Error(`Stacked panels have mismatched widths at ${width}px.`);
-      if(responsive.stripPosition!=='static')throw new Error(`Player HUD did not move above the board at ${width}px.`);
+      if(responsive.mainWidth<1000)throw new Error(`Desktop workspace too narrow at ${width}px.`);
+      if(responsive.playerRight>responsive.mapLeft+4)throw new Error(`Player column overlaps the board at ${width}px.`);
+      if(responsive.boardWidth<480)throw new Error(`Central board too narrow at ${width}px.`);
+      if(responsive.controlLeft<responsive.mapRight-4)throw new Error(`Actions do not sit right of the board at ${width}px.`);
+      if(responsive.tradeTop<responsive.actionBottom-5)throw new Error(`Trade pane does not sit below actions at ${width}px.`);
+    }else{
+      if(responsive.mapTop<responsive.playerTop||responsive.controlTop<responsive.mapBottom-6)throw new Error(`Mobile board/control order incorrect at ${width}px.`);
+      if(responsive.actionLeft>=responsive.tradeLeft||Math.abs(responsive.tradeTop-responsive.actionTop)>8)throw new Error(`Mobile Actions and Trade are not side-by-side at ${width}px.`);
+      if(responsive.tradeRight>innerWidth+1)throw new Error(`Mobile trade panel overflows at ${width}px.`);
     }
     const before=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
-    if(await actor.locator('[data-panel="cards"]').count()!==0)throw new Error('Removed Cards tab unexpectedly returned.');
-    await actor.locator('[data-panel="trade"]').click();
-    await actor.locator('[data-panel="status"]').click();
-    await actor.locator('[data-panel="actions"]').click();
-    if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Visual tabs sent a network message.');
+    if(await actor.locator('[data-panel]').count()!==0)throw new Error('Obsolete tab navigation returned.');
+    if(await actor.locator('#board-action-pane').count()!==1||await actor.locator('#board-trade-pane').count()!==1)throw new Error('The simultaneous action and trade panes were lost.');
+    if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Rendering the integrated board sent a network message.');
   }
 
   const expectedRecoveryRevision=guestRevision+1;

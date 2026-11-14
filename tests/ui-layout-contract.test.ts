@@ -88,7 +88,7 @@ test('bank and port trading uses direct resource-icon buttons with live port rat
  assert.ok(ui.includes("rateBadge.textContent=String(rate)"));
  assert.ok(ui.includes("arrow.textContent='→'"));
  assert.ok(ui.includes('tradeButton.append(from,arrow,to)'));
- assert.ok(ui.includes('tradeButton.disabled=actor.hand[give]<rate||s.bank[receive]<1'));
+ assert.ok(ui.includes('if(receive===give||actor.hand[give]<rate||s.bank[receive]<1)continue;'));
  assert.ok(!ui.includes("rateBadge.textContent=`×${rate}`"));
  assert.ok(!ui.includes("icon(ACTION_PATHS.trade,'icon bank-trade-arrow')"));
  assert.ok(!ui.includes("select(trade,'Bank trade: give'"));
@@ -377,9 +377,9 @@ test('safe Undo action is appended last in Actions for active and non-active pla
  const css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes('const appendUndoAction=()=>'));
  assert.ok(ui.includes("undoRow.className='action-grid undo-action-row';actions.append(undoRow)"));
- assert.ok(ui.includes('if(viewer!==active.id){appendUndoAction();setPanel(activePanel);return;}'));
+ assert.ok(ui.includes('if(viewer!==active.id){appendUndoAction();finishControls();return;}'));
  const start=ui.indexOf("if(!['setup-settlement','setup-road','finished'].includes(s.phase)");
- const end=ui.indexOf('setPanel(activePanel);',start);
+ const end=ui.indexOf('finishControls();',start);
  assert.ok(start>=0&&end>start);
  assert.ok(ui.slice(start,end).includes('appendUndoAction();'));
  assert.ok(css.includes('.undo-action-row .action-button{grid-column:1/-1'));
@@ -395,4 +395,22 @@ test('multi-discard stage uses a private acknowledgement and keeps other players
  assert.ok(session.includes("this.output(peer,'discard-pending'"));
  assert.ok(session.includes("this.emitCheckpoint(true);"));
  assert.ok(authority.includes('if(Object.keys(this.pendingDiscards).length<Object.keys(this.state.discards).length)'));
+});
+
+test('board workspace contains player, map, and simultaneous actions/trades without a separate panel',()=>{
+ const html=readFileSync('index.html','utf8'),ui=readFileSync('src/game-ui.ts','utf8'),css=readFileSync('src/style.css','utf8');
+ assert.ok(html.includes('class="game-layout board-workspace"'));
+ assert.ok(html.includes('class="board-player-column"'));
+ assert.ok(html.includes('class="board-map-column"'));
+ assert.ok(html.includes('class="board-command-column"'));
+ assert.ok(html.includes('id="board-action-pane"'));
+ assert.ok(html.includes('id="board-trade-pane"'));
+ assert.ok(!html.includes('id="game-tabs"'));
+ assert.ok(!html.includes('class="control-panel"'));
+ assert.ok(!ui.includes('function setPanel('));
+ assert.ok(!ui.includes("document.querySelectorAll<HTMLButtonElement>('[data-panel]')"));
+ assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
+ assert.ok(ui.includes('finishControls();'));
+ assert.ok(css.includes('grid-template-areas:"status status" "actions trade"'));
+ assert.ok(css.includes('grid-template-columns:minmax(195px,255px) minmax(0,1fr) minmax(260px,335px)'));
 });

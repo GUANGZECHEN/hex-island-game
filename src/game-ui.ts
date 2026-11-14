@@ -21,7 +21,6 @@ import { applyBotCommand } from './game/bot/runner';
 
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
-let activePanel:'actions'|'trade'|'status'='actions';
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingProductionSummary:Record<string,Hand>|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
@@ -104,13 +103,13 @@ function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURC
 }
 function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number]){
  const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent='Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
- for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
+ for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give||actor.hand[give]<rate||s.bank[receive]<1)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
    const from=document.createElement('span');from.className='bank-trade-side';const rateBadge=document.createElement('span');rateBadge.className='bank-trade-rate';rateBadge.textContent=String(rate);from.append(rateBadge,resourceIcon(give));
    const arrow=document.createElement('span');arrow.className='bank-trade-arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');const to=document.createElement('span');to.className='bank-trade-side';to.append(resourceIcon(receive));
    tradeButton.append(from,arrow,to);tradeButton.disabled=actor.hand[give]<rate||s.bank[receive]<1;
    tradeButton.onclick=()=>attempt(()=>commit(applyEconomyCommand(s,{type:'bank-trade',playerId:viewer,give,receive,rate}),`${viewer} traded with the bank.`));grid.append(tradeButton);
  }}
- parent.append(section);
+ if(grid.childElementCount>0)parent.append(section);
 }
 
 function resourceAmounts(parent:HTMLElement,amounts:readonly TradeAmount[]){for(const amount of amounts)parent.append(resourceChip(amount.resource,amount.count));}
@@ -128,7 +127,6 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  if(cost){const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';b.setAttribute('aria-label',`${label}: not enough resources`);}}
  return b;
 }
-function setPanel(panel:'actions'|'trade'|'status') {activePanel=panel;for(const button of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]')))button.setAttribute('aria-pressed',String(button.dataset.panel===panel));el('actions').hidden=panel!=='actions';el('trade-actions').hidden=panel!=='trade';el('status-panel').hidden=panel!=='status';}
 function enterGame(){
  document.body.classList.add('playing');
  const local=!remote&&activeLocalRoom!==null;
@@ -350,7 +348,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('turn-banner').textContent=turnAnnouncement(activityState(s));
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
- const handCard=el('private-hand-card'),tabs=el('game-tabs');handCard.hidden=spectating;tabs.hidden=spectating;handCard.classList.toggle('active-hand',!spectating&&viewer===active.id);
+ const handCard=el('private-hand-card');handCard.hidden=spectating;handCard.classList.toggle('active-hand',!spectating&&viewer===active.id);
  if(actor)renderPieceSupply(actor);else el('piece-supply').replaceChildren();
  el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
@@ -358,8 +356,17 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
- if(spectating){activePanel='status';el('actions').hidden=true;el('trade-actions').hidden=true;el('status-panel').hidden=false;return;}
- if(!actor)return;
+ const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
+ actionPane.hidden=spectating;tradePane.hidden=spectating;
+ if(spectating||!actor)return;
+ const finishControls=()=>{
+  if(!actions.querySelector('button:not(:disabled)')&&!actions.querySelector('.discard-submitted')){
+   const pending=document.createElement('p');pending.className='board-action-empty';pending.textContent=el('turn-hint').textContent||'Waiting for the current player.';actions.append(pending);
+  }
+  if(!trade.querySelector('button:not(:disabled)')&&!trade.querySelector('.domestic-trade-card')){
+   const empty=document.createElement('p');empty.className='board-trade-empty';empty.textContent='No trades available at this stage.';trade.append(empty);
+  }
+ };
  if(targetMode){const description=document.createElement('p');description.textContent=`Select a highlighted ${targetMode} target on the board.`;targets.append(description);const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';const choices=legalTargetIds(s,viewer,targetMode);if(choices.length){const choice=select(targets,'Legal target',choices);button(targets,'Use target',()=>moveTarget(choice.value));}else{const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}}
 
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
@@ -379,8 +386,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(discardSubmitted){const note=document.createElement('p');note.className='discard-submitted';note.textContent='Discard submitted. Waiting for the other players…';actions.append(note);}
   else{const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
  }
- if(s.offer?.targets.includes(viewer)){activePanel='actions';incomingTradeCard(actions,s.offer);action(grid,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(grid,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
- if(viewer!==active.id){appendUndoAction();setPanel(activePanel);return;}
+ if(s.offer?.targets.includes(viewer)){incomingTradeCard(trade,s.offer);const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
+ if(viewer!==active.id){appendUndoAction();finishControls();return;}
  if(s.phase==='setup-settlement')action(grid,'Place settlement','settlement',()=>mode('settlement'));
  if(s.phase==='setup-road'||s.phase==='free-road'){action(grid,'Place road','road',()=>mode('road'));if(s.phase==='free-road')action(grid,'Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'));}
  if(s.phase==='roll')action(grid,'Roll dice','dice',()=>commit(applyTurnCommand(s,{type:'roll',playerId:viewer}),`${viewer} rolled.`));
@@ -388,20 +395,19 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
   action(grid,'End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`));
-  action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
-  action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
-  action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
+  if(affordable(actor.hand,{lumber:1,brick:1})&&legalTargetIds(s,viewer,'road').length)action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
+  if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
+  if(affordable(actor.hand,{grain:2,ore:3})&&legalTargetIds(s,viewer,'city').length)action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
   bankTradeButtons(trade,s,actor);
-  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);trade.append(domestic);
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);if(RESOURCES.some(resource=>actor.hand[resource]>0))trade.append(domestic);
   const opponent=playerSelect(domestic,'Offer trade to',s.players.filter(p=>p.id!==viewer).map(p=>p.id)), offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');action(domestic,'Make offer','trade',()=>commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:[opponent.value],give:offered(),receive:wanted()}),`${viewer} proposed a trade.`));
   if(s.offer)action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
  }
  if(s.phase==='action'){
-  const buy=action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
-  if((projection?.public.deckCount ?? s.deck.length)===0){buy.disabled=true;buy.title='Development deck is empty';}
+  if((projection?.public.deckCount ?? s.deck.length)>0&&affordable(actor.hand,{wool:1,grain:1,ore:1}))action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
  }
  if(s.phase==='action'||s.phase==='roll'){
-  const playable=playableDevelopmentTypes(s,viewer),play=(card:Exclude<Development,'victory-point'>,extra:Partial<{resource:Resource;resources:Resource[]}>= {})=>{activePanel='actions';commit(applyEconomyCommand(s,{type:'play-card',playerId:viewer,card,...extra}),`${viewer} played ${DEVELOPMENT_LABELS[card]}.`);};
+  const playable=playableDevelopmentTypes(s,viewer),play=(card:Exclude<Development,'victory-point'>,extra:Partial<{resource:Resource;resources:Resource[]}>= {})=>{commit(applyEconomyCommand(s,{type:'play-card',playerId:viewer,card,...extra}),`${viewer} played ${DEVELOPMENT_LABELS[card]}.`);};
   if(playable.length){
    const cardSection=document.createElement('section');cardSection.className='development-actions-inline';const heading=document.createElement('h2');heading.textContent='Development cards';const cardGrid=document.createElement('div');cardGrid.className='action-grid development-action-grid';cardSection.append(heading,cardGrid);actions.append(cardSection);
    if(playable.includes('knight'))developmentAction(cardGrid,'Play Knight','knight',()=>play('knight'));
@@ -412,7 +418,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  }
  if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  appendUndoAction();
- setPanel(activePanel);
+ finishControls();
 }
 function refreshLocalMapPreview(){
  if(!localRoomOpen)return;
@@ -439,7 +445,7 @@ function startLocalRound(settings:LocalRoomSettings){
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
  for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
- activePanel='actions';el('switch-player').hidden=settings.botCount>0;
+ el('switch-player').hidden=settings.botCount>0;
  enterGame();
  if(settings.botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}
  else{handoff(state.players[state.currentSeat].id);render();}
@@ -472,7 +478,6 @@ el('local-randomize-map').onclick=()=>{
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
-for(const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel]'))){if(tab.dataset.panel==='actions')tab.prepend(icon(ACTION_PATHS.dice));if(tab.dataset.panel==='trade')tab.prepend(icon(ACTION_PATHS.trade));if(tab.dataset.panel==='status')tab.prepend(icon(ACTION_PATHS.hand));tab.onclick=()=>setPanel(tab.dataset.panel as 'actions'|'trade'|'status');}
 const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title=count>=4?'Expanded 5–6 player board selected automatically.':'Standard board selected automatically.';}else{localSeats.disabled=false;localSeats.title='';}refreshLocalMapPreview();};localSeats.addEventListener('change',refreshLocalMapPreview);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();

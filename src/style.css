@@ -1361,3 +1361,95 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 
 /* Waiting-for-discard confirmation is visible only to the submitting player. */
 .discard-submitted{padding:.6rem .75rem;border:1px solid #b7d6be;border-radius:.55rem;background:#f0f8ef;color:#29563b;font-size:.86rem;font-weight:800}
+
+/* BOARD-WORKSPACE: one integrated game surface, no independent control panel or navigation tabs. */
+.playing main{max-width:1900px;width:100%}
+.game-layout.board-workspace:not([hidden]){display:block;width:100%;max-width:none}
+.board-workspace>.board-panel{width:100%;min-width:0;padding:.8rem 1rem 1rem;border-radius:1rem;background:linear-gradient(160deg,#fffdf8,#f3f6ec)}
+.board-workspace .board-stage{position:relative;display:grid;grid-template-columns:minmax(195px,255px) minmax(0,1fr) minmax(260px,335px);align-items:start;gap:.7rem;max-width:none;width:100%;margin:0}
+.board-workspace .board-player-column,.board-workspace .board-map-column,.board-workspace .board-command-column{position:relative;min-width:0;max-width:none;box-sizing:border-box}
+.board-workspace .board-player-column{grid-column:1;display:flex;flex-direction:column;gap:.45rem}
+.board-workspace .board-stage #player-strip{position:static;inset:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:.38rem;width:100%;height:auto;margin:0;pointer-events:auto;z-index:auto}
+.board-workspace .board-stage #player-strip .player-summary[data-seat]{position:static;top:auto;bottom:auto;left:auto;right:auto;display:block;width:100%;max-width:none;min-width:0;margin:0;pointer-events:auto;padding:.35rem .46rem;backdrop-filter:none}
+.board-workspace .board-stage #player-strip .player-summary .player-summary-name{white-space:normal;overflow-wrap:anywhere}
+.board-workspace .board-player-column .hand-card{background:#ffffffb8;border:1px solid #d7dfd0;border-radius:.65rem;padding:.5rem .55rem;margin:0;min-width:0}
+.board-workspace .board-player-column .resource-row{gap:.22rem}
+.board-workspace .board-player-column .resource-chip{min-width:0;min-height:29px;padding:.18rem .24rem;font-size:.7rem}
+.board-workspace .board-player-column .resource-chip .icon{width:.95rem;height:.95rem}
+.board-workspace .board-player-column .board-ledger{border:1px solid #d7dfd0;border-radius:.65rem;background:#f9fbf6;padding:.43rem .55rem;min-width:0}
+.board-workspace .board-ledger>summary{font-size:.74rem;font-weight:850;cursor:pointer}
+.board-workspace .board-ledger .panel-content{padding:.35rem 0 0;animation:none}
+.board-workspace .board-ledger h3{font-size:.75rem;margin:.45rem 0 .18rem}
+.board-workspace .board-ledger #bank{display:flex;gap:.15rem;flex-wrap:wrap;align-items:center}
+.board-workspace .board-ledger #bank .resource-chip{min-height:24px;padding:.12rem .22rem}
+.board-workspace .board-ledger #log{max-height:8rem}
+.board-workspace .board-map-column{grid-column:2;display:flex;flex-direction:column;align-self:start;align-items:stretch}
+.board-workspace .board-stage .board-map-column #board{width:100%;max-width:none;min-width:0;padding:.35rem 0 0;margin:0;overflow:visible}
+.board-workspace .board-map-column .island-board{display:block;width:100%;max-width:none;min-width:0;height:auto}
+.board-workspace .board-map-column .board-help{margin:.18rem .25rem;font-size:.71rem;text-align:center}
+.board-workspace .board-command-column{grid-column:3;display:flex;flex-direction:column;gap:.55rem;width:100%}
+.board-workspace .board-command-column .turn-card{padding:.5rem .6rem;border:1px solid #cddbc9;border-radius:.65rem;box-shadow:none}
+.board-workspace .board-command-column .turn-card #game-status{font-size:.78rem;overflow-wrap:anywhere}
+.board-workspace .board-command-column .turn-card #turn-hint{font-size:.75rem}
+.board-workspace .board-command-pane{border:1px solid #d6dfd4;border-radius:.7rem;background:#ffffffd9;padding:.55rem;min-width:0;overflow-wrap:anywhere}
+.board-workspace .board-command-pane[hidden],.board-workspace .hand-card[hidden]{display:none!important}
+.board-workspace .board-command-pane h3{font-size:.88rem;font-weight:900;letter-spacing:.025em;margin:0 0 .35rem;color:#234b38}
+.board-workspace .board-action-pane{order:1}
+.board-workspace .board-trade-pane{order:2;background:#fdfaf3}
+.board-workspace .board-command-pane .panel-content{padding:0;animation:none}
+.board-workspace .board-command-pane .action-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem}
+.board-workspace .board-command-pane .action-button{min-width:0;min-height:43px;padding:.36rem .35rem;font-size:.69rem;gap:.2rem;overflow-wrap:anywhere}
+.board-workspace .board-command-pane .action-button>.icon{width:1.06rem;height:1.06rem}
+.board-workspace .board-command-pane .action-cost{flex-wrap:wrap}
+.board-workspace .board-command-pane .action-cost .resource-chip{font-size:.62rem;padding:.02rem .08rem}
+.board-workspace .board-command-pane .bank-trade-section{padding:.35rem;margin:.25rem 0 .55rem}
+.board-workspace .board-command-pane .bank-trade-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.2rem}
+.board-workspace .board-command-pane .bank-trade-button{min-width:0;min-height:42px;padding:.25rem}
+.board-workspace .board-command-pane .bank-trade-side .resource-icon{width:.88rem;height:.88rem}
+.board-workspace .board-command-pane .resource-stepper-grid{grid-template-columns:minmax(0,1fr);gap:.26rem;padding:.25rem}
+.board-workspace .board-command-pane .resource-stepper{grid-template-columns:minmax(0,1fr) 30px 1.4rem 30px;gap:.12rem}
+.board-workspace .board-command-pane .stepper-button{min-width:0;padding:0;min-height:32px}
+.board-workspace .board-command-pane fieldset{min-width:0;margin:.3rem 0}
+.board-workspace .board-command-pane .undo-action-row{margin-top:.45rem}
+.board-workspace .board-command-pane .undo-action-row .action-button{grid-column:1/-1}
+.board-workspace .board-action-empty,.board-workspace .board-trade-empty{font-size:.73rem;color:#66766b;margin:.3rem 0}
+.board-workspace .board-command-pane .development-actions-inline{margin:.4rem 0 0}
+.board-workspace .board-command-pane .development-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.board-workspace .board-command-pane .domestic-trade-card{min-width:0;max-width:100%}
+.board-workspace .board-command-pane .trade-response-grid{margin-top:.3rem}
+@media(max-width:1100px){
+ .board-workspace>.board-panel{padding:.55rem}
+ .board-workspace .board-stage{grid-template-columns:minmax(0,1fr);gap:.45rem}
+ .board-workspace .board-player-column{grid-column:1;grid-row:1}
+ .board-workspace .board-stage #player-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:.22rem}
+ .board-workspace .board-stage #player-strip .player-summary[data-seat]{padding:.26rem .32rem;font-size:.67rem}
+ .board-workspace .board-player-column .hand-card{padding:.32rem .38rem}
+ .board-workspace .board-map-column{grid-column:1;grid-row:2;width:100%;max-width:none}
+ .board-workspace .board-stage .board-map-column #board{width:100%;max-width:none;padding:0;overflow:visible}
+ .board-workspace .board-command-column{grid-column:1;grid-row:3;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"status status" "actions trade";gap:.38rem;align-items:start}
+ .board-workspace .board-command-column .turn-card{grid-area:status;padding:.4rem .5rem}
+ .board-workspace .board-action-pane{grid-area:actions}
+ .board-workspace .board-trade-pane{grid-area:trade}
+ .board-workspace .board-command-pane{padding:.35rem;min-width:0;max-width:100%;overflow-x:hidden}
+ .board-workspace .board-command-pane .action-grid{grid-template-columns:minmax(0,1fr);gap:.25rem}
+ .board-workspace .board-command-pane .bank-trade-grid{grid-template-columns:minmax(0,1fr)}
+ .board-workspace .board-command-pane .action-button{min-height:42px;padding:.31rem .28rem;font-size:.7rem}
+ .board-workspace .board-command-pane .bank-trade-button{min-height:40px}
+ .board-workspace .board-command-pane .resource-stepper{grid-template-columns:minmax(0,1fr) 27px 1.25rem 27px}
+ .board-workspace .board-command-pane .resource-stepper-name{font-size:.65rem}
+ .board-workspace .board-command-pane .resource-stepper-name .icon{width:.77rem;height:.77rem}
+ .board-workspace .board-command-pane .panel-content details{min-width:0}
+ .board-workspace .board-command-pane .domestic-trade-card select{max-width:100%}
+}
+@media(max-width:420px){
+ .board-workspace>.board-panel{padding:.38rem}
+ .board-workspace .board-heading{gap:.15rem}
+ .board-workspace .board-command-column{gap:.22rem}
+ .board-workspace .board-command-pane{padding:.25rem}
+ .board-workspace .board-command-pane h3{font-size:.78rem}
+ .board-workspace .board-command-pane .action-button{font-size:.66rem;min-height:42px}
+ .board-workspace .board-command-pane .bank-trade-side .resource-icon{width:.8rem;height:.8rem}
+ .board-workspace .board-command-pane .resource-stepper{grid-template-columns:minmax(0,1fr) 24px 1.1rem 24px;gap:.08rem}
+ .board-workspace .board-command-pane .resource-stepper-name{font-size:.6rem}
+ .board-workspace .board-player-column .resource-chip{font-size:.65rem}
+}
