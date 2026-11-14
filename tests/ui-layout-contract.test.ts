@@ -245,7 +245,7 @@ test('ART-A01 board uses layered terrain, ocean, tabletop pieces and reduced-mot
 });
 
 
-test('ART-B01 unifies player boards, hand, actions, trades and tabs without changing control surfaces',()=>{
+test('ART-B01 keeps player, hand and trade art in the integrated board',()=>{
  const icons=readFileSync('src/game/ui/icons.ts','utf8');
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
@@ -258,8 +258,9 @@ test('ART-B01 unifies player boards, hand, actions, trades and tabs without chan
  assert.ok(ui.includes('action-${symbol}'));
  assert.ok(ui.includes('bank-trade-rate-${rate}'));
  assert.ok(ui.includes("domestic.className='domestic-trade-card'"));
- assert.ok(ui.includes("tab.dataset.panel==='actions'"));
- assert.ok(ui.includes("tab.dataset.panel==='status'"));
+ assert.ok(!ui.includes("tab.dataset.panel==='actions'"));
+ assert.ok(!ui.includes("tab.dataset.panel==='status'"));
+ assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
  assert.ok(css.includes('/* ART-B01 · tabletop control-surface visual system */'));
  assert.ok(css.includes('.hand-card.active-hand'));
  assert.ok(css.includes('.action-button.action-settlement'));
