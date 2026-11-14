@@ -1453,3 +1453,63 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .board-workspace .board-command-pane .resource-stepper-name{font-size:.6rem}
  .board-workspace .board-player-column .resource-chip{font-size:.65rem}
 }
+
+/* Desktop viewport-fit: fit the full island in the remaining screen height.
+   Only the player and command trays may scroll; never crop the SVG itself. */
+@media(min-width:1101px){
+ .board-workspace .board-stage{
+  height:var(--board-fit-height,calc(100dvh - 12rem));
+  min-height:0;
+  grid-template-rows:minmax(0,1fr);
+  align-items:stretch;
+ }
+ .board-workspace .board-player-column,
+ .board-workspace .board-map-column,
+ .board-workspace .board-command-column{
+  height:100%;
+  min-height:0;
+  max-height:100%;
+ }
+ .board-workspace .board-player-column,
+ .board-workspace .board-command-column{
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#a8bcb0 transparent;
+  padding-right:.16rem;
+ }
+ .board-workspace .board-map-column{
+  display:flex;
+  flex-direction:column;
+  overflow:visible;
+ }
+ .board-workspace .board-stage .board-map-column #board{
+  flex:1 1 0;
+  height:0;
+  min-height:0;
+  max-height:100%;
+  padding:0;
+  overflow:visible;
+ }
+ .board-workspace .board-map-column .island-board{
+  display:block;
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+ }
+ .board-workspace .board-map-column .board-help{
+  flex:0 0 auto;
+  margin:.15rem 0 0;
+ }
+}
+@media(max-width:1100px){
+ .board-workspace .board-stage{height:auto;max-height:none;grid-template-rows:auto}
+ .board-workspace .board-player-column,
+ .board-workspace .board-map-column,
+ .board-workspace .board-command-column{height:auto;max-height:none;overflow:visible}
+ .board-workspace .board-stage .board-map-column #board{height:auto;max-height:none}
+ .board-workspace .board-map-column .island-board{height:auto;max-height:none}
+}

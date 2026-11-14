@@ -134,6 +134,25 @@ function enterGame(){
  if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}
  else el('connection-summary').textContent=localBotIds.size?`Local game · ${localBotIds.size} test bot${localBotIds.size===1?'':'s'} enabled`:'Local game';
 }
+// Keep the entire desktop SVG board inside the visible browser height. The side trays scroll separately.
+let boardFitScheduled=false;
+function fitBoardToDesktopViewport(){
+ boardFitScheduled=false;
+ const stage=el('game').querySelector<HTMLElement>('.board-stage');
+ if(!stage||el('game').hidden)return;
+ if(window.innerWidth<=1100){stage.style.removeProperty('--board-fit-height');return;}
+ const top=stage.getBoundingClientRect().top;
+ const available=Math.max(180,Math.floor(window.innerHeight-top-18));
+ stage.style.setProperty('--board-fit-height',`${available}px`);
+}
+function scheduleDesktopBoardFit(){
+ if(boardFitScheduled)return;
+ boardFitScheduled=true;
+ window.requestAnimationFrame(fitBoardToDesktopViewport);
+}
+window.addEventListener('resize',scheduleDesktopBoardFit);
+window.visualViewport?.addEventListener('resize',scheduleDesktopBoardFit);
+
 function connectionStatus(value:string){const lower=value.toLowerCase();el('connection-summary').textContent=lower.includes('watching')?'Spectating':lower.includes('paused')||lower.includes('unavailable')||lower.includes('failed')?'Disconnected · rejoin may be required':lower.includes('reconnected')?'Reconnected':lower.includes('reconnect')||lower.includes('interrupted')?'Reconnecting…':lower.includes('connected')||lower.includes('started')?'Connected':lower.includes('connecting')?'Connecting…':'';}
 function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
  const field=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent=label;field.append(legend);field.className='resource-stepper-grid';
@@ -355,7 +374,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
- drawBoard();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
+ drawBoard();scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
  if(spectating||!actor)return;

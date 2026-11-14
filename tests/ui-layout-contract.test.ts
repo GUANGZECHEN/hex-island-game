@@ -415,3 +415,16 @@ test('board workspace contains player, map, and simultaneous actions/trades with
  assert.ok(css.includes('grid-template-areas:"status status" "actions trade"'));
  assert.ok(css.includes('grid-template-columns:minmax(195px,255px) minmax(0,1fr) minmax(260px,335px)'));
 });
+
+test('desktop map fits the viewport height while only side columns can scroll',()=>{
+ const css=readFileSync('src/style.css','utf8'),ui=readFileSync('src/game-ui.ts','utf8'),qa=readFileSync('scripts/qa-e2e.mjs','utf8');
+ assert.ok(css.includes('@media(min-width:1101px)'));
+ assert.ok(css.includes('height:var(--board-fit-height,calc(100dvh - 12rem))'));
+ assert.ok(css.includes('.board-workspace .board-map-column .island-board{'));
+ assert.ok(css.includes('height:100%;'));
+ assert.ok(css.includes('overflow-y:auto;'));
+ assert.ok(ui.includes('function fitBoardToDesktopViewport()'));
+ assert.ok(ui.includes('window.innerHeight-top-18'));
+ assert.ok(ui.includes('drawBoard();scheduleDesktopBoardFit();'));
+ assert.ok(qa.includes('for(const height of [720,900,1080])'));
+});

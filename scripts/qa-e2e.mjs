@@ -367,6 +367,32 @@ try{
     if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==before)throw new Error('Rendering the integrated board sent a network message.');
   }
 
+  // A desktop browser is height-constrained: the full SVG, player tray and
+  // action/trade viewport must fit in a single screen without clipping the map.
+  for(const height of [720,900,1080]){
+    await actor.setViewportSize({width:1280,height});
+    await actor.waitForFunction(()=>{
+      const stage=document.querySelector('.board-workspace .board-stage');
+      if(!stage)return false;
+      const rect=stage.getBoundingClientRect();
+      return Math.abs(rect.bottom-(window.innerHeight-18))<8;
+    },null,{timeout:6000});
+    const fit=await actor.evaluate(()=>{
+      const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();
+      const stage=rect('.board-workspace .board-stage'),board=rect('.board-map-column .island-board'),map=rect('.board-map-column'),players=rect('.board-player-column'),controls=rect('.board-command-column');
+      const left=document.querySelector('.board-player-column'),right=document.querySelector('.board-command-column');
+      return {viewportHeight:window.innerHeight,stageBottom:stage?.bottom??Infinity,
+        boardTop:board?.top??0,boardBottom:board?.bottom??Infinity,boardHeight:board?.height??0,
+        mapBottom:map?.bottom??Infinity,playersBottom:players?.bottom??Infinity,controlsBottom:controls?.bottom??Infinity,
+        leftOverflow:getComputedStyle(left).overflowY,rightOverflow:getComputedStyle(right).overflowY};
+    });
+    if(fit.boardHeight<220||fit.boardBottom>height+2||fit.mapBottom>height+2)throw new Error(`Full desktop board did not fit ${height}px viewport: ${JSON.stringify(fit)}`);
+    if(fit.playersBottom>height+2||fit.controlsBottom>height+2)throw new Error(`In-board side trays exceed ${height}px viewport.`);
+    if(fit.leftOverflow!=='auto'||fit.rightOverflow!=='auto')throw new Error('Desktop side trays must scroll independently.');
+    if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error(`Desktop layout has horizontal overflow at 1280x${height}.`);
+  }
+  await actor.setViewportSize({width:1600,height:900});
+
   const expectedRecoveryRevision=guestRevision+1;
   await spectator.close();
   await guest.close();
