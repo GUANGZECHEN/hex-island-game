@@ -1,0 +1,40 @@
+/* Keep the hand beside Actions on both layouts, without another floating panel. */
+#game.board-workspace .board-command-column #private-hand-card {
+  flex: 0 0 auto;
+  order: 0;
+  min-width: 0;
+  margin: 0;
+  padding: .38rem .45rem;
+  border: 1px solid #d7dfd0;
+  border-radius: .6rem;
+  background: linear-gradient(170deg,#fffef9,#eff5e9);
+}
+#game.board-workspace .board-command-column #private-hand-card .panel-heading h2 {font-size:.82rem}
+#game.board-workspace .board-command-column #private-hand-card .resource-row {gap:.22rem;margin-top:.24rem}
+#game.board-workspace .board-command-column #private-hand-card .resource-chip {min-width:0;min-height:29px;padding:.15rem .28rem;font-size:.76rem}
+#game.board-workspace .board-command-column #private-hand-card .resource-chip .icon {width:1rem;height:1rem}
+#game.board-workspace .board-command-column #private-hand-card .development-row {gap:.22rem;margin:.25rem 0}
+#game.board-workspace .board-command-column #private-hand-card .piece-supply {margin-top:.25rem}
+
+@media(min-width:1101px) {
+  /* The middle track follows the actual rendered SVG width, not spare monitor width. */
+  #game.board-workspace .board-stage {
+    grid-template-columns: var(--compact-player-width,210px) minmax(0,1fr) var(--compact-control-width,300px);
+    gap: var(--compact-gap,8px);
+    width: 100%;
+    max-width: var(--compact-stage-width,100%);
+    margin-inline: auto;
+  }
+  #game.board-workspace .board-player-column,
+  #game.board-workspace .board-command-column {gap:.35rem}
+  #game.board-workspace .board-player-column > *,
+  #game.board-workspace .board-command-column > * {flex-shrink:0}
+  #game.board-workspace .board-command-column .turn-card {padding:.38rem .45rem}
+  #game.board-workspace .board-command-column .board-command-pane {padding:.42rem}
+}
+@media(max-width:1100px) {
+  #game.board-workspace .board-command-column {
+    grid-template-areas: "status status" "hand hand" "actions trade";
+  }
+  #game.board-workspace .board-command-column #private-hand-card {grid-area:hand}
+}
