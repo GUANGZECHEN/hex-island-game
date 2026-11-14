@@ -1,4 +1,5 @@
-import type { Board } from './geometry';
+import type { Board } from './geometry.ts';
+import type { BoardSetup } from './setup.ts';
 export interface Point { x:number; y:number }
 export interface BoardView { viewBox:string; hexes: readonly {id:string; center:Point; points:readonly Point[]; placeholder:string}[]; vertices:readonly {id:string; point:Point}[]; edges:readonly {id:string; start:Point; end:Point}[] }
 
@@ -13,4 +14,16 @@ export function createBoardView(board: Board): BoardView {
   const xs=vertices.map(v=>v.point.x), ys=vertices.map(v=>v.point.y), padding=0.18;
   const minX=Math.min(...xs)-padding,minY=Math.min(...ys)-padding;
   return {viewBox:`${minX} ${minY} ${Math.max(...xs)-minX+padding} ${Math.max(...ys)-minY+padding}`,hexes,vertices,edges};
+}
+
+/** Match setup assignments to geometry by stable hex ID before rendering. */
+export function createSetupView(board: Board, setup: BoardSetup) {
+  const view = createBoardView(board);
+  const assignments = new Map(setup.hexes.map(hex => [hex.hexId, hex]));
+  if (assignments.size !== view.hexes.length || setup.hexes.length !== view.hexes.length) throw new Error('Setup does not match board geometry.');
+  return { ...view, hexes: view.hexes.map(hex => {
+    const assignment = assignments.get(hex.id);
+    if (!assignment) throw new Error(`Missing setup for ${hex.id}.`);
+    return { ...hex, ...assignment, robber: hex.id === setup.robberHexId };
+  }) };
 }

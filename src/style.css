@@ -1,3 +1,1363 @@
 :root{font:16px/1.5 system-ui,sans-serif;color:#142237;background:#f3f6f8}*{box-sizing:border-box}main{max-width:900px;margin:auto;padding:1rem}section{background:white;padding:1rem;margin:1rem 0;border:1px solid #cbd5df;border-radius:.5rem}h1,h2{line-height:1.2}label{display:block;font-weight:600;margin:.75rem 0 .25rem}textarea,input{width:100%;font:inherit;padding:.5rem;border:1px solid #8999a7;border-radius:.3rem}textarea{font-family:monospace;font-size:.85rem}button{font:inherit;padding:.55rem .8rem;margin:.3rem .3rem .3rem 0;cursor:pointer}button:disabled{cursor:not-allowed}pre{white-space:pre-wrap;overflow-wrap:anywhere}#error{color:#a02121}li{overflow-wrap:anywhere}.buttons{display:flex;flex-wrap:wrap}
 
-.island-board{display:block;width:100%;height:auto;max-width:38rem;margin:auto}.island-cell{stroke:#fff;stroke-width:.06;stroke-linejoin:round}.island-cell-a{fill:#a9c8a1}.island-cell-b{fill:#dfc78d}.island-cell-c{fill:#9bbfc5}.island-cell-d{fill:#c9b1a0}.island-cell-e{fill:#bcb4d4}.island-label{font-size:.36px;font-weight:700;fill:#24323b;pointer-events:none}
+.island-board{display:block;width:100%;height:auto;max-width:38rem;margin:auto}.island-cell{stroke:#fff;stroke-width:.06;stroke-linejoin:round}.island-cell-forest{fill:#7fa877}.island-cell-hills{fill:#d6aa90}.island-cell-pasture{fill:#c5dca1}.island-cell-fields{fill:#dfc78d}.island-cell-mountains{fill:#bcb4c6}.island-cell-desert{fill:#e9d9ac}.island-label,.island-resource,.island-number{fill:#142237;pointer-events:none;font-weight:700}.island-label{font-size:.38px}.island-resource{font-size:.34px}.island-number{font-size:.38px}.island-number-red{fill:#a00000}.island-token{fill:#fffaf0;stroke:#655744;stroke-width:.035}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}#board-error{color:#a02121}
+@media(max-width:400px){#board{margin:0 -.5rem}}
+.port-badge{fill:#fff;stroke:#142237;stroke-width:.05}.port-label{font-size:.23px;font-weight:700;fill:#142237;pointer-events:none}
+.game-target{fill:#fff;stroke:#073a9e;stroke-width:.14;cursor:pointer;outline:none}.game-target:focus,.game-target:focus-visible{stroke:#ed9400;stroke-width:.22;outline:none}.game-road{stroke:#142237;stroke-width:.13;stroke-linecap:round}.game-building{fill:#142237;stroke:white;stroke-width:.05}fieldset{margin:.75rem 0}select{font:inherit;padding:.4rem}#game-error{color:#a02121}
+.game-road.player-1{stroke:#003f87}.game-road.player-2{stroke:#ae1717}.game-road.player-3{stroke:#27662a}.game-road.player-4{stroke:#72327c}.game-road.player-2{stroke-dasharray:.18 .05}.game-road.player-3{stroke-dasharray:.07 .04}.game-road.player-4{stroke-dasharray:.22 .05 .05 .05}
+.game-building-piece{cursor:default;outline:none}.game-building-piece.player-1{color:#003f87}.game-building-piece.player-2{color:#ae1717}.game-building-piece.player-3{color:#27662a}.game-building-piece.player-4{color:#72327c}.game-building-shell{stroke-linejoin:round}.game-building-accent,.game-building-detail{fill:none;stroke-linecap:round;stroke-linejoin:round}.game-building-piece.game-target-city{cursor:pointer}.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:.075}.game-building-piece.game-target-city:hover .game-building-shell,.game-building-piece.game-target-city:focus .game-building-shell,.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
+
+select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-visible,select:focus-visible,#board:focus-visible{outline:3px solid #1555a0;outline-offset:2px}.island-token-high{stroke:#7e0000;stroke-width:.06;stroke-dasharray:.07 .04}.island-board{min-width:360px}#board{overflow-x:auto}fieldset{min-width:0}fieldset label{display:inline-block;width:min(8rem,100%);margin-right:.4rem}fieldset input{max-width:6rem}
+/* The game uses one shared board and control surface at every viewport. */
+:root{color:#172f2c;background:#edf1e9}main{max-width:1420px;padding:1rem 1.25rem}.site-header{display:flex;align-items:end;justify-content:space-between;gap:1rem}.site-header h1{font-size:clamp(1.6rem,2.3vw,2.3rem);margin:.1rem 0}.site-header p{margin:.15rem 0}.eyebrow{font-size:.67rem;font-weight:800;letter-spacing:.13em;color:#647b6d;margin:0 0 .35rem}.playing #home-intro,.playing #room-section,.playing #new-game{display:none}.game-layout:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,390px);gap:1rem;align-items:start}.game-layout section{margin:0}.board-panel,.control-panel{background:#fffef9;border:1px solid #d0dbcd;border-radius:1rem;box-shadow:0 8px 28px #1838290c}.board-panel{padding:1.1rem}.board-heading,.panel-heading{display:flex;justify-content:space-between;align-items:center;gap:.6rem}.board-heading h2,.panel-heading h2{margin:0;font-size:1.05rem}.board-key,.board-help{font-size:.75rem;color:#62746a}.board-key{text-align:right;margin:0}.island-board{max-width:45rem}.tile-resource{color:#173d2c;pointer-events:none}.control-panel{padding:.9rem;min-width:0;position:sticky;top:.75rem}.turn-card{border-radius:.7rem;background:#eaf1e8;padding:.75rem}.turn-card p{margin:.15rem 0}.turn-card #game-status{font-weight:750;line-height:1.3}.turn-card #turn-hint{font-size:.85rem}.turn-card #connection-summary{font-size:.78rem;color:#4b6356}.turn-card #game-error:not(:empty){margin-top:.4rem;color:#a02121;font-size:.84rem}.hand-card{padding:.75rem 0}.hand-card h2{font-size:.95rem}.text-button{min-height:32px;padding:.2rem .4rem;margin:0;font-size:.72rem;background:transparent;border:0;color:#365c4e;text-decoration:underline}.resource-row{display:flex;gap:.32rem;flex-wrap:wrap;margin-top:.45rem}.resource-chip{display:inline-flex;align-items:center;gap:.28rem;border:1px solid #d4ddd0;background:#f6f8f1;border-radius:.5rem;padding:.25rem .42rem;min-height:32px;color:#183b2c}.resource-count{font-weight:800;font-variant-numeric:tabular-nums}.icon{width:1.15rem;height:1.15rem;flex:none;display:inline-block}.resource-lumber{color:#346a44}.resource-brick{color:#a75232}.resource-wool{color:#487644}.resource-grain{color:#896316}.resource-ore{color:#5f6173}.hand-card #cards{font-size:.75rem;color:#64746b;margin:.35rem 0 0}.panel-tabs{display:flex;gap:.25rem;border-bottom:1px solid #dbe3d7}.panel-tabs button{flex:1;min-width:0;background:transparent;border:0;border-bottom:3px solid transparent;border-radius:0;font-size:.75rem;font-weight:750;padding:.4rem .1rem;margin:0;color:#526a5d}.panel-tabs button[aria-pressed=true]{color:#194c36;border-color:#2a7650}.panel-content{padding-top:.55rem}.panel-content h2{font-size:.9rem;margin:.5rem 0}.action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.action-button{display:flex;align-items:center;gap:.4rem;text-align:left;min-height:48px;margin:0;padding:.5rem .55rem;background:#f2f6ee;border:1px solid #cfddcc;border-radius:.55rem;color:#183c2c;font-size:.8rem;font-weight:700}.action-button:hover:not(:disabled){background:#dfefdf}.action-button:disabled{opacity:.52;filter:grayscale(.5)}.action-button .action-label{flex:1}.action-cost{display:flex;gap:.12rem;flex-wrap:wrap}.action-cost .resource-chip{min-height:20px;padding:.05rem .17rem;gap:.05rem;font-size:.65rem;border:0;background:transparent}.action-cost .icon{width:.8rem;height:.8rem}.panel-content details{margin-top:.4rem;border-top:1px solid #e2e9df;padding-top:.4rem}.panel-content summary{cursor:pointer;font-weight:700;font-size:.82rem}.panel-content label{font-size:.78rem}.panel-content fieldset{padding:.5rem}.panel-content fieldset label{width:calc(50% - .5rem)}#players,#bank,#bonuses,#log{font-size:.78rem;line-height:1.45}#players{overflow-wrap:anywhere}#log{padding-left:1.2rem;max-height:10rem;overflow:auto}#reconnect-holder button{font-size:.75rem;min-height:36px;padding:.25rem .5rem;margin:.3rem 0 0}.control-panel [hidden],.game-layout[hidden]{display:none!important}
+@media(max-width:760px){main{padding:.55rem}.site-header h1{font-size:1.45rem}.site-header .eyebrow{font-size:.6rem}.playing .site-header{margin-bottom:.35rem}.game-layout:not([hidden]){display:flex;flex-direction:column;gap:.35rem}.board-panel{width:100%;padding:.55rem}.board-key{font-size:.65rem;max-width:12rem}.board-help{font-size:.7rem;margin:.2rem 0}.control-panel{position:sticky;bottom:0;top:auto;width:100%;z-index:3;padding:.5rem .65rem;max-height:48dvh;overflow-y:auto;box-shadow:0 -8px 24px #18382924}.turn-card{padding:.4rem .55rem}.turn-card .eyebrow{display:none}.turn-card #game-status{font-size:.76rem}.turn-card #turn-hint,.turn-card #connection-summary{font-size:.7rem}.hand-card{padding:.35rem 0}.hand-card h2{font-size:.78rem}.resource-row{margin-top:.2rem}.resource-chip{min-height:28px;padding:.15rem .3rem;font-size:.8rem}.panel-tabs button{min-height:36px}.panel-content{padding-top:.3rem}.action-button{min-height:42px}.panel-content details{margin-top:.25rem}#board{margin:0 -.35rem}.island-board{min-width:360px}}
+
+.island-label{font-size:.32px}.panel-tabs button .icon{width:.85rem;height:.85rem;vertical-align:middle;margin-right:.2rem}#targets:not(:empty){padding:.4rem;border-radius:.5rem;background:#f2f6ee;font-size:.78rem}#targets p{margin:.1rem 0}#targets label{display:inline-block;margin:.2rem .4rem .2rem 0}#targets button{min-height:36px;margin:.15rem;padding:.25rem .5rem}
+
+.hand-card #cards:empty{display:none}.action-label{min-width:0}#qa-indicator{font-size:.72rem;margin:.25rem 0 0}@media(max-width:760px){.action-button{flex-wrap:wrap;align-content:center}.action-button .action-label{flex:1 1 calc(100% - 2rem)}.action-cost{width:100%;padding-left:1.5rem}.action-cost .resource-chip{min-height:18px}.control-panel{max-height:50dvh}}
+
+.action-button:disabled{opacity:1;filter:none;color:#67746c;background:#f4f5f0;border-color:#dce2d9}@media(max-width:760px){.panel-tabs button{font-size:.68rem}.action-button{padding:.35rem .4rem;font-size:.72rem;gap:.25rem}.action-cost{padding-left:0;gap:0}.action-cost .resource-chip{font-size:.62rem;padding:.03rem .1rem}.action-cost .icon{width:.68rem;height:.68rem}}
+
+.swipe-hint{display:none}@media(max-width:400px){.swipe-hint{display:inline}}
+
+/* Gameplay readability polish: player overview, legal targets and explicit port links. */
+.port-connector{stroke:#51615a;stroke-width:.045;stroke-linecap:round;pointer-events:none}.port-badge{fill:#fffef9;stroke:#142237;stroke-width:.055}.port-label{font-size:.22px;font-weight:800;fill:#142237;pointer-events:none}.port-resource-icon{pointer-events:none}
+.player-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.32rem;margin:.55rem 0}.player-summary{--player-color:#425466;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.35rem;min-width:0;padding:.38rem .45rem;border:1px solid #d6ded4;border-left:4px solid var(--player-color);border-radius:.55rem;background:#f8faf5;font-size:.72rem}.player-summary.player-1{--player-color:#2868b2}.player-summary.player-2{--player-color:#c74a42}.player-summary.player-3{--player-color:#4f8b51}.player-summary.player-4{--player-color:#8b55a1}.player-summary.player-5{--player-color:#d48826}.player-summary.player-6{--player-color:#2b9295}.player-summary.active-player{background:#fff1bf;box-shadow:inset 0 0 0 2px #d89b24}.player-summary.local-player .player-summary-name{font-weight:800}.player-marker{display:grid;place-items:center;width:1.45rem;height:1.45rem;border-radius:50%;background:var(--player-color);color:white;font-weight:850}.player-summary-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.player-hand-count{display:inline-flex;align-items:center;gap:.15rem;color:var(--player-color);font-weight:850}.player-hand-icon{width:.95rem;height:.95rem}.player-turn-badge{grid-column:2/4;justify-self:start;font-size:.6rem;line-height:1;background:#d89b24;color:#1f2c25;border-radius:999px;padding:.16rem .35rem;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.game-target-road{stroke:#f0a000;stroke-width:.19;stroke-dasharray:.14 .07;stroke-linecap:round;fill:none}.game-target-road:hover,.game-target-road:focus{stroke:#d45c00;stroke-width:.25}.game-target-vertex{fill:#fff6b8;stroke:#e27b00;stroke-width:.13}.game-target-vertex:hover,.game-target-vertex:focus{fill:#ffe171;stroke:#c94e00;stroke-width:.2}.game-target-city{stroke:#f0a000!important;stroke-width:.18!important;filter:drop-shadow(0 0 .08px #8f5200);cursor:pointer;outline:none}.game-target-city:hover,.game-target-city:focus,.game-target-city:focus-visible{stroke:#d45c00!important;stroke-width:.24!important;outline:none}.robber-target .island-cell{stroke:#f0a000;stroke-width:.13;filter:brightness(1.04);cursor:pointer}.robber-target:hover .island-cell,.robber-target:focus .island-cell{stroke:#d45c00;stroke-width:.2;filter:brightness(1.1)}.robber-target:focus{outline:none}
+@media(max-width:760px){.player-strip{margin:.35rem 0;gap:.25rem}.player-summary{padding:.28rem .35rem;font-size:.66rem}.player-marker{width:1.25rem;height:1.25rem}.player-turn-badge{font-size:.55rem}}
+
+/* Trade offer visibility and robber/desert iconography. */
+.incoming-trade{margin:.35rem 0 .55rem;padding:.55rem .65rem;border:2px solid #d89b24;border-radius:.65rem;background:#fff7d8}.incoming-trade h2{margin:0 0 .4rem;font-size:.9rem}.trade-offer-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin:.28rem 0}.trade-offer-row strong{font-size:.75rem}.trade-offer-resources{display:flex;gap:.25rem;flex-wrap:wrap;justify-content:flex-end}.trade-offer-resources .resource-chip{min-height:26px;padding:.12rem .28rem}
+.desert-icon{color:#8d6424;pointer-events:none}.robber-occupied>.island-cell,.robber-occupied>.tile-resource,.robber-occupied>.desert-icon,.robber-occupied>.island-token,.robber-occupied>.island-number{opacity:.48}.robber-marker{pointer-events:none}.robber-marker-circle{fill:#fff;stroke:#c51f1f;stroke-width:.075}.robber-marker-slash{stroke:#c51f1f;stroke-width:.09;stroke-linecap:round}
+
+.network-resyncing .action-button,.network-resyncing #targets button,.network-resyncing #trade-actions button,.network-resyncing #card-actions button{pointer-events:none;opacity:.55}.network-resyncing #connection-summary{font-weight:800;color:#8b5a00}
+
+
+/* Gameplay test fixes: map selection, public score/card counts, card icons and touch-friendly selectors. */
+.room-map-controls{margin:.65rem 0 .8rem;padding:.65rem;border:1px solid #d6dfd4;border-radius:.65rem;background:#f8faf5}.room-map-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.45rem;align-items:end}.room-map-row input{margin:0}.room-map-row button{margin:0;white-space:nowrap}#room-map-preview{margin:.55rem auto 0;max-width:20rem;pointer-events:none}#room-map-preview .island-board{min-width:0;max-width:20rem}#room-map-preview ul{display:none}
+.player-public-stats{display:flex;align-items:center;justify-content:flex-end;gap:.35rem}.player-stat{display:inline-flex;align-items:center;gap:.12rem;font-weight:850;color:var(--player-color);font-variant-numeric:tabular-nums}.player-stat-icon{width:.9rem;height:.9rem}.player-vp-count{color:#7a5c00}
+.development-row{display:flex;gap:.3rem;flex-wrap:wrap;margin:.35rem 0}.development-chip{position:relative;display:inline-flex;align-items:center;gap:.25rem;min-height:32px;padding:.25rem .4rem;border:1px solid #d4ddd0;border-radius:.5rem;background:#f6f8f1;color:#24483a}.development-icon{width:1.05rem;height:1.05rem}.development-count{font-weight:850}.development-new{font-size:.58rem;line-height:1;border-radius:999px;padding:.15rem .28rem;background:#f2c94c;color:#3b2c00;font-weight:850}.development-action-button>.development-icon{width:1.2rem;height:1.2rem}.development-effect{margin:.45rem 0;padding:.45rem;border:1px solid #dde5da;border-radius:.55rem;background:#fafbf7}.development-note,.trade-rate-hint{font-size:.75rem;color:#5f7067;margin:.35rem 0}
+.resource-stepper-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem;padding:.45rem}.resource-stepper-grid legend{font-weight:750}.resource-stepper{display:grid;grid-template-columns:minmax(0,1fr) 36px 2rem 36px;align-items:center;gap:.15rem;min-width:0}.resource-stepper-name{display:flex;align-items:center;gap:.2rem;min-width:0;font-size:.75rem;text-transform:capitalize}.resource-stepper-name .icon{width:.9rem;height:.9rem}.stepper-button{min-height:36px;width:36px;margin:0;padding:0;border:1px solid #cad5c8;border-radius:.4rem;background:#f4f7f1;font-weight:900}.stepper-count{text-align:center;font-weight:850;font-variant-numeric:tabular-nums}.target-cancel{background:#fff;border:1px solid #aab8ad;border-radius:.4rem}
+@media(max-width:760px){.room-map-row{grid-template-columns:1fr}.room-map-row button{width:100%}.player-public-stats{gap:.25rem}.player-stat-icon{width:.78rem;height:.78rem}.resource-stepper-grid{grid-template-columns:1fr}.resource-stepper{grid-template-columns:minmax(0,1fr) 40px 2rem 40px}.stepper-button{width:40px;min-height:40px}}
+
+.room-recovery-panel{margin:.75rem 0 0;padding:.7rem;border:2px solid #d89b24;border-radius:.65rem;background:#fff8dc}.room-recovery-panel h3{margin:.05rem 0 .35rem;font-size:.95rem}.room-recovery-panel p{margin:.2rem 0 .5rem;font-size:.8rem}.room-recovery-options{display:grid;gap:.35rem}.recovery-option{margin:0;text-align:left;border:1px solid #c9b56a;border-radius:.5rem;background:#fffef6}.recovery-option:disabled{opacity:.55}
+
+
+/* Board HUD: public turn/activity feedback and per-player table state live with the board. */
+.board-announcements{display:grid;justify-items:center;gap:.22rem;min-height:3.3rem;margin:.25rem 0 .2rem;text-align:center}
+.turn-banner{margin:0;padding:.26rem .7rem;border-radius:999px;background:#fff0b8;color:#4e3900;font-size:1rem;font-weight:900;letter-spacing:.01em;box-shadow:inset 0 0 0 1px #e0b84c}
+.public-action{min-height:1.25rem;margin:0;color:#315044;font-size:.84rem;font-weight:750}
+.board-stage{position:relative;max-width:52rem;margin:0 auto}
+.board-stage #board{padding:1.5rem .25rem}
+.board-stage .player-strip{position:absolute;inset:0;display:block;margin:0;pointer-events:none;z-index:2}
+.board-stage .player-summary{position:absolute;width:min(12.5rem,27%);display:block;padding:.48rem .55rem;background:#fffef9e8;backdrop-filter:blur(3px);box-shadow:0 3px 12px #18382914;pointer-events:none;font-size:.78rem}
+.board-stage .player-summary[data-seat="1"]{top:.25rem;left:.25rem}
+.board-stage .player-summary[data-seat="2"]{top:.25rem;right:.25rem}
+.board-stage .player-summary[data-seat="3"]{bottom:.25rem;left:.25rem}
+.board-stage .player-summary[data-seat="4"]{bottom:.25rem;right:.25rem}
+.player-summary-header{display:flex;align-items:center;gap:.3rem;min-width:0}
+.player-summary-header .player-summary-name{flex:1;min-width:0}
+.player-summary-header .player-turn-badge{grid-column:auto;justify-self:auto;flex:none}
+.player-public-stats,.player-piece-stats{display:flex;align-items:center;gap:.32rem;flex-wrap:wrap;justify-content:flex-start;margin-top:.26rem}
+.player-piece-stats{padding-top:.22rem;border-top:1px solid #dfe5da}
+.player-stat{display:inline-flex;align-items:center;gap:.12rem;font-size:.72rem;font-weight:850;color:#41574d}
+.player-stat-label{font-size:.54rem;line-height:1;color:#718277;font-weight:900;letter-spacing:.02em}
+.player-piece-stats .player-stat-icon{width:.86rem;height:.86rem}
+.player-longest-road.award-holder{color:#8b6500;background:#fff1b8;border-radius:999px;padding:.08rem .2rem}
+.player-knight-count.largest-army-holder{color:#7a4300;background:#ffe8a3;border-radius:999px;padding:.08rem .22rem;box-shadow:inset 0 0 0 1px #d89b24}
+.piece-supply{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.4rem;padding-top:.35rem;border-top:1px solid #e1e7de;font-size:.72rem;color:#4a6256}
+.piece-supply>strong{font-size:.7rem}
+.piece-supply .player-stat{border:1px solid #d6ded4;border-radius:999px;padding:.12rem .28rem;background:#fafbf7}
+.piece-supply .player-stat-icon{width:.82rem;height:.82rem}
+
+@media(max-width:900px) and (min-width:761px){
+ .board-stage .player-summary{width:min(11rem,29%);font-size:.7rem;padding:.4rem .48rem}
+ .player-public-stats,.player-piece-stats{gap:.25rem}
+ .player-stat{font-size:.66rem}
+}
+@media(max-width:760px){
+ .board-announcements{min-height:2.8rem;margin:.1rem 0 .25rem}
+ .turn-banner{font-size:.86rem;padding:.2rem .55rem}
+ .public-action{font-size:.72rem;min-height:1.05rem}
+ .board-stage{max-width:none}
+ .board-stage .player-strip{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem;margin:.2rem 0 .3rem;pointer-events:auto}
+ .board-stage .player-summary{position:static;width:auto;padding:.4rem .45rem;backdrop-filter:none;font-size:.72rem}
+ .board-stage #board{padding:0}
+ .player-summary-header{gap:.2rem}
+ .player-public-stats,.player-piece-stats{gap:.22rem;margin-top:.2rem}
+ .player-stat{font-size:.67rem}
+ .player-stat-label{font-size:.5rem}
+ .player-piece-stats .player-stat-icon,.player-public-stats .player-stat-icon{width:.78rem;height:.78rem}
+ .piece-supply{gap:.25rem;margin-top:.3rem}
+}
+
+
+/* Invitation links open a minimal guest/spectator surface from the first paint. */
+.invite-entry #room-host-tools,
+.invite-entry #new-game,
+.invite-entry #home-intro,
+.invite-entry #qa-indicator{display:none!important}
+.invite-entry body:not(.playing) #room-reconnect{display:none!important}
+.invite-entry body:not(.playing) main{max-width:760px}
+.invite-entry #room-section{margin-top:.6rem}
+
+.room-identity{margin:.55rem 0 .75rem}
+.room-identity>label{display:block;margin-bottom:.25rem;font-weight:700}
+.room-identity-row{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.room-identity-row input{flex:1 1 12rem;min-width:0}
+.room-identity-row button{flex:0 0 auto}
+
+
+/* Responsive gameplay shell: wide desktop, stacked tablet/laptop, compact phone. */
+.playing main{width:min(100%,1420px);max-width:1420px}
+.game-layout:not([hidden]){grid-template-columns:minmax(560px,1fr) minmax(320px,390px)}
+.board-panel,.control-panel{min-width:0}
+.board-stage{width:100%}
+.board-stage #board{min-width:0}
+@media(max-width:1100px){
+ .game-layout:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr);gap:.65rem}
+ .board-panel,.control-panel{width:100%}
+ .control-panel{position:static;top:auto;bottom:auto;max-height:none;overflow:visible;box-shadow:0 8px 28px #1838290c}
+ .board-stage{max-width:52rem}
+ .board-stage .player-strip{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem;margin:.25rem 0 .45rem;pointer-events:auto}
+ .board-stage .player-summary{position:static;width:auto;display:block;padding:.35rem .42rem;backdrop-filter:none}
+ .board-stage #board{padding:.25rem 0}
+ .island-board{max-width:46rem}
+}
+@media(max-width:760px){
+ .playing main{width:100%;max-width:none;padding:.45rem}
+ .playing .site-header{align-items:flex-start}
+ .board-panel,.control-panel{border-radius:.75rem}
+ .board-panel{padding:.5rem}
+ .board-heading{align-items:flex-start;flex-direction:column;gap:.2rem}
+ .board-key{text-align:left;max-width:none}
+ .board-stage .player-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:.22rem}
+ .board-stage .player-summary{padding:.28rem .32rem}
+ #board{margin:0;overflow:visible}
+ .island-board{width:100%;min-width:0;max-width:none}
+ .control-panel{padding:.5rem .6rem}
+ .action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:420px){
+ .site-header{display:block}
+ .site-header h1{font-size:1.35rem}
+ .board-stage .player-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .player-summary{font-size:.62rem}
+ .player-public-stats,.player-piece-stats{gap:.16rem}
+ .action-grid{grid-template-columns:1fr}
+ .panel-tabs button{font-size:.64rem}
+}
+
+
+/* Turn ownership cue: central banner and active player card pulse exactly three times. */
+@keyframes turn-cue-pulse{
+  0%,100%{transform:scale(1);filter:none}
+  50%{transform:scale(1.045);filter:brightness(1.12);box-shadow:0 0 0 .22rem #f2c94c66}
+}
+.turn-banner.turn-cue-flash,
+.player-summary.active-player.turn-cue-flash{animation:turn-cue-pulse .55s ease-in-out 3}
+@media(prefers-reduced-motion:reduce){
+ .turn-banner.turn-cue-flash,
+ .player-summary.active-player.turn-cue-flash{animation:none;outline:3px solid #d89b24;outline-offset:2px}
+}
+
+
+/* Expanded 5–6 player tables keep all public player cards visible without covering the wider board. */
+.board-stage .player-strip[data-player-count="5"],
+.board-stage .player-strip[data-player-count="6"]{
+  position:static;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.35rem;
+  margin:.25rem 0 .5rem;
+  pointer-events:auto;
+}
+.board-stage .player-strip[data-player-count="5"] .player-summary,
+.board-stage .player-strip[data-player-count="6"] .player-summary{
+  position:static;
+  width:auto;
+  display:block;
+  backdrop-filter:none;
+}
+.board-stage:has(.player-strip[data-player-count="5"]) #board,
+.board-stage:has(.player-strip[data-player-count="6"]) #board{padding:.25rem 0}
+@media(max-width:760px){
+ .board-stage .player-strip[data-player-count="5"],
+ .board-stage .player-strip[data-player-count="6"]{grid-template-columns:repeat(2,minmax(0,1fr));gap:.22rem}
+}
+
+
+/* High-visibility turn handoff alert centered over the board. */
+#board{position:relative}
+.turn-alert{
+ --turn-alert-color:#d89b24;
+ position:absolute;
+ left:50%;
+ top:50%;
+ z-index:12;
+ transform:translate(-50%,-50%) scale(.86);
+ width:min(78%,34rem);
+ padding:1.15rem 1.4rem;
+ border:4px solid var(--turn-alert-color);
+ border-radius:1rem;
+ background:#fffdf2f2;
+ box-shadow:0 18px 55px #14223742,0 0 0 .45rem #ffffffaa;
+ text-align:center;
+ pointer-events:none;
+ animation:turn-alert-pop .24s ease-out forwards;
+}
+.turn-alert.player-1{--turn-alert-color:#2868b2}
+.turn-alert.player-2{--turn-alert-color:#c74a42}
+.turn-alert.player-3{--turn-alert-color:#4f8b51}
+.turn-alert.player-4{--turn-alert-color:#8b55a1}
+.turn-alert.player-5{--turn-alert-color:#d48826}
+.turn-alert.player-6{--turn-alert-color:#2b9295}
+.turn-alert-lead{display:block;margin-bottom:.18rem;font-size:.82rem;font-weight:950;letter-spacing:.16em;color:#52655b}
+.turn-alert-name{display:block;font-size:clamp(2rem,5vw,4.2rem);line-height:1.02;color:var(--turn-alert-color);overflow-wrap:anywhere}
+.turn-alert.turn-alert-out{opacity:0;transform:translate(-50%,-50%) scale(.98);transition:opacity .24s ease,transform .24s ease}
+@keyframes turn-alert-pop{from{opacity:0;transform:translate(-50%,-50%) scale(.72)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+/* Direct icon-first bank/port exchange controls. */
+.bank-trade-section{margin:.2rem 0 .65rem}
+.bank-trade-section h2{margin:.1rem 0 .15rem;font-size:.88rem}
+.bank-trade-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.3rem}
+.bank-trade-button{
+ min-width:0;
+ min-height:50px;
+ margin:0;
+ padding:.3rem .35rem;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:.18rem;
+ border:1px solid #c9d5c8;
+ border-radius:.55rem;
+ background:#fbfcf8;
+ color:#27473a;
+}
+.bank-trade-button:hover:not(:disabled),.bank-trade-button:focus-visible:not(:disabled){border-color:#70927e;background:#eef5ec}
+.bank-trade-button:disabled{opacity:.38}
+.bank-trade-side{display:inline-flex;align-items:center;gap:.05rem;min-width:0}
+.bank-trade-side .resource-icon{width:1.25rem;height:1.25rem;flex:none}
+.bank-trade-rate{font-size:.8rem;font-weight:900;line-height:1;color:#4f6258;font-variant-numeric:tabular-nums}
+.bank-trade-arrow{display:inline-grid;place-items:center;min-width:.9rem;flex:none;color:#687b70;font-size:1rem;font-weight:900;line-height:1}
+
+/* Icon resource selectors for development cards. */
+.resource-choice-group{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;margin:.35rem 0;padding:.4rem;border:1px solid #d8e0d5;border-radius:.55rem}
+.resource-choice-group legend{padding:0 .2rem;font-size:.72rem;font-weight:800;color:#52655b}
+.resource-choice-button{
+ display:grid;
+ place-items:center;
+ width:42px;
+ height:42px;
+ min-height:42px;
+ margin:0;
+ padding:.3rem;
+ border:1px solid #cbd7c9;
+ border-radius:.5rem;
+ background:#fbfcf8;
+ color:#315044;
+}
+.resource-choice-button .resource-icon{width:1.45rem;height:1.45rem}
+.resource-choice-button[aria-pressed="true"]{border-color:#d89b24;background:#fff1bf;box-shadow:inset 0 0 0 2px #d89b24}
+@media(max-width:760px){
+ .turn-alert{width:min(90%,28rem);padding:.9rem 1rem}
+ .turn-alert-name{font-size:clamp(1.8rem,11vw,3rem)}
+ .bank-trade-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .bank-trade-button{min-height:46px}
+ .bank-trade-side .resource-icon{width:1.15rem;height:1.15rem}
+}
+@media(prefers-reduced-motion:reduce){
+ .turn-alert{animation:none;transform:translate(-50%,-50%)}
+ .turn-alert.turn-alert-out{transition:none}
+}
+
+
+/* Public table actions use the same board-centered visual language, but shorter and smaller than turn handoffs. */
+.activity-alert{
+ --turn-alert-color:#d89b24;
+ position:absolute;
+ left:50%;
+ top:50%;
+ z-index:13;
+ transform:translate(-50%,-50%) scale(.9);
+ width:min(72%,30rem);
+ padding:.8rem 1rem;
+ border:3px solid var(--turn-alert-color);
+ border-radius:.85rem;
+ background:#fffdf2f2;
+ box-shadow:0 14px 42px #14223736,0 0 0 .3rem #ffffff99;
+ text-align:center;
+ pointer-events:none;
+ animation:turn-alert-pop .2s ease-out forwards;
+}
+.activity-alert.player-1{--turn-alert-color:#2868b2}
+.activity-alert.player-2{--turn-alert-color:#c74a42}
+.activity-alert.player-3{--turn-alert-color:#4f8b51}
+.activity-alert.player-4{--turn-alert-color:#8b55a1}
+.activity-alert.player-5{--turn-alert-color:#d48826}
+.activity-alert.player-6{--turn-alert-color:#2b9295}
+.activity-alert-lead{display:block;margin-bottom:.12rem;font-size:.68rem;font-weight:950;letter-spacing:.14em;color:#52655b}
+.activity-alert-message{display:block;font-size:clamp(1.15rem,2.7vw,2rem);line-height:1.12;color:var(--turn-alert-color);overflow-wrap:anywhere}
+.activity-alert.activity-alert-out{opacity:0;transform:translate(-50%,-50%) scale(.98);transition:opacity .22s ease,transform .22s ease}
+@media(max-width:760px){
+ .activity-alert{width:min(90%,26rem);padding:.65rem .75rem}
+ .activity-alert-message{font-size:clamp(1rem,5.5vw,1.55rem)}
+}
+@media(prefers-reduced-motion:reduce){
+ .activity-alert{animation:none;transform:translate(-50%,-50%)}
+ .activity-alert.activity-alert-out{transition:none}
+}
+
+
+/* Local deterministic test-bot control. */
+.local-bot-option{display:flex;align-items:center;gap:.45rem;margin:.45rem 0 .65rem;padding:.45rem .55rem;border:1px solid #d8e0d5;border-radius:.55rem;background:#fafbf7;font-size:.8rem;font-weight:750;color:#41574d}
+.local-bot-option input{width:1rem;height:1rem;margin:0;flex:none}
+
+/* Slightly larger public player HUD for easier table reading. */
+.board-stage .player-summary .player-marker{width:1.6rem;height:1.6rem;font-size:.78rem}
+.board-stage .player-summary-name{font-size:.82rem;font-weight:780}
+@media(max-width:760px){
+ .board-stage .player-summary .player-marker{width:1.4rem;height:1.4rem;font-size:.7rem}
+ .board-stage .player-summary-name{font-size:.74rem}
+}
+
+/* Playable development cards live directly inside Actions. */
+.development-actions-inline{margin:.6rem 0 0;padding:.5rem 0 0;border:0;border-top:1px solid #e2e9df;border-radius:0;background:transparent;box-shadow:none}
+.development-actions-inline h2{margin:.05rem 0 .4rem;font-size:.82rem;color:#41574d}
+.development-actions-inline .development-effect{margin:.4rem 0 0}
+
+
+/* End-game celebration: a larger, longer-lived board-centered victory alert. */
+.victory-alert{
+ --victory-color:#d89b24;
+ position:absolute;
+ left:50%;
+ top:50%;
+ z-index:30;
+ transform:translate(-50%,-50%) scale(.78);
+ width:min(86%,38rem);
+ min-height:10rem;
+ padding:1.5rem 1.6rem 1.35rem;
+ display:grid;
+ place-items:center;
+ align-content:center;
+ border:5px solid var(--victory-color);
+ border-radius:1.3rem;
+ background:radial-gradient(circle at 50% 30%,#fffef8 0,#fff7d9 52%,#f5e6af 100%);
+ box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 44px color-mix(in srgb,var(--victory-color) 45%,transparent);
+ text-align:center;
+ overflow:visible;
+ pointer-events:none;
+ isolation:isolate;
+ animation:victory-panel-in .48s cubic-bezier(.2,.9,.2,1.18) forwards,victory-glow 1s ease-in-out .5s 4 alternate;
+}
+.victory-alert.player-1{--victory-color:#2868b2}
+.victory-alert.player-2{--victory-color:#c74a42}
+.victory-alert.player-3{--victory-color:#4f8b51}
+.victory-alert.player-4{--victory-color:#8b55a1}
+.victory-alert.player-5{--victory-color:#d48826}
+.victory-alert.player-6{--victory-color:#2b9295}
+.victory-alert-lead{
+ display:block;
+ margin-bottom:.18rem;
+ color:#7a651f;
+ font-size:.86rem;
+ font-weight:950;
+ letter-spacing:.22em;
+}
+.victory-alert-name{
+ display:block;
+ max-width:100%;
+ color:var(--victory-color);
+ font-size:clamp(2.6rem,7vw,5.6rem);
+ line-height:.98;
+ font-weight:1000;
+ letter-spacing:-.035em;
+ text-shadow:0 3px 0 #fff,0 8px 20px #14223724;
+ overflow-wrap:anywhere;
+}
+.victory-alert-note{display:block;margin-top:.45rem;color:#53645b;font-size:1rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+.victory-burst{position:absolute;left:50%;top:50%;width:1px;height:1px;z-index:-1;pointer-events:none}
+.victory-confetti{
+ position:absolute;
+ left:0;
+ top:0;
+ width:.72rem;
+ height:.72rem;
+ border-radius:.18rem;
+ background:#e0a72c;
+ opacity:0;
+ box-shadow:0 0 0 1px #ffffff55;
+ animation:victory-confetti-pop 1.25s cubic-bezier(.12,.65,.25,1) var(--delay) both,victory-confetti-twinkle 1.15s ease-in-out 1.4s infinite alternate;
+}
+.victory-confetti:nth-child(4n+1){background:#d95d39}
+.victory-confetti:nth-child(4n+2){background:#2c8b62;border-radius:50%}
+.victory-confetti:nth-child(4n+3){background:#4b72c2;clip-path:polygon(50% 0,62% 35%,100% 35%,69% 57%,81% 100%,50% 73%,19% 100%,31% 57%,0 35%,38% 35%)}
+.victory-confetti:nth-child(4n){background:#d8a11d;transform:rotate(45deg)}
+.victory-alert.victory-alert-out{opacity:0;transform:translate(-50%,-50%) scale(1.04);transition:opacity .5s ease,transform .5s ease}
+@keyframes victory-panel-in{
+ 0%{opacity:0;transform:translate(-50%,-50%) scale(.68) rotate(-2deg)}
+ 68%{opacity:1;transform:translate(-50%,-50%) scale(1.04) rotate(.7deg)}
+ 100%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+}
+@keyframes victory-glow{
+ from{box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 28px color-mix(in srgb,var(--victory-color) 30%,transparent)}
+ to{box-shadow:0 22px 70px #14223755,0 0 0 .55rem #ffffffaa,0 0 62px color-mix(in srgb,var(--victory-color) 70%,transparent)}
+}
+@keyframes victory-confetti-pop{
+ 0%{opacity:0;transform:translate(-50%,-50%) scale(.25) rotate(0)}
+ 18%{opacity:1}
+ 100%{opacity:1;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(1) rotate(var(--r))}
+}
+@keyframes victory-confetti-twinkle{from{filter:brightness(.88);opacity:.72}to{filter:brightness(1.25);opacity:1}}
+@media(max-width:760px){
+ .victory-alert{width:min(92%,30rem);min-height:8rem;padding:1.05rem 1rem}
+ .victory-alert-name{font-size:clamp(2.1rem,13vw,4rem)}
+ .victory-alert-lead{font-size:.72rem}
+ .victory-alert-note{font-size:.78rem}
+ .victory-burst{transform:scale(.68)}
+}
+@media(prefers-reduced-motion:reduce){
+ .victory-alert{animation:none;transform:translate(-50%,-50%)}
+ .victory-confetti{animation:none;opacity:.85;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.8)}
+ .victory-alert.victory-alert-out{transition:none}
+}
+
+
+/* ART-A01 · modern illustrated tabletop board */
+.island-board{
+ border-radius:1rem;
+ overflow:visible;
+ filter:drop-shadow(0 .18rem .24rem #254a4520);
+}
+.board-ocean{fill:url(#board-ocean-gradient)}
+.board-ocean-waves{fill:url(#board-ocean-waves);opacity:.72}
+.board-ocean-wave-path{fill:none;stroke:#eaf8f5;stroke-width:.035;stroke-linecap:round;opacity:.34}
+.board-ocean-wave-faint{opacity:.18}
+
+.island-hex{isolation:isolate}
+.island-cell-shadow{
+ fill:#493e30;
+ opacity:.28;
+ transform:translateY(.075px);
+ filter:drop-shadow(0 .045px .035px #263b3330);
+ pointer-events:none;
+}
+.island-cell{
+ stroke:#f8efdb;
+ stroke-width:.075;
+ stroke-linejoin:round;
+ filter:drop-shadow(0 .02px .02px #253d3428);
+}
+.island-cell-forest{fill:url(#terrain-forest)}
+.island-cell-hills{fill:url(#terrain-hills)}
+.island-cell-pasture{fill:url(#terrain-pasture)}
+.island-cell-fields{fill:url(#terrain-fields)}
+.island-cell-mountains{fill:url(#terrain-mountains)}
+.island-cell-desert{fill:url(#terrain-desert)}
+.island-cell-inset{
+ fill:none;
+ stroke:#fff9e9;
+ stroke-width:.028;
+ stroke-linejoin:round;
+ opacity:.44;
+ pointer-events:none;
+}
+
+.terrain-art{pointer-events:none;opacity:.78}
+.terrain-art-primary,.terrain-art-secondary,.terrain-art-detail,.terrain-art-snow{
+ fill:none;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.terrain-art-primary{stroke-width:.045}
+.terrain-art-secondary{stroke-width:.035;opacity:.65}
+.terrain-art-detail{stroke-width:.03;opacity:.75}
+.terrain-art-forest{color:#153e2b}
+.terrain-art-forest .terrain-art-primary{fill:#2b6544;stroke:#214f36}
+.terrain-art-forest .terrain-art-detail{stroke:#173c2a}
+.terrain-art-hills{color:#7c3f31}
+.terrain-art-hills .terrain-art-clay-face{fill:#b95e43;stroke:#7f3d30;stroke-width:.042;stroke-linejoin:round}
+.terrain-art-hills .terrain-art-quarry-cut{fill:none;stroke:#f1b28f;stroke-width:.035;stroke-linecap:round;stroke-linejoin:round;opacity:.88}
+.terrain-art-hills .terrain-art-secondary{stroke:#f4c0a0;stroke-width:.032;opacity:.72}
+.terrain-art-hills .terrain-art-brick{fill:#a95039;stroke:#74382d;stroke-width:.018;opacity:.92}
+.terrain-art-pasture{color:#477f45}
+.terrain-art-pasture .terrain-art-primary{stroke:#4f874c}
+.terrain-art-pasture .terrain-art-secondary{stroke:#d5edb9}
+.terrain-art-pasture .terrain-art-detail{stroke:#3e733e}
+.terrain-art-fields{color:#8e651a}
+.terrain-art-fields .terrain-art-primary{stroke:#9c711e}
+.terrain-art-fields .terrain-art-secondary{stroke:#f5dfa0}
+.terrain-art-fields .terrain-art-detail{stroke:#9e721f}
+.terrain-art-mountains{color:#4d5964}
+.terrain-art-mountains .terrain-art-rock-fill{fill:#6c7781;stroke:#4d5660;stroke-width:.04;stroke-linejoin:round;opacity:.9}
+.terrain-art-mountains .terrain-art-rock-facet{fill:none;stroke:#c6cdd3;stroke-width:.036;stroke-linejoin:round;opacity:.82}
+.terrain-art-mountains .terrain-art-quarry-bench{fill:none;stroke:#505b66;stroke-width:.038;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.terrain-art-mountains .terrain-art-rubble{fill:#68737d;stroke:#46505a;stroke-width:.015;opacity:.96}
+.terrain-art-desert{color:#97723b}
+.terrain-art-desert .terrain-art-primary{stroke:#aa834b}
+.terrain-art-desert .terrain-art-secondary{stroke:#f2dfae}
+.terrain-art-sun{fill:#efd27d;stroke:#b58a48;stroke-width:.025}
+
+.tile-resource,.desert-icon{
+ pointer-events:none;
+ filter:drop-shadow(0 .025px .012px #17322635);
+ opacity:.9;
+}
+.tile-resource.resource-lumber{color:#153e2b}
+.tile-resource.resource-brick{color:#7d3f2d}
+.tile-resource.resource-wool{color:#3f713c}
+.tile-resource.resource-grain{color:#805c13}
+.tile-resource.resource-ore{color:#4c5965}
+.desert-icon{color:#7d5b27}
+
+.island-token-shadow{fill:#4b3d2c;opacity:.28;pointer-events:none}
+.island-token{
+ fill:#fff8e8;
+ stroke:#8c7657;
+ stroke-width:.035;
+ filter:drop-shadow(0 .025px .015px #45372525);
+ pointer-events:none;
+}
+.island-token-rim{fill:none;stroke:#d8c59f;stroke-width:.018;pointer-events:none}
+.island-token-high{stroke:#9f2b24;stroke-width:.045;stroke-dasharray:none}
+.island-token-rim-high{stroke:#d99b8f;stroke-width:.024}
+.island-number{
+ fill:#26322d;
+ pointer-events:none;
+ font-size:.33px;
+ font-weight:950;
+ letter-spacing:-.018em;
+ font-variant-numeric:tabular-nums;
+}
+.island-number-red{fill:#a72b25}
+.island-token-pip{fill:#66553e;pointer-events:none}
+.island-token-pip-high{fill:#a72b25}
+
+.robber-occupied>.island-cell,
+.robber-occupied>.island-cell-inset,
+.robber-occupied>.terrain-art,
+.robber-occupied>.tile-resource,
+.robber-occupied>.desert-icon,
+.robber-occupied>.island-token-shadow,
+.robber-occupied>.island-token,
+.robber-occupied>.island-token-rim,
+.robber-occupied>.island-number,
+.robber-occupied>.island-token-pip{opacity:.4}
+.robber-marker{pointer-events:none;filter:drop-shadow(0 .035px .035px #29322e55)}
+.robber-token-shadow{fill:#492f2f;opacity:.28}
+.robber-marker-circle{fill:#fffdf6;stroke:#d7cabc;stroke-width:.035}
+.robber-marker-ring{fill:none;stroke:#c82e2e;stroke-width:.065}
+.robber-marker-slash{stroke:#c82e2e;stroke-width:.085;stroke-linecap:round}
+.robber-marker-highlight{fill:none;stroke:#fff;stroke-width:.025;stroke-linecap:round;opacity:.85}
+.robber-marker.robber-marker-enter{animation:robber-settle .34s cubic-bezier(.2,.85,.25,1.15)}
+
+.port-connector{stroke:#4d625d;stroke-width:.05;stroke-linecap:round;opacity:.8}
+.port-badge-shadow{fill:#284943;opacity:.25}
+.port-badge{
+ fill:#fffaf0;
+ stroke:#45615a;
+ stroke-width:.045;
+ filter:drop-shadow(0 .02px .018px #26423c25);
+}
+.port-label{fill:#263d36;font-size:.21px;font-weight:900}
+.port-resource-icon{filter:drop-shadow(0 .015px .01px #20352f30)}
+
+/* Roads are small wooden table pieces: dark edge, player body, soft top highlight. */
+.game-road-piece{
+ --road-color:#315c80;
+ --road-edge:#1e405e;
+ --road-highlight:#ffffff;
+ pointer-events:none;
+}
+.game-road-piece.player-1{--road-color:#2868b2;--road-edge:#174679}
+.game-road-piece.player-2{--road-color:#c74a42;--road-edge:#8f2b27}
+.game-road-piece.player-3{--road-color:#4f8b51;--road-edge:#2f6334}
+.game-road-piece.player-4{--road-color:#8b55a1;--road-edge:#633675}
+.game-road-piece.player-5{--road-color:#d48826;--road-edge:#9a5d12}
+.game-road-piece.player-6{--road-color:#2b9295;--road-edge:#176b70}
+.game-road-shadow{stroke:#1b2825;stroke-width:.235;stroke-linecap:round;opacity:.28;transform:translateY(.035px)}
+.game-road{stroke:var(--road-color)!important;stroke-width:.18;stroke-linecap:round;stroke-dasharray:none!important;filter:drop-shadow(0 .012px .008px #182b2525)}
+.game-road-highlight{stroke:var(--road-highlight);stroke-width:.045;stroke-linecap:round;opacity:.3;transform:translateY(-.025px)}
+.game-road-piece.game-piece-enter .game-road,
+.game-road-piece.game-piece-enter .game-road-highlight{
+ stroke-dasharray:1!important;
+ animation:road-grow .34s ease-out both;
+}
+
+/* Settlement and city are solid colored pieces with a shared tabletop material. */
+.game-building-piece{
+ --piece-color:#315c80;
+ --piece-edge:#1e405e;
+ cursor:default;
+ outline:none;
+ transform-box:fill-box;
+ transform-origin:center;
+}
+.game-building-piece.player-1{--piece-color:#2868b2;--piece-edge:#174679;color:#174679}
+.game-building-piece.player-2{--piece-color:#c74a42;--piece-edge:#8f2b27;color:#8f2b27}
+.game-building-piece.player-3{--piece-color:#4f8b51;--piece-edge:#2f6334;color:#2f6334}
+.game-building-piece.player-4{--piece-color:#8b55a1;--piece-edge:#633675;color:#633675}
+.game-building-piece.player-5{--piece-color:#d48826;--piece-edge:#9a5d12;color:#9a5d12}
+.game-building-piece.player-6{--piece-color:#2b9295;--piece-edge:#176b70;color:#176b70}
+.game-building-shadow{fill:#17251f;opacity:.22}
+.game-building-shell{
+ stroke-linejoin:round;
+ filter:drop-shadow(0 .025px .018px #14251f45);
+}
+.game-building-accent{
+ fill:none;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.game-building-detail{
+ fill:none;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.game-building-piece.game-piece-enter{animation:building-place .28s ease-out both}
+.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:.075}
+.game-building-piece.game-target-city:hover .game-building-shell,
+.game-building-piece.game-target-city:focus .game-building-shell,
+.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:.085}
+
+/* Target affordances remain brighter than decorative board art. */
+.game-target-road{stroke:#ffd15c;stroke-width:.2;stroke-dasharray:.14 .07;filter:drop-shadow(0 0 .055px #8a4f00)}
+.game-target-vertex{fill:#fff4a2;stroke:#d96300;stroke-width:.14;filter:drop-shadow(0 0 .045px #7e3d00)}
+.robber-target .island-cell{stroke:#ffd15c;stroke-width:.12;filter:brightness(1.06) drop-shadow(0 0 .055px #a66000)}
+
+@keyframes road-grow{
+ from{stroke-dashoffset:1;opacity:.25}
+ to{stroke-dashoffset:0;opacity:1}
+}
+@keyframes building-place{
+ from{opacity:.22;filter:brightness(1.28)}
+ to{opacity:1;filter:brightness(1)}
+}
+@keyframes robber-settle{
+ 0%{opacity:.2;transform:translateY(-.22px) scale(.82)}
+ 68%{opacity:1;transform:translateY(.035px) scale(1.05)}
+ 100%{opacity:1;transform:translateY(0) scale(1)}
+}
+
+@media(max-width:760px){
+ .terrain-art{opacity:.65}
+ .island-cell{stroke-width:.065}
+ .island-cell-inset{stroke-width:.024}
+ .game-road-shadow{stroke-width:.22}
+ .game-road{stroke-width:.17}
+ .game-road-highlight{stroke-width:.04}
+}
+@media(prefers-reduced-motion:reduce){
+ .game-road-piece.game-piece-enter .game-road,
+ .game-road-piece.game-piece-enter .game-road-highlight,
+ .game-building-piece.game-piece-enter,
+ .robber-marker.robber-marker-enter{animation:none}
+}
+
+
+/* ART-B01 · tabletop control-surface visual system */
+:root{
+ --ui-paper:#fffaf0;
+ --ui-paper-2:#f7f0e1;
+ --ui-ink:#20372f;
+ --ui-muted:#6d7a72;
+ --ui-border:#d8cdb8;
+ --ui-accent:#b8862b;
+ --ui-accent-soft:#f4e3af;
+ --ui-green:#335f4d;
+ --ui-green-soft:#e7efe7;
+ --ui-shadow:0 8px 22px #3d38290f;
+}
+
+/* Main control panel */
+.control-panel{
+ background:
+  radial-gradient(circle at 15% 0%,#fffdf7 0,transparent 34%),
+  linear-gradient(180deg,#fffaf0 0%,#f8f1e5 100%);
+ border-color:#d8cdb8;
+ box-shadow:0 10px 30px #4f47351a;
+}
+.turn-card{
+ position:relative;
+ overflow:hidden;
+ border:1px solid #d6ccb8;
+ background:linear-gradient(180deg,#eef3e9,#e4ece3);
+ box-shadow:inset 0 1px 0 #ffffffaa;
+}
+.turn-card::before{
+ content:"";
+ position:absolute;
+ inset:0 auto 0 0;
+ width:.28rem;
+ background:#6f8b75;
+ opacity:.9;
+}
+.turn-card #game-status{color:#243d34}
+.turn-card #turn-hint{color:#4f665b;font-weight:700}
+
+/* Player public boards */
+.board-stage .player-summary{
+ border:1px solid color-mix(in srgb,var(--player-color) 26%,#d5d9cf);
+ border-left:5px solid var(--player-color);
+ border-radius:.72rem;
+ background:
+  linear-gradient(180deg,#fffdf7ed,#f8f5ebed);
+ box-shadow:0 5px 16px #273b3218,inset 0 1px 0 #fff;
+}
+.board-stage .player-summary.active-player{
+ background:linear-gradient(180deg,#fff7d4f5,#f9edbaf5);
+ box-shadow:0 7px 20px #6a521b21,inset 0 0 0 2px #d6a83e;
+}
+.player-marker{
+ box-shadow:inset 0 -2px 0 #00000020,0 2px 5px #00000018;
+}
+.player-summary-name{color:#263a32}
+.player-public-stats{
+ padding:.18rem .22rem;
+ border-radius:.45rem;
+ background:#ffffff75;
+}
+.player-piece-stats{
+ border-top:1px dashed #d8d5c8;
+}
+.player-awards{
+ display:flex;
+ gap:.22rem;
+ flex-wrap:wrap;
+ margin-top:.28rem;
+}
+.player-award{
+ display:inline-flex;
+ align-items:center;
+ gap:.16rem;
+ padding:.13rem .28rem;
+ border:1px solid #d2a643;
+ border-radius:999px;
+ background:linear-gradient(180deg,#fff3bd,#f2d77f);
+ color:#6b4a00;
+ font-size:.57rem;
+ line-height:1;
+ font-weight:900;
+ letter-spacing:.02em;
+ box-shadow:inset 0 1px 0 #fff7d8;
+}
+.player-award-icon{width:.7rem;height:.7rem}
+.award-army{border-color:#b78c34}
+.award-road{border-color:#c39e46}
+.player-longest-road.award-holder,
+.player-knight-count.largest-army-holder{
+ background:#f7e5a5;
+ border:1px solid #ddb957;
+ box-shadow:none;
+}
+
+/* Private hand becomes a physical player tray */
+.hand-card{
+ margin:.55rem 0 .45rem;
+ padding:.7rem;
+ border:1px solid #d8cdb8;
+ border-radius:.8rem;
+ background:
+  linear-gradient(180deg,#fffdf7 0%,#fbf5e9 100%);
+ box-shadow:var(--ui-shadow),inset 0 1px 0 #fff;
+ transition:border-color .18s ease,box-shadow .18s ease;
+}
+.hand-card.active-hand{
+ border-color:#c7a049;
+ box-shadow:0 8px 22px #6a531d18,inset 0 0 0 1px #e5c66d;
+}
+.hand-card .panel-heading{
+ padding-bottom:.35rem;
+ border-bottom:1px solid #e6dcc8;
+}
+.hand-card .panel-heading h2{color:#2b4439}
+.resource-row{
+ gap:.4rem;
+}
+.hand-card .resource-chip{
+ min-width:3.35rem;
+ min-height:40px;
+ justify-content:center;
+ padding:.34rem .48rem;
+ border-width:1px;
+ border-style:solid;
+ border-radius:.65rem;
+ background:#fff;
+ box-shadow:inset 0 1px 0 #ffffffcc,0 2px 5px #493d2d12;
+}
+.resource-chip-lumber{border-color:#9bb7a2;background:#edf5ec}
+.resource-chip-brick{border-color:#d4a38c;background:#f8e9df}
+.resource-chip-wool{border-color:#aecba1;background:#eff7e8}
+.resource-chip-grain{border-color:#dbc47c;background:#faf2d4}
+.resource-chip-ore{border-color:#b8bcc5;background:#edf0f3}
+.hand-card .resource-chip .icon{width:1.28rem;height:1.28rem}
+.hand-card .resource-count{font-size:.95rem}
+.development-row{
+ gap:.38rem;
+}
+.development-chip{
+ min-height:40px;
+ padding:.32rem .48rem;
+ border:1px solid #c7c0b5;
+ border-radius:.62rem;
+ background:
+  linear-gradient(145deg,#fffdf7,#eee7da);
+ box-shadow:0 2px 5px #463b2d16,inset 0 1px 0 #fff;
+}
+.development-chip .development-icon{width:1.2rem;height:1.2rem}
+.development-new{background:#e4bd51;color:#4c3500}
+.piece-supply{
+ margin-top:.5rem;
+ padding-top:.45rem;
+ border-top:1px dashed #d9d0c0;
+}
+.piece-supply .player-stat{
+ background:#fffaf1;
+ border-color:#d8cdb8;
+}
+
+/* Segmented tabs */
+.panel-tabs{
+ gap:.22rem;
+ padding:.2rem;
+ border:1px solid #d8cdb8;
+ border-radius:.7rem;
+ background:#ece5d8;
+}
+.panel-tabs button{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:.22rem;
+ min-height:38px;
+ border:1px solid transparent;
+ border-radius:.5rem;
+ color:#59685f;
+ background:transparent;
+}
+.panel-tabs button .icon{margin:0;width:.92rem;height:.92rem}
+.panel-tabs button[aria-pressed=true]{
+ border-color:#cfc3ac;
+ background:#fffaf0;
+ color:#294d3e;
+ box-shadow:0 2px 5px #3c352714,inset 0 1px 0 #fff;
+}
+
+/* Actions as tactile tabletop controls */
+.panel-content{padding-top:.65rem}
+.action-grid{gap:.42rem}
+.action-button{
+ position:relative;
+ min-height:56px;
+ padding:.52rem .6rem;
+ border:1px solid #d4cab7;
+ border-radius:.7rem;
+ background:
+  linear-gradient(180deg,#fffdf8 0%,#f3eddf 100%);
+ color:#29463a;
+ box-shadow:0 2px 5px #463d3010,inset 0 1px 0 #fff;
+ transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease,background .12s ease;
+}
+.action-button>.icon{width:1.3rem;height:1.3rem}
+.action-button:hover:not(:disabled){
+ transform:translateY(-1px);
+ border-color:#b9ac93;
+ background:linear-gradient(180deg,#fffefb,#eee6d7);
+ box-shadow:0 4px 9px #463d3018,inset 0 1px 0 #fff;
+}
+.action-button:active:not(:disabled){transform:translateY(0)}
+.action-button.action-dice{
+ border-color:#cba649;
+ background:linear-gradient(180deg,#fff5c9,#f1d982);
+ color:#5a4205;
+}
+.action-button.action-settlement,
+.action-button.action-city,
+.action-button.action-road{
+ border-color:#b6c7b9;
+ background:linear-gradient(180deg,#f2f7ef,#e2ece0);
+}
+.action-button.action-card,
+.development-action-button{
+ border-color:#c7bfd2;
+ background:linear-gradient(180deg,#f6f1f8,#eae2ef);
+ color:#4c3f59;
+}
+.action-button.action-trade{
+ border-color:#b8cbc4;
+ background:linear-gradient(180deg,#eef6f2,#dfebe6);
+}
+.action-button.action-end{
+ border-color:#d5c7bc;
+ background:linear-gradient(180deg,#faf5ef,#ede3da);
+ color:#665248;
+}
+.action-button:disabled{
+ color:#8b8e88;
+ border-color:#ded8cc;
+ background:#eeeae2;
+ box-shadow:none;
+}
+.action-button:disabled .action-cost{opacity:.65}
+.action-cost{
+ align-items:center;
+ padding-top:.12rem;
+}
+.action-cost .resource-chip{
+ border:1px solid #d7d0c2;
+ border-radius:.35rem;
+ background:#ffffff88;
+}
+.development-actions-inline{
+ margin-top:.75rem;
+ padding:.7rem;
+ border:1px solid #d7ccdc;
+ border-radius:.72rem;
+ background:linear-gradient(180deg,#fbf7fc,#f1eaf4);
+}
+.development-actions-inline h2{
+ margin:0 0 .5rem;
+ color:#594d61;
+}
+.development-effect{
+ border-color:#d4cadd;
+ background:#fffafc;
+}
+
+/* Target selection */
+#targets:not(:empty){
+ margin:.55rem 0;
+ padding:.55rem .6rem;
+ border:1px solid #d4b758;
+ border-radius:.65rem;
+ background:linear-gradient(180deg,#fff6cc,#f8e8a7);
+ color:#5c4606;
+ box-shadow:inset 0 1px 0 #fff9df;
+}
+.target-cancel{
+ border-color:#c9ad62;
+ background:#fff8dd;
+}
+
+/* Trade is a dedicated exchange tray */
+#trade-actions{
+ padding-top:.65rem;
+}
+.bank-trade-section{
+ margin:0 0 .7rem;
+ padding:.65rem;
+ border:1px solid #d5cbb8;
+ border-radius:.72rem;
+ background:linear-gradient(180deg,#fffdf8,#f7f0e3);
+}
+.bank-trade-section h2{color:#304b40}
+.trade-rate-hint{margin:.15rem 0 .5rem}
+.bank-trade-grid{gap:.36rem}
+.bank-trade-button{
+ position:relative;
+ min-height:54px;
+ border-color:#d4c8b4;
+ border-radius:.62rem;
+ background:linear-gradient(180deg,#fffdf8,#f2ebdd);
+ box-shadow:inset 0 1px 0 #fff;
+}
+.bank-trade-button.bank-trade-rate-2{
+ border-color:#d1a94e;
+ background:linear-gradient(180deg,#fff3c0,#f0d77d);
+}
+.bank-trade-button.bank-trade-rate-3{
+ border-color:#9fb7a7;
+ background:linear-gradient(180deg,#eff6ef,#e1ece2);
+}
+.bank-trade-button:hover:not(:disabled),.bank-trade-button:focus-visible:not(:disabled){
+ transform:translateY(-1px);
+ border-color:#8ca693;
+ background:#eef5ec;
+}
+.bank-trade-button:disabled{
+ opacity:.36;
+ filter:saturate(.6);
+}
+.bank-trade-rate{
+ min-width:1.15rem;
+ padding:.11rem .18rem;
+ border-radius:.3rem;
+ background:#ffffffa8;
+}
+.domestic-trade-card{
+ margin-top:.55rem!important;
+ padding:.55rem!important;
+ border:1px solid #d8cdb8!important;
+ border-radius:.72rem;
+ background:#fbf6ec;
+}
+.domestic-trade-card summary{
+ padding:.1rem 0;
+ color:#314c40;
+}
+.resource-stepper-grid{
+ border:1px solid #ddd3c2;
+ border-radius:.65rem;
+ background:#fffaf2;
+}
+.resource-stepper{
+ padding:.18rem .22rem;
+ border-radius:.45rem;
+ background:#ffffff88;
+}
+.stepper-button{
+ border-color:#d2c6b3;
+ background:#f5efe3;
+}
+.incoming-trade{
+ border-color:#d2a83f;
+ background:linear-gradient(180deg,#fff3bd,#f7df91);
+ box-shadow:0 5px 14px #6e55181a;
+}
+
+/* Status / log uses readable paper blocks */
+#status-panel>h2{
+ color:#314a40;
+}
+#players,#bank,#bonuses{
+ margin:.35rem 0;
+ padding:.5rem .55rem;
+ border:1px solid #ded5c5;
+ border-radius:.58rem;
+ background:#fffaf2;
+}
+#bank{
+ display:flex;
+ align-items:center;
+ gap:.24rem;
+ flex-wrap:wrap;
+}
+#bank .resource-chip{
+ min-height:26px;
+ padding:.12rem .27rem;
+}
+#bonuses{
+ color:#5c543f;
+ background:#f7edcf;
+ border-color:#e0ca84;
+}
+#log{
+ margin:.35rem 0;
+ padding:.5rem .5rem .5rem 1.7rem;
+ border:1px solid #ded5c5;
+ border-radius:.58rem;
+ background:#fffdf8;
+}
+#log li+li{margin-top:.22rem}
+
+/* Mobile compaction keeps the new material hierarchy without crowding. */
+@media(max-width:760px){
+ .control-panel{background:linear-gradient(180deg,#fffaf0,#f7f0e4)}
+ .hand-card{padding:.5rem;margin:.35rem 0}
+ .hand-card .resource-chip{min-width:2.9rem;min-height:34px;padding:.22rem .34rem}
+ .hand-card .resource-chip .icon{width:1.05rem;height:1.05rem}
+ .hand-card .resource-count{font-size:.82rem}
+ .development-chip{min-height:34px;padding:.22rem .34rem}
+ .panel-tabs{padding:.14rem}
+ .panel-tabs button{min-height:34px;font-size:.68rem}
+ .action-button{min-height:46px;padding:.4rem .45rem}
+ .action-button>.icon{width:1.08rem;height:1.08rem}
+ .bank-trade-section{padding:.48rem}
+ .bank-trade-button{min-height:46px}
+ .player-award{font-size:.52rem;padding:.1rem .22rem}
+}
+@media(max-width:420px){
+ .hand-card .resource-row{gap:.24rem}
+ .hand-card .resource-chip{min-width:2.65rem}
+ .player-awards{gap:.15rem}
+ .player-award{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+
+/* ART-C01 · motion polish */
+:root{
+ --motion-fast:140ms;
+ --motion-normal:260ms;
+ --motion-slow:520ms;
+ --motion-ease:cubic-bezier(.2,.78,.2,1);
+ --motion-pop:cubic-bezier(.18,.88,.24,1.14);
+}
+
+/* Dice live inside the public board alert so the outcome is visible to every viewer. */
+.activity-alert.activity-dice{
+ width:min(76%,31rem);
+ padding:.7rem 1rem .85rem;
+}
+.motion-dice{
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ gap:.55rem;
+ margin:.18rem 0 .38rem;
+ perspective:500px;
+}
+.motion-die{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ grid-template-rows:repeat(3,1fr);
+ width:3.15rem;
+ height:3.15rem;
+ padding:.42rem;
+ border:1px solid #c8bda9;
+ border-radius:.7rem;
+ background:linear-gradient(145deg,#fffef9,#eee5d6);
+ box-shadow:0 .28rem .6rem #332b221f,inset 0 .08rem 0 #fff;
+ transform-origin:center;
+ animation:dice-tumble .58s var(--motion-pop) both;
+}
+.motion-die:nth-child(2){animation-delay:70ms}
+.motion-die-cell{display:grid;place-items:center}
+.motion-die-pip::before{
+ content:"";
+ width:.42rem;
+ height:.42rem;
+ border-radius:50%;
+ background:#283a33;
+ box-shadow:inset 0 .06rem 0 #ffffff30;
+}
+.activity-dice .activity-alert-message{
+ font-size:clamp(1rem,2vw,1.45rem);
+}
+
+/* Played development cards briefly flip forward. Bought cards stay intentionally generic. */
+.motion-card{
+ display:inline-grid;
+ place-items:center;
+ margin:.18rem auto .35rem;
+ width:5rem;
+ height:6.35rem;
+ perspective:650px;
+}
+.motion-card-face{
+ width:100%;
+ height:100%;
+ display:grid;
+ place-items:center;
+ align-content:center;
+ gap:.4rem;
+ padding:.55rem;
+ border:2px solid #86758f;
+ border-radius:.62rem;
+ background:linear-gradient(145deg,#fffafd,#e8deec);
+ color:#594865;
+ box-shadow:0 .42rem .85rem #382b3c25,inset 0 .08rem 0 #fff;
+ transform-origin:center;
+ animation:card-flip-in .58s var(--motion-pop) both;
+}
+.motion-card-hidden .motion-card-face{
+ border-color:#9f8c68;
+ background:
+  repeating-linear-gradient(135deg,#f7edcf 0,#f7edcf 7px,#ead6a5 7px,#ead6a5 14px);
+ color:#5f4b20;
+}
+.motion-card-face .development-icon,.motion-card-icon{
+ width:2.2rem;
+ height:2.2rem;
+}
+.motion-card-caption{
+ font-size:.68rem;
+ line-height:1.05;
+ font-weight:900;
+ text-align:center;
+}
+.activity-development .activity-alert-message,
+.activity-card-buy .activity-alert-message{
+ font-size:clamp(.95rem,2vw,1.35rem);
+}
+
+/* Existing board-piece motion adopts the same timing language. */
+.game-road-piece.game-piece-enter .game-road,
+.game-road-piece.game-piece-enter .game-road-highlight{
+ animation-duration:320ms;
+ animation-timing-function:var(--motion-ease);
+}
+.game-building-piece.game-piece-enter{
+ animation-duration:300ms;
+ animation-timing-function:var(--motion-pop);
+}
+.robber-marker.robber-marker-enter{
+ animation-duration:380ms;
+ animation-timing-function:var(--motion-pop);
+}
+
+/* Turn handoff feels like a placed table card rather than a modal. */
+.turn-alert{
+ animation-duration:320ms;
+ animation-timing-function:var(--motion-pop);
+}
+.turn-alert-name{animation:turn-name-settle .42s var(--motion-ease) both}
+.activity-alert{animation-duration:220ms;animation-timing-function:var(--motion-pop)}
+
+/* Local panel changes are quick and never block input. */
+.panel-content:not([hidden]){
+ animation:panel-reveal var(--motion-fast) var(--motion-ease) both;
+}
+
+@keyframes dice-tumble{
+ 0%{opacity:0;transform:translateY(-1.4rem) rotateX(35deg) rotateZ(-24deg) scale(.72)}
+ 45%{opacity:1;transform:translateY(.12rem) rotateX(-8deg) rotateZ(8deg) scale(1.06)}
+ 72%{transform:translateY(-.07rem) rotateX(3deg) rotateZ(-3deg) scale(.99)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes card-flip-in{
+ 0%{opacity:0;transform:rotateY(-88deg) translateY(.5rem) scale(.88)}
+ 58%{opacity:1;transform:rotateY(7deg) translateY(-.06rem) scale(1.03)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes turn-name-settle{
+ 0%{opacity:.35;transform:translateY(.35rem)}
+ 100%{opacity:1;transform:none}
+}
+@keyframes panel-reveal{
+ from{opacity:.55;transform:translateY(.18rem)}
+ to{opacity:1;transform:none}
+}
+
+@media(max-width:760px){
+ .motion-die{width:2.65rem;height:2.65rem;padding:.35rem;border-radius:.58rem}
+ .motion-die-pip::before{width:.34rem;height:.34rem}
+ .motion-card{width:4.25rem;height:5.4rem}
+ .motion-card-face .development-icon,.motion-card-icon{width:1.85rem;height:1.85rem}
+}
+@media(prefers-reduced-motion:reduce){
+ .motion-die,
+ .motion-card-face,
+ .turn-alert-name,
+ .panel-content:not([hidden]){animation:none}
+}
+
+
+/* ART-FINAL · coastal ports and board consistency pass */
+.port-piece{pointer-events:none}
+.port-pier-leg{
+ stroke:#6b553a;
+ stroke-width:.066;
+ stroke-linecap:round;
+ opacity:.72;
+ filter:drop-shadow(0 .018px .012px #26352f30);
+}
+.port-dock{filter:drop-shadow(0 .035px .028px #26352f35)}
+.port-dock-shadow{fill:#2a352f;opacity:.16}
+.port-dock-board{
+ fill:#c9a66f;
+ stroke:#6f5636;
+ stroke-width:.04;
+}
+.port-dock-plank{
+ stroke:#8f7048;
+ stroke-width:.025;
+ stroke-linecap:round;
+ opacity:.72;
+}
+.port-bollard{
+ fill:#6f5636;
+ stroke:#ead6ae;
+ stroke-width:.012;
+}
+.port-face{
+ filter:drop-shadow(0 .012px .01px #40362628);
+}
+.port-label{
+ fill:#3f3222;
+ font-size:.27px;
+ font-weight:950;
+ letter-spacing:.01em;
+ paint-order:stroke;
+ stroke:#f4e6c9;
+ stroke-width:.025;
+ stroke-linejoin:round;
+}
+.port-label-generic{font-size:.31px;letter-spacing:.015em}
+.port-resource-icon{
+ color:#31493f;
+ filter:drop-shadow(0 .015px .01px #20352f30);
+}
+.port-resource-icon.resource-lumber{color:#265b39}
+.port-resource-icon.resource-brick{color:#91452e}
+.port-resource-icon.resource-wool{color:#4d7845}
+.port-resource-icon.resource-grain{color:#806017}
+.port-resource-icon.resource-ore{color:#555e68}
+.port-anchor-icon{
+ fill:none;
+ stroke:#42564f;
+ stroke-width:.050;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+}
+.port-boat-hull{fill:#5f4c36;stroke:#3f3327;stroke-width:.018}
+.port-boat-mast{stroke:#4e4030;stroke-width:.025;stroke-linecap:round}
+.port-boat-sail{fill:#f2e4c6;stroke:#65533c;stroke-width:.015}
+
+/* Keep physical components on one shared tabletop depth scale. */
+.island-token-shadow,.robber-token-shadow,.port-dock-shadow,.game-building-shadow{opacity:.24}
+.island-token,.robber-marker-circle,.port-dock-board,.game-building-shell{
+ filter:drop-shadow(0 .025px .018px #2b342f2d);
+}
+.robber-marker-ring{stroke-width:.06}
+.game-road-shadow{opacity:.24}
+
+@media(max-width:760px){
+ .port-pier-leg{stroke-width:.058;opacity:.62}
+ .port-dock-plank,.port-bollard,.port-boat-decor{display:none}
+ .port-dock-board{stroke-width:.035}
+ .port-label{font-size:.245px;stroke-width:.022}
+ .port-label-generic{font-size:.285px}
+ .port-resource-icon{transform:scale(1.02);transform-origin:center}
+}
+
+.activity-production-summary{display:block;margin-top:.22rem;font-size:.78rem;font-weight:800;line-height:1.35;opacity:.92;letter-spacing:.01em}
+@media(max-width:760px){.activity-production-summary{font-size:.7rem}}
+
+/* GAME-ROOM: shared lobby map and safe in-room controls */
+.room-map-lobby{margin:1rem 0;padding:.85rem;border:1px solid #b1cbd1;border-radius:.7rem;background:#eef6f4}
+.room-map-lobby h3{font-size:.92rem;margin:.1rem 0 .55rem;color:#254956}
+.room-map-lobby .room-map-controls{margin:.15rem 0 .65rem}
+#room-role-picker{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;margin:.6rem 0}
+#room-role-picker[hidden]{display:none}
+#room-role-picker label{font-weight:800}
+#room-role-picker select{min-width:7.6rem}
+#room-role-picker p{font-size:.78rem;color:#455c60;flex-basis:100%;margin:0}
+#room-restart,#game-restart{font-weight:850;border:1px solid #ab6759;background:#fff1e9;color:#813d30;border-radius:.55rem;cursor:pointer}
+#room-restart{margin:.5rem .35rem .5rem 0;padding:.55rem .8rem}
+#game-restart{padding:.42rem .65rem;font-size:.77rem;margin-top:.55rem}
+#room-restart:hover,#game-restart:hover{background:#ffe1d4}
+@media(max-width:760px){.room-map-lobby{padding:.55rem}.room-map-lobby h3{font-size:.82rem}#game-restart{width:100%}}
+
+/* LOCAL-ROOM: choose and preview a map after entering the offline room. */
+.local-room-intro{font-size:.84rem;color:#516d60;max-width:38rem}
+.local-room-lobby{max-width:42rem}
+.local-room-lobby>label{display:block;font-size:.85rem;font-weight:750;margin:.5rem 0 .25rem}
+.local-room-lobby>.local-bot-option{display:flex}
+#local-board-layout{font-size:.82rem;font-weight:800;color:#315c50;margin:.45rem 0}
+#local-map-preview{margin:.6rem auto 0;max-width:23rem;pointer-events:none}
+#local-map-preview .island-board{max-width:23rem;min-width:0}
+#local-map-preview ul{display:none}
+#local-restart,#pass-local-restart{font-weight:850;border:1px solid #ab6759;background:#fff1e9;color:#813d30;border-radius:.55rem;cursor:pointer}
+#local-restart{padding:.42rem .65rem;font-size:.77rem;margin-top:.55rem}
+#pass-local-restart{padding:.55rem .75rem;margin:.45rem 0}
+#local-restart:hover,#pass-local-restart:hover{background:#ffe1d4}
+@media(max-width:760px){.local-room-lobby{padding:.55rem}#local-restart{width:100%}#local-map-preview{max-width:18rem}}
+
+/* Show publicly-produced resource types and quantities for each player after dice. */
+.activity-alert.activity-dice{width:min(90%,34rem)}
+.activity-production-summary{display:grid;gap:.22rem;width:100%;max-height:min(38vh,15rem);overflow:auto;text-align:left;margin:.55rem auto 0;padding:.42rem .55rem;border-radius:.55rem;background:#ffffffce;border:1px solid #d4dfd5;font-size:.79rem}
+.activity-production-row{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;min-height:1.4rem}
+.activity-production-player{font-weight:850;min-width:5.5rem;max-width:11rem;overflow-wrap:anywhere;color:#253d35;margin-right:.15rem}
+.activity-production-chip{display:inline-flex;align-items:center;gap:.15rem;border-radius:.35rem;background:#f1f7ee;padding:.1rem .27rem;font-weight:900;white-space:nowrap}
+.activity-production-chip .resource-icon{width:1rem;height:1rem}
+.activity-production-none{font-size:.72rem;font-weight:700;color:#67766d}
+@media(max-width:760px){.activity-alert.activity-dice{width:min(94%,32rem)}.activity-production-summary{font-size:.71rem;max-height:min(42vh,17rem);padding:.34rem .4rem}.activity-production-player{min-width:4.3rem;max-width:8rem}.activity-production-chip .resource-icon{width:.9rem;height:.9rem}}
+
+/* Keep Undo visually and in keyboard order below all other Actions controls. */
+.undo-action-row{margin-top:.6rem}
+.undo-action-row .action-button{grid-column:1/-1;background:#f8f5ed;border-color:#ddd4bf}
+
+/* Waiting-for-discard confirmation is visible only to the submitting player. */
+.discard-submitted{padding:.6rem .75rem;border:1px solid #b7d6be;border-radius:.55rem;background:#f0f8ef;color:#29563b;font-size:.86rem;font-weight:800}

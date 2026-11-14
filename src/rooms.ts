@@ -1,47 +1,354 @@
-import { formatCandidates } from './candidates';
+import { requestRoom, RoomError } from './room-request';
+import { reconnectDelay } from './reconnect-policy';
+export { RoomError } from './room-request';
+
 type Role = 'host' | 'guest';
-type Events = { status: (s:string)=>void; error: (s:string)=>void; peer: (id:string, status:string, open:boolean)=>void; remove: (id:string)=>void; message: (id:string,text:string)=>void };
-type Entry = { pc: RTCPeerConnection; channel: RTCDataChannel | null; pending: RTCIceCandidateInit[]; chain: Promise<void> };
+export type CheckpointMeta = {id:string;revision:number;round:number;savedAt:number;latest:boolean};
+export type StoredCheckpoint = Omit<CheckpointMeta,'latest'> & {data:string};
+type Events = {
+  status: (s:string)=>void;
+  error: (s:string)=>void;
+  peer: (id:string, status:string, open:boolean)=>void;
+  remove: (id:string)=>void;
+  message: (id:string,text:string)=>void;
+  checkpoints?: (items:CheckpointMeta[])=>void;
+  checkpoint?: (item:StoredCheckpoint)=>void;
+};
+type Connection = { room:string; token:string; role:Role; endpointIndex:number };
+
+const MAX_RELAY_DATA = 16384;
+const MAX_CHECKPOINT_DATA = 49152;
+const validPeerId = (value:unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+const validRoomToken=(value:unknown):value is string=>typeof value==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value);
+class RoomAttemptError extends RoomError {
+  constructor(message:string, readonly retryable:boolean){super(message);}
+}
+const joinError=(code:unknown):RoomAttemptError=>{
+  if(code==='invalid')return new RoomAttemptError('Invitation is invalid.',false);
+  if(code==='expired')return new RoomAttemptError('This room has expired.',false);
+  if(code==='room-full')return new RoomAttemptError('Room is temporarily full.',true);
+  if(code==='host-unavailable')return new RoomAttemptError('Host is reconnecting.',true);
+  return new RoomAttemptError('Room connection was temporarily unavailable.',true);
+};
+const validMeta=(value:unknown):value is CheckpointMeta=>{
+  const x=value as Partial<CheckpointMeta>|null;
+  return !!x&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id)&&Number.isSafeInteger(x.revision)&&Number(x.revision)>=0&&Number.isSafeInteger(x.round)&&Number(x.round)>=0&&Number.isSafeInteger(x.savedAt)&&Number(x.savedAt)>0&&typeof x.latest==='boolean';
+};
+
 export class RoomClient {
- private ws: WebSocket | null = null; private peers = new Map<string,Entry>(); private role: Role = 'guest'; private generation = 0;
- constructor(private endpoint:string,private events:Events) {}
- async create(): Promise<string> {
-  this.reset(); const generation=this.generation;
-  const response=await fetch(`${this.endpoint}/rooms`,{method:'POST',headers:{'Content-Type':'application/json'}}); if(!response.ok) throw Error('Room creation failed.');
-  const room=await response.json() as {room:string;host:string;guest:string}; if(generation!==this.generation) throw Error('Session cancelled.');
-  await this.connect(room.room,room.host,'host');
-  const link=new URL(location.href); link.hash=`join=${room.room}.${room.guest}`; return link.toString();
- }
- async join(room:string,token:string):Promise<void> { this.reset(); await this.connect(room,token,'guest'); }
- private connect(room:string,token:string,role:Role):Promise<void> {
-  this.role=role; this.events.status('Connecting to signaling…');
-  const url=new URL(`${this.endpoint}/rooms/${room}/socket`); url.protocol=url.protocol==='https:'?'wss:':'ws:';
-  const ws=new WebSocket(url); this.ws=ws;
-  return new Promise((resolve,reject)=>{ let settled=false; const fail=(message:string)=>{if(!settled){settled=true;reject(Error(message));}else this.events.error(message);};
-   ws.onmessage=(event)=>{ if(this.ws!==ws)return; let msg: {type:string;id?:string;from?:string;code?:string;data?:unknown}; try{msg=JSON.parse(String(event.data));}catch{fail('Invalid signaling response.');return}
-    if(msg.type==='authenticate'){ws.send(JSON.stringify({type:'auth',role,token}));return;}
-    if(msg.type==='ready'){settled=true;this.events.status('Room connected. Waiting for peers…');resolve();return;}
-    if(msg.type==='error'){fail(`Room error: ${msg.code ?? 'unknown'}`);return;}
-    if(msg.type==='join' && role==='host' && msg.id){const id=msg.id;this.queue(id,async e=>{const ch=e.pc.createDataChannel('messages');this.bind(id,e,ch);await e.pc.setLocalDescription(await e.pc.createOffer());this.signal('offer',id,e.pc.localDescription?.sdp);});return;}
-    if(msg.type==='leave' && msg.id){this.remove(msg.id);return;}
-    if(msg.from && ['offer','answer','candidate'].includes(msg.type)){const id=msg.from;this.queue(id,async e=>{
-      if(msg.type==='offer' && role==='guest' && id==='host' && typeof msg.data==='string'){await e.pc.setRemoteDescription({type:'offer',sdp:msg.data});await this.flush(e);await e.pc.setLocalDescription(await e.pc.createAnswer());this.signal('answer',id,e.pc.localDescription?.sdp);}
-      else if(msg.type==='answer' && role==='host' && typeof msg.data==='string'){await e.pc.setRemoteDescription({type:'answer',sdp:msg.data});await this.flush(e);}
-      else if(msg.type==='candidate' && msg.data && typeof msg.data==='object'){const c=msg.data as RTCIceCandidateInit;if(e.pc.remoteDescription) await e.pc.addIceCandidate(c);else e.pending.push(c);}
-    });}
-   };
-   ws.onerror=()=>fail('Signaling connection failed.'); ws.onclose=(event)=>{if(this.ws!==ws)return;this.ws=null;for(const id of [...this.peers.keys()])this.remove(id);fail(`Signaling disconnected${event.reason ? `: ${event.reason}` : '.'}`);this.events.status('Disconnected');};
-  });
- }
- private entry(id:string):Entry { let e=this.peers.get(id);if(e)return e;const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});e={pc,channel:null,pending:[],chain:Promise.resolve()};this.peers.set(id,e);const current=e;
-  const update=()=>{if(this.peers.get(id)!==current)return;this.events.peer(id,`${pc.connectionState}; channel ${current.channel?.readyState ?? 'waiting'}; local ${formatCandidates(pc.localDescription?.sdp)}; remote ${formatCandidates(pc.remoteDescription?.sdp)}`,current.channel?.readyState==='open');};
-  pc.onicecandidate=event=>{if(event.candidate)this.signal('candidate',id,event.candidate.toJSON());update();};pc.onconnectionstatechange=update;pc.onicegatheringstatechange=update;pc.ondatachannel=event=>this.bind(id,current,event.channel);update();return current;
- }
- private bind(id:string,e:Entry,ch:RTCDataChannel):void {e.channel=ch;const update=()=>this.events.peer(id,`${e.pc.connectionState}; channel ${ch.readyState}; local ${formatCandidates(e.pc.localDescription?.sdp)}; remote ${formatCandidates(e.pc.remoteDescription?.sdp)}`,ch.readyState==='open');ch.onopen=update;ch.onclose=update;ch.onerror=()=>this.events.error('Data channel error.');ch.onmessage=event=>{if(typeof event.data==='string')this.events.message(id,event.data);};update();}
- private queue(id:string,task:(e:Entry)=>Promise<void>):void {const e=this.entry(id);e.chain=e.chain.then(()=>task(e)).catch(()=>this.events.error('WebRTC signaling failed.'));}
- private async flush(e:Entry):Promise<void>{for(const c of e.pending)await e.pc.addIceCandidate(c);e.pending=[];}
- private signal(type:string,to:string,data:unknown):void {if(this.ws?.readyState===WebSocket.OPEN)this.ws.send(JSON.stringify({type,to,data}));}
- send(id:string,text:string):void {const ch=this.peers.get(id)?.channel;if(ch?.readyState!=='open')throw Error('Data channel is not open.');ch.send(text);}
- private remove(id:string):void {const e=this.peers.get(id);if(!e)return;this.peers.delete(id);e.channel?.close();e.pc.close();this.events.remove(id);}
- reset():void {this.generation++;const ws=this.ws;this.ws=null;ws?.close();for(const id of [...this.peers.keys()])this.remove(id);}
+  private ws: WebSocket | null = null;
+  private peers = new Set<string>();
+  private generation = 0;
+  private connection: Connection | null = null;
+  private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private qaReconnectCount = 0;
+
+  constructor(private endpoints:string[],private events:Events) {
+    if(endpoints.length===0)throw new RoomError('Signaling service is unreachable.');
+  }
+
+  async create(): Promise<string> {
+    this.reset();
+    const generation=this.generation;
+    let roomData: Awaited<ReturnType<typeof requestRoom>> | null=null;
+    let usedIndex=0;
+    let lastError:unknown;
+
+    for(let i=0;i<this.endpoints.length;i++){
+      try{
+        roomData=await requestRoom(this.endpoints[i]);
+        usedIndex=i;
+        break;
+      }catch(error){
+        lastError=error;
+      }
+    }
+
+    if(!roomData)throw lastError instanceof Error?lastError:new RoomError('Signaling service is unreachable.');
+    if(generation!==this.generation)throw Error('Session cancelled.');
+
+    this.connection={room:roomData.room,token:roomData.host,role:'host',endpointIndex:usedIndex};
+    await this.openInitial(this.connection,generation);
+
+    const link=new URL(location.href);
+    link.hash=`join=${roomData.room}.${roomData.guest}`;
+    return link.toString();
+  }
+
+  async join(room:string,token:string):Promise<void> {
+    if(!validRoomToken(room)||!validRoomToken(token))throw new RoomError('Invalid room capability.');
+    this.reset();
+    const generation=this.generation;
+    this.connection={room,token,role:'guest',endpointIndex:0};
+    let attempt=0,lastError:unknown;
+    while(generation===this.generation && attempt<10){
+      try{
+        await this.openInitial(this.connection,generation);
+        return;
+      }catch(error){
+        lastError=error;
+        if(error instanceof RoomAttemptError && !error.retryable)throw error;
+        attempt++;
+        if(attempt>=10)break;
+        const delay=reconnectDelay(attempt);
+        this.events.status(`Room connection is temporarily unavailable. Retrying in ${Math.ceil(delay/1000)}s…`);
+        await new Promise(resolve=>window.setTimeout(resolve,delay));
+      }
+    }
+    if(generation!==this.generation)throw new RoomError('Room join was cancelled.');
+    if(lastError instanceof RoomError)throw new RoomError(`Could not join after automatic retries. ${lastError.message}`);
+    throw new RoomError('Could not join after automatic retries.');
+  }
+
+  async restoreHost(room:string,token:string):Promise<void> {
+    if(!validRoomToken(room)||!validRoomToken(token))throw new RoomError('Invalid host recovery capability.');
+    this.reset();
+    const generation=this.generation;
+    this.connection={room,token,role:'host',endpointIndex:0};
+    await this.openInitial(this.connection,generation);
+  }
+
+  connectionInfo():Readonly<Omit<Connection,'endpointIndex'>>|null {
+    return this.connection?{room:this.connection.room,token:this.connection.token,role:this.connection.role}:null;
+  }
+
+  private async openInitial(connection:Connection,generation:number):Promise<void> {
+    let lastError:unknown;
+    const start=connection.endpointIndex;
+    for(let offset=0;offset<this.endpoints.length;offset++){
+      connection.endpointIndex=(start+offset)%this.endpoints.length;
+      try{
+        await this.open(connection,generation,false);
+        return;
+      }catch(error){
+        lastError=error;
+      }
+    }
+    throw lastError instanceof Error?lastError:new RoomError('Room WebSocket connection or authentication failed.');
+  }
+
+  private ensurePeer(id:string):void {
+    if(this.peers.has(id))return;
+    this.peers.add(id);
+    this.events.peer(id,'Cloudflare relay connected',true);
+  }
+
+  private clearReconnect():void {
+    if(this.reconnectTimer!==null){
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer=null;
+    }
+  }
+
+  private scheduleReconnect(generation:number):void {
+    if(generation!==this.generation || !this.connection || this.reconnectTimer!==null)return;
+
+    this.reconnectAttempt=Math.min(this.reconnectAttempt+1,Number.MAX_SAFE_INTEGER);
+    const attempt=this.reconnectAttempt;
+    const delay=reconnectDelay(attempt);
+    const connection=this.connection;
+    connection.endpointIndex=(connection.endpointIndex+1)%this.endpoints.length;
+    const seconds=Math.ceil(delay/1000);
+    const phase=attempt<=10?`fast retry ${attempt}/10`:attempt<=30?'background retry':'long-term retry';
+    this.events.status(`Connection interrupted. Automatic ${phase} in ${seconds}s…`);
+
+    this.reconnectTimer=window.setTimeout(()=>{
+      this.reconnectTimer=null;
+      if(generation!==this.generation || !this.connection)return;
+      void this.open(this.connection,generation,true).catch(()=>{
+        if(generation===this.generation)this.scheduleReconnect(generation);
+      });
+    },delay);
+  }
+
+  private open(connection:Connection,generation:number,reconnecting:boolean):Promise<void> {
+    this.events.status(reconnecting?'Reconnecting to Cloudflare room…':'Connecting to Cloudflare room…');
+    const endpoint=this.endpoints[connection.endpointIndex];
+    const url=new URL(`${endpoint}/rooms/${connection.room}/socket`);
+    url.protocol=url.protocol==='https:'?'wss:':'ws:';
+
+    const ws=new WebSocket(url);
+    this.ws=ws;
+
+    return new Promise((resolve,reject)=>{
+      let settled=false;
+      let authenticated=false;
+
+      const rejectInitial=(message:string,retryable=true)=>{
+        if(settled)return;
+        settled=true;
+        reject(new RoomAttemptError(message,retryable));
+      };
+      const closeForRetry=()=>{
+        try{ws.close();}catch{}
+      };
+
+      ws.onmessage=(event)=>{
+        if(this.ws!==ws || generation!==this.generation)return;
+        let msg:{type?:unknown;id?:unknown;from?:unknown;role?:unknown;code?:unknown;data?:unknown;checkpoints?:unknown;checkpoint?:unknown};
+        try{msg=JSON.parse(String(event.data));}
+        catch{
+          if(!authenticated)rejectInitial('Room WebSocket returned an invalid message.');
+          else this.events.error('Room WebSocket returned an invalid message.');
+          closeForRetry();
+          return;
+        }
+
+        if(msg.type==='authenticate'){
+          try{ws.send(JSON.stringify({type:'auth',role:connection.role,token:connection.token}));}
+          catch{
+            rejectInitial('Room WebSocket connection or authentication failed.');
+            closeForRetry();
+          }
+          return;
+        }
+
+        if(msg.type==='ready'){
+          authenticated=true;
+          settled=true;
+          this.reconnectAttempt=0;
+          if(reconnecting)this.qaReconnectCount++;
+          this.clearReconnect();
+          if(connection.role==='guest')this.ensurePeer('host');
+          this.events.status(reconnecting?'Cloudflare room reconnected.':'Cloudflare room connected.');
+          resolve();
+          return;
+        }
+
+        if(msg.type==='join' && connection.role==='host' && validPeerId(msg.id) && msg.id!=='host'){
+          this.ensurePeer(msg.id);
+          return;
+        }
+
+        if(msg.type==='leave' && connection.role==='host' && validPeerId(msg.id)){
+          this.remove(msg.id);
+          return;
+        }
+
+        if(msg.type==='checkpoint-list'&&connection.role==='host'&&Array.isArray(msg.checkpoints)&&msg.checkpoints.every(validMeta)){
+          this.events.checkpoints?.(msg.checkpoints as CheckpointMeta[]);
+          return;
+        }
+
+        if(msg.type==='checkpoint-data'&&connection.role==='host'){
+          const value=msg.checkpoint as Partial<StoredCheckpoint>|null;
+          if(value&&typeof value.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(value.id)&&Number.isSafeInteger(value.revision)&&Number.isSafeInteger(value.round)&&Number.isSafeInteger(value.savedAt)&&typeof value.data==='string'&&new TextEncoder().encode(value.data).length<=MAX_CHECKPOINT_DATA){
+            this.events.checkpoint?.(value as StoredCheckpoint);
+            return;
+          }
+          this.events.error('Saved game data was invalid.');
+          return;
+        }
+
+        if(msg.type==='checkpoint-saved'&&connection.role==='host')return;
+        if(msg.type==='checkpoint-error'&&connection.role==='host'){this.events.error('Saved game checkpoint could not be processed.');return;}
+
+        if(msg.type==='relay' && validPeerId(msg.from) && typeof msg.data==='string'){
+          if(new TextEncoder().encode(msg.data).length>MAX_RELAY_DATA){
+            this.events.error('Room relay message exceeded the safe size limit.');
+            closeForRetry();
+            return;
+          }
+          if(connection.role==='guest' && msg.from!=='host'){
+            this.events.error('Room relay source was invalid.');
+            closeForRetry();
+            return;
+          }
+          if(connection.role==='host' && msg.from==='host'){
+            this.events.error('Room relay source was invalid.');
+            closeForRetry();
+            return;
+          }
+          this.ensurePeer(msg.from);
+          this.events.message(msg.from,msg.data);
+          return;
+        }
+
+        if(msg.type==='error'){
+          if(!authenticated){
+            const failure=joinError(msg.code);
+            rejectInitial(failure.message,failure.retryable);
+          } else this.events.error('Room WebSocket connection was interrupted.');
+          closeForRetry();
+          return;
+        }
+
+        if(!authenticated)rejectInitial('Room WebSocket returned an invalid message.');
+        else this.events.error('Room WebSocket returned an invalid message.');
+        closeForRetry();
+      };
+
+      ws.onerror=()=>{
+        if(this.ws!==ws || generation!==this.generation)return;
+        if(!authenticated)rejectInitial('Room WebSocket connection or authentication failed.');
+      };
+
+      ws.onclose=()=>{
+        if(this.ws!==ws || generation!==this.generation)return;
+        this.ws=null;
+        for(const id of [...this.peers])this.remove(id);
+        if(!authenticated){
+          rejectInitial('Room WebSocket connection or authentication failed.');
+          return;
+        }
+        this.scheduleReconnect(generation);
+      };
+    });
+  }
+
+  private sendControl(value:unknown):void {
+    const ws=this.ws;
+    if(!ws||ws.readyState!==WebSocket.OPEN||this.connection?.role!=='host')throw new Error('Host room connection is unavailable.');
+    ws.send(JSON.stringify(value));
+  }
+
+  saveCheckpoint(data:string,revision:number,round:number,replace=false):void {
+    if(new TextEncoder().encode(data).length>MAX_CHECKPOINT_DATA)throw new Error('Saved game checkpoint is too large.');
+    this.sendControl({type:'checkpoint-save',revision,round,replace,data});
+  }
+
+  requestCheckpoints():void {this.sendControl({type:'checkpoint-list'});}
+  loadCheckpoint(id:string):void {
+    if(!/^[A-Za-z0-9_-]{1,80}$/.test(id))throw new Error('Invalid saved game ID.');
+    this.sendControl({type:'checkpoint-load',id});
+  }
+
+  qaDropConnection():void {
+    const ws=this.ws;
+    if(ws?.readyState===WebSocket.OPEN)ws.close(4000,'qa-reconnect');
+  }
+
+  qaReconnects():number {
+    return this.qaReconnectCount;
+  }
+
+  send(id:string,text:string):void {
+    const ws=this.ws;
+    if(!ws || ws.readyState!==WebSocket.OPEN || !this.peers.has(id)){
+      throw Error('Cloudflare room relay is reconnecting.');
+    }
+    if(new TextEncoder().encode(text).length>MAX_RELAY_DATA){
+      throw Error('Room relay message is too large.');
+    }
+    ws.send(JSON.stringify({type:'relay',to:id,data:text}));
+  }
+
+  private remove(id:string):void {
+    if(!this.peers.delete(id))return;
+    this.events.remove(id);
+  }
+
+  reset():void {
+    this.generation++;
+    this.clearReconnect();
+    this.reconnectAttempt=0;
+    this.qaReconnectCount=0;
+    this.connection=null;
+    const ws=this.ws;
+    this.ws=null;
+    ws?.close();
+    for(const id of [...this.peers])this.remove(id);
+  }
 }
