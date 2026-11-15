@@ -1,0 +1,85 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const read=p=>readFileSync(p,'utf8');
+const write=(p,s)=>writeFileSync(p,s);
+function edit(p,a,b){const s=read(p);assert.equal(s.split(a).length-1,1,p+': missing unique anchor '+a.slice(0,70));write(p,s.replace(a,b));}
+function section(p,a,b,replacement){const s=read(p),start=s.indexOf(a),end=s.indexOf(b,start);assert.ok(start>=0&&end>start,p+': missing section');write(p,s.slice(0,start)+replacement+s.slice(end));}
+const ui='src/game-ui.ts';
+const old=read(ui).split('\n').find(line=>line.startsWith(' if(targetMode){const description='));assert.ok(old);
+edit(ui,old,` if(targetMode){
+  const description=document.createElement('p');description.textContent=\`Click or tap a highlighted \${targetMode} target on the board.\`;targets.append(description);
+  const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
+  if(!legalTargetIds(s,viewer,targetMode).length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
+ }`);
+assert.ok(!read(ui).includes("select(targets,'Legal target'"));assert.ok(!read(ui).includes("button(targets,'Use target'"));
+const controller='src/game/board/three/controller.ts';
+section(controller,'  /** Preview from the legal-target selector;', '  private paintSVG()', '');
+const renderer='src/game/board/three/renderer.ts';
+edit(renderer,'3D island board. Use the legal-target selector for keyboard placement.','3D island board. Click or tap a highlighted location. Use 2D view for keyboard placement.');
+const unit='tests/target-feedback.test.ts';
+edit(unit,"test('3D and SVG share legal dropdown preview without changing Use target', () => {", "test('3D and SVG keep on-board feedback without coordinate selection controls', () => {");
+edit(unit,"  assert.ok(ui.includes('boardRenderer?.highlightTarget(choice.value)'));", "  assert.ok(!ui.includes(\"select(targets,'Legal target'\"));");
+edit(unit,"  assert.ok(ui.includes(\"button(targets,'Use target',()=>moveTarget(choice.value))\"));", "  assert.ok(!ui.includes(\"button(targets,'Use target'\"));\n  assert.ok(ui.includes(\"button(targets,'Cancel selection'\"));\n  assert.ok(ui.includes('Click or tap a highlighted'));");
+write(unit,read(unit)+`\ntest('entering target mode does not preselect a hidden coordinate',()=>{\n const preview=new TargetFeedback();preview.update('board:road',['a','b']);\n assert.equal(preview.active,null);preview.hover('b');assert.equal(preview.active,'b');\n preview.hover(null);assert.equal(preview.active,null);\n});\n`);
+const imports="import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';\n";
+for(const p of ['scripts/qa-e2e.mjs','scripts/qa-three-live.mjs','scripts/qa-compact-actions.mjs','scripts/qa-card-camera.mjs','scripts/qa-target-feedback.mjs'])write(p,imports+read(p));
+const e2e='scripts/qa-e2e.mjs';let e=read(e2e),count=0;
+e=e.replace(/await (host|actor)\.locator\('#targets select'\)\.first\(\)\.selectOption\(\{index:0\}\);\s*await \1\.getByRole\('button',\{name:'Use target'\}\)\.click\(\);/g,(_,name)=>{count++;return `await clickBoardTarget(${name});`;});assert.equal(count,5);write(e2e,e);
+const compact='scripts/qa-compact-actions.mjs';
+edit(compact,"await page.getByRole('button',{name:'Use target',exact:true}).click();","await clickBoardTarget(page);");
+const three='scripts/qa-three-live.mjs';
+edit(three,"  const id = await page.locator('#targets select').inputValue();", "  await assertDirectTargets(page); const [id] = await boardTargetIds(page); assert.ok(id);");
+section(three,"  await page.evaluate(() => window.__targetNode = document.querySelector('#targets select'));", "  assert.equal(await page.locator('#board [data-building-kind]').count(), 1);", `  await assertDirectTargets(page);
+  await page.evaluate(() => window.__targetNode = document.querySelector('#targets .target-cancel'));
+  const selected = await boardTargetIds(page); await drag(page, 30, -8);
+  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
+  assert.deepEqual(await boardTargetIds(page), selected);
+  await page.locator('#board-render-toggle').click(); assert.equal(await page.locator('#board svg.island-board').count(), 1);
+  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
+  await clickBoardTarget(page, selected[0]);
+`);
+edit(three,'Camera and renderer switching retain input nodes; context loss preserves gameplay in SVG','Camera and renderer switching retain direct-board controls; context loss preserves gameplay in SVG');
+const camera='scripts/qa-card-camera.mjs';
+edit(camera,"const selected=await page.locator('#targets select').inputValue();assert.ok(selected);", "const [selected]=await boardTargetIds(page);assert.ok(selected);");
+let cam=read(camera),uses=cam.split("await page.getByRole('button',{name:'Use target',exact:true}).click();").length-1;assert.equal(uses,2);
+cam=cam.replaceAll("await page.getByRole('button',{name:'Use target',exact:true}).click();","await clickBoardTarget(page);");write(camera,cam);
+const feedback='scripts/qa-target-feedback.mjs';
+section(feedback,'async function preview(p,action,label){','try{\n if(!process.env.QA_URL)',`async function preview(p,action,label){
+ await p.getByRole('button',{name:action,exact:true}).click();await settle(p);await assertDirectTargets(p);
+ const ids=await boardTargetIds(p);assert.ok(ids.length>=2,label+' needs choices');
+ await p.mouse.move(0,0);await settle(p);assert.equal((await inspect(p)).highlightedTarget,null,label+' starts with no hidden selection');
+ const a=ids[0],b=ids[1],before=await inspect(p),status=await p.locator('#game-status').textContent();
+ await p.evaluate(()=>window.__oldTargetCancel=document.querySelector('#targets .target-cancel'));
+ const point=await boardTargetPoint(p,a);assert.ok(point);
+ await p.mouse.move(point.x,point.y);await settle(p);await orange(p,a,label+' first hover');
+ const second=await boardTargetPoint(p,b);assert.ok(second);await p.mouse.move(second.x,second.y);await settle(p);await orange(p,b,label+' second hover');
+ await p.mouse.move(0,0);await settle(p);const after=await inspect(p);assert.equal(after.highlightedTarget,null,label+' leave clears orange');
+ assert.equal(after.instanceId,before.instanceId);assert.equal(after.mapBuilds,before.mapBuilds);
+ assert.deepEqual(after.camera,before.camera);assert.deepEqual(after.projection,before.projection);assert.equal(after.zoom,before.zoom);
+ assert.deepEqual(after.buildings,before.buildings);assert.deepEqual(after.roads,before.roads);assert.equal(after.robber,before.robber);assert.equal(after.picks,before.picks);
+ assert.equal(await p.locator('#game-status').textContent(),status);
+ assert.ok(await p.evaluate(()=>window.__oldTargetCancel===document.querySelector('#targets .target-cancel')));
+ await p.mouse.move(second.x,second.y);await settle(p);await orange(p,b,label+' screenshot highlight');
+ check(label+': no coordinate controls; pointer-only orange feedback preserves camera and state');
+ return {a,b,point:second,before};
+}
+`);
+let feedbackSource=read(feedback);assert.equal(feedbackSource.split("await page.getByRole('button',{name:'Use target',exact:true}).click();").length-1,2);
+feedbackSource=feedbackSource.replaceAll("await page.getByRole('button',{name:'Use target',exact:true}).click();","await clickBoardTarget(page,state.b);");write(feedback,feedbackSource);
+edit(feedback,'Confirm places the selected settlement and removes stale highlight','Direct board click places the pointed settlement and removes stale highlight');
+section(feedback," await page.locator('#targets select').selectOption(second);",' const context=await browser.newContext',` await assertDirectTargets(page);await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').count(),0);
+ await nodes.nth(1).hover();assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),second);
+ await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').count(),0);
+ await nodes.nth(0).focus();assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),first);
+ assert.equal(await nodes.nth(0).evaluate(n=>getComputedStyle(n).fill),'rgb(255, 152, 31)');
+ await nodes.nth(0).press('Enter');assert.equal(await page.locator('#board [data-building-kind]').count(),1);
+ await page.locator('#board-render-toggle').click();await ready(page);assert.equal((await inspect(page)).buildings.length,1);assert.equal((await inspect(page)).highlightedTarget,null);
+ await page.getByRole('button',{name:'Place road',exact:true}).click();await assertDirectTargets(page);
+ await page.getByRole('button',{name:'Cancel selection',exact:true}).click();assert.equal((await inspect(page)).highlightedTarget,null);
+ check('SVG keyboard placement and renderer switching work without any coordinate picker');
+`);
+for(const p of [e2e,three,compact,camera,feedback]){assert.ok(!read(p).includes('#targets select'),p+': stale coordinate selector');assert.ok(!read(p).includes("name:'Use target'"),p+': stale coordinate button');}
+const workflow='.github/workflows/qa-pages.yml';
+edit(workflow,'scripts/qa-target-feedback.mjs "$RUNNER_TEMP/qa-e2e/"','scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs "$RUNNER_TEMP/qa-e2e/"');
+write('docs/target-feedback.md',`# Direct board target feedback\n\nApproved UI update: remove the Legal target coordinate dropdown and Use target button entirely. The target area contains only direct click/tap guidance, Cancel selection and a no-legal-target message when needed. No hidden coordinate form is retained.\n\nLegal building, road and robber locations remain pale yellow. The location under the pointer, touch press, or SVG keyboard focus becomes orange. Entering a mode has no automatic hidden-coordinate selection; leaving a preview clears orange. Direct canvas clicks and mobile taps still pass through the existing game validation. The SVG fallback remains keyboard-operable on the board.\n\nPreview is client-local and never submits a move, redraws controls, rebuilds the map or resets the camera. Cancellation, completed moves and mode changes clear obsolete targets. Observers have no gameplay targets.\n\nBrowser tests now interact with actual board hit areas, including settlement, road, city, robber, Road Building, Undo, 2D fallback, touch cancellation, camera preservation and multiplayer reconnect. The shared browser-test helper reads only public target geometry and sends real pointer events; it is not imported by production code.\n`);
+console.log('Prepared source and regression scripts: coordinate controls removed, direct board placement preserved.');

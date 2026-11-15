@@ -1,0 +1,58 @@
+name: Verify direct board targets
+on:
+  push:
+    branches: [ui/direct-board-targets]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply approved UI removal and update real input tests
+        run: node scripts/prepare-direct-targets.mjs
+      - name: Typecheck unit tests and production build
+        run: npm ci && npm run typecheck && npm test && npm run build
+      - name: Prepare browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Exercise direct targets fallback touch and all development cards
+        run: |
+          node scripts/qa-target-feedback.mjs
+          CAMERA_EXPECT_STABLE=1 node scripts/qa-card-camera.mjs
+          node scripts/qa-three-live.mjs
+          node scripts/qa-compact-actions.mjs
+      - name: Export validated source without publishing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p direct-target-evidence
+          git diff -- src tests scripts .github/workflows/qa-pages.yml docs > direct-target-evidence/source.patch
+          node --input-type=module <<'NODE'
+          import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
+          const paths=['src/game-ui.ts','src/game/board/three/controller.ts','src/game/board/three/renderer.ts','tests/target-feedback.test.ts','scripts/qa-board-targets.mjs','scripts/qa-e2e.mjs','scripts/qa-three-live.mjs','scripts/qa-compact-actions.mjs','scripts/qa-card-camera.mjs','scripts/qa-target-feedback.mjs','.github/workflows/qa-pages.yml','docs/target-feedback.md'];
+          const entries=[];
+          for(const path of paths){
+            const content=await readFile(path,'utf8');
+            const response=await fetch('https://api.github.com/repos/'+process.env.GITHUB_REPOSITORY+'/git/blobs',{method:'POST',headers:{Authorization:'Bearer '+process.env.GH_TOKEN,'Content-Type':'application/json',Accept:'application/vnd.github+json'},body:JSON.stringify({content,encoding:'utf-8'})});
+            if(!response.ok)throw new Error('Could not export source blob for '+path);
+            const {sha}=await response.json();entries.push({path,mode:'100644',type:'blob',sha});
+          }
+          await writeFile('direct-target-evidence/manifest.json',JSON.stringify({base:'b42a1c1d3d9bdaad02d5b18f4aeea54814521cf1',entries},null,2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: direct-board-target-evidence
+          retention-days: 7
+          path: |
+            direct-target-evidence
+            target-evidence
+            camera-evidence
+            three-evidence
+            compact-action-evidence
