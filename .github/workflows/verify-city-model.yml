@@ -1,0 +1,64 @@
+name: Verify refined city model
+on:
+  push:
+    branches: [art/city-townhall]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: verify-city-model
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Integrate city-only model
+        run: node scripts/apply-city-model.mjs
+      - name: Validate source
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Install browser verification
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Inspect city art and real upgrade controls
+        run: node scripts/qa-city-model.mjs
+      - name: Regress integrated local 3D and camera
+        run: |
+          node scripts/qa-three-live.mjs
+          CAMERA_EXPECT_STABLE=1 node scripts/qa-card-camera.mjs
+      - name: Build clean publication and export verified source blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm run build
+          node --input-type=module <<'NODE'
+          import {readFile,writeFile,mkdir} from 'node:fs/promises';
+          const paths=['src/game/board/three/art.ts','src/game/board/three/city-model.ts','tests/city-model.test.ts','scripts/qa-city-model.mjs','docs/city-townhall-model.md'];
+          const entries=[];
+          for(const path of paths){
+            const content=await readFile(path,'utf8');
+            const response=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/git/blobs`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'},body:JSON.stringify({content,encoding:'utf-8'})});
+            if(!response.ok)throw new Error(`Blob export failed (${response.status})`);
+            const {sha}=await response.json();entries.push({path,mode:'100644',type:'blob',sha});
+            const dest=`city-evidence/source/${path}`;await mkdir(dest.slice(0,dest.lastIndexOf('/')),{recursive:true});await writeFile(dest,content);
+          }
+          await writeFile('city-evidence/blob-manifest.json',JSON.stringify({sourceCommit:process.env.GITHUB_SHA,entries},null,2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: city-model-evidence
+          path: |
+            city-evidence
+            three-evidence
+            camera-evidence
+          retention-days: 7
