@@ -165,7 +165,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
-          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs "$RUNNER_TEMP/qa-e2e/"
+          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs "$RUNNER_TEMP/qa-e2e/"
           cd "$RUNNER_TEMP/qa-e2e"
           npm init -y >/dev/null 2>&1
           npm install --silent playwright@1.58.0 pngjs@7.0.0
@@ -173,6 +173,7 @@ jobs:
           node qa-e2e.mjs
           node qa-three-live.mjs
           node qa-compact-actions.mjs
+          node qa-target-feedback.mjs
 
       - name: Upload integrated 3D evidence
         if: always()
@@ -184,6 +185,7 @@ jobs:
           path: |
             ${{ runner.temp }}/qa-e2e/three-evidence
             ${{ runner.temp }}/qa-e2e/compact-action-evidence
+            ${{ runner.temp }}/qa-e2e/target-evidence
 
       - name: Report QA environment
         env:

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TargetFeedback, TARGET_COLORS } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
@@ -16,7 +17,10 @@ export class ThreeBoardRenderer {
   private map = new THREE.Group();
   private pieces = new THREE.Group();
   private targets = new THREE.Group();
-  private targetMaterial = new THREE.MeshBasicMaterial({ color: '#fff3a0', transparent: true, opacity: .8, depthTest: false, depthWrite: false });
+  private targetMaterial = new THREE.MeshBasicMaterial({ color: TARGET_COLORS.legal, transparent: true, opacity: .8, depthTest: false, depthWrite: false });
+  private activeTargetMaterial = new THREE.MeshBasicMaterial({ color: TARGET_COLORS.active, transparent: true, opacity: .94, depthTest: false, depthWrite: false });
+  private preview = new TargetFeedback();
+  private ray = new THREE.Raycaster();
   private geometry: ReturnType<typeof worldGeometry>;
   private view: BoardSceneView;
   private key = '';
@@ -65,13 +69,16 @@ export class ThreeBoardRenderer {
     this.controls.maxTargetRadius = 2; this.controls.enableDamping = false;
     this.controls.addEventListener('change', this.invalidate);
     this.controls.addEventListener('start', () => { this.manualView = true; });
+    this.controls.addEventListener('start', this.leaveTarget);
     const signal = this.abort.signal;
     this.canvas.addEventListener('pointerdown', event => {
       if (event.button === 1) event.preventDefault();
-      if (event.isPrimary && event.button === 0 && !this.adjustTouch) this.down = { x: event.clientX, y: event.clientY };
+      if (event.isPrimary && event.button === 0 && !this.adjustTouch) { this.down = { x: event.clientX, y: event.clientY }; this.hover(event); }
     }, { signal });
     this.canvas.addEventListener('pointerup', this.pick, { signal });
-    this.canvas.addEventListener('pointercancel', () => { this.down = null; }, { signal });
+    this.canvas.addEventListener('pointermove', this.hover, { signal });
+    this.canvas.addEventListener('pointerleave', this.leaveTarget, { signal });
+    this.canvas.addEventListener('pointercancel', this.leaveTarget, { signal });
     this.canvas.addEventListener('auxclick', event => { if (event.button === 1) event.preventDefault(); }, { signal });
     this.canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault(); queueMicrotask(() => { if (!this.disposed) this.failed('3D connection to the graphics device was lost. Switched to 2D.'); });
@@ -150,6 +157,7 @@ export class ThreeBoardRenderer {
       });
       const p = this.geometry.hexes.get(this.robberId); if (this.robber && p) this.robber.position.set(p.x, .51, p.z);
     }
+    this.preview.update(`${this.key}:${view.targetMode ?? ''}`, view.legalTargets);
     const targetKey = JSON.stringify([view.targetMode, view.legalTargets]);
     if (targetKey !== this.targetKey) {
       this.targetKey = targetKey; this.targets.clear();
@@ -169,8 +177,42 @@ export class ThreeBoardRenderer {
         mesh.userData.id = id; mesh.renderOrder = 8; mesh.name = `legal:${id}`; this.targets.add(mesh);
       }
     }
-    this.resize(); this.invalidate();
+    this.paintTargets(); this.resize(); this.invalidate();
   }
+  /** Presentation-only highlight: never changes the camera, scene identity or game. */
+  highlightTarget(id: string | null): void {
+    this.preview.select(id); this.paintTargets();
+  }
+  private paintTargets(): void {
+    let changed = false;
+    for (const object of this.targets.children) {
+      if (!(object instanceof THREE.Mesh)) continue;
+      const active = object.userData.id === this.preview.active;
+      const material = active ? this.activeTargetMaterial : this.targetMaterial;
+      if (object.material !== material) { object.material = material; changed = true; }
+      object.userData.highlighted = active; object.renderOrder = active ? 9 : 8;
+    }
+    if (changed) this.invalidate();
+  }
+  private targetAt(x: number, y: number): string | null {
+    if (this.disposed || this.adjustTouch || !this.view.targetMode || document.body.classList.contains('network-resyncing')) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+    this.scene.updateMatrixWorld(true); this.camera.updateMatrixWorld(true);
+    this.ray.setFromCamera(new THREE.Vector2((x - rect.left) / rect.width * 2 - 1, -(y - rect.top) / rect.height * 2 + 1), this.camera);
+    const hit = this.ray.intersectObjects(this.targets.children, false)[0];
+    const id = hit ? String(hit.object.userData.id) : null;
+    return id && this.view.legalTargets.includes(id) ? id : null;
+  }
+  private hover = (event: PointerEvent): void => {
+    if (!event.isPrimary) return;
+    const dragging = (event.buttons & 6) !== 0 || !!this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 5;
+    const id = dragging ? null : this.targetAt(event.clientX, event.clientY);
+    this.preview.hover(id); this.canvas.style.cursor = id ? 'pointer' : ''; this.paintTargets();
+  };
+  private leaveTarget = (): void => {
+    this.down = null; this.preview.hover(null); this.canvas.style.cursor = ''; this.paintTargets();
+  };
   private corners(): THREE.Vector3[] {
     const points: THREE.Vector3[] = [];
     for (const x of [this.worldBounds.min.x, this.worldBounds.max.x]) for (const y of [this.worldBounds.min.y, this.worldBounds.max.y]) for (const z of [this.worldBounds.min.z, this.worldBounds.max.z]) points.push(new THREE.Vector3(x, y, z));
@@ -186,7 +228,7 @@ export class ThreeBoardRenderer {
     this.controls.enabled = window.innerWidth > 1100 || this.adjustTouch;
     this.canvas.style.touchAction = this.controls.enabled ? 'none' : 'pan-y';
   }
-  setTouchAdjustment(value: boolean): void { this.adjustTouch = value; this.down = null; this.touchPolicy(); }
+  setTouchAdjustment(value: boolean): void { this.adjustTouch = value; this.leaveTarget(); this.touchPolicy(); }
   resetView(): void {
     this.manualView = false;
     this.camera.zoom = 1; this.controls.target.copy(this.defaultTarget); this.controls.cursor.copy(this.defaultTarget);
@@ -212,11 +254,9 @@ export class ThreeBoardRenderer {
   private pick = (event: PointerEvent): void => {
     const down = this.down; this.down = null;
     if (this.disposed || event.button !== 0 || !down || this.adjustTouch || document.body.classList.contains('network-resyncing') || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return;
-    const rect = this.canvas.getBoundingClientRect(), ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
-    this.scene.updateMatrixWorld(true);
-    const hit = ray.intersectObjects(this.targets.children, false)[0];
-    if (hit && this.view.legalTargets.includes(String(hit.object.userData.id))) { this.pickCount++; this.choose(String(hit.object.userData.id)); }
+    const id = this.targetAt(event.clientX, event.clientY);
+    if (id) { this.preview.hover(id); this.paintTargets(); this.pickCount++; this.choose(id); }
+    if (event.pointerType === 'touch') this.leaveTarget();
   };
   private invalidate = (): void => {
     if (this.disposed || this.frame !== null) return;
@@ -229,7 +269,8 @@ export class ThreeBoardRenderer {
   inspect() {
     return { frustum: [this.camera.left, this.camera.right, this.camera.top, this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width, this.height], staticKey: this.key, manualView: this.manualView, mapBuilds: this.mapBuilds, instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
-      targets: [...this.view.legalTargets], targetMode: this.view.targetMode, triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
+      targets: [...this.view.legalTargets], targetMode: this.view.targetMode, highlightedTarget: this.preview.active, selectedTarget: this.preview.selected,
+      targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => ({ id: o.userData.id, color: (o.material as THREE.MeshBasicMaterial).color.getHexString(), active: o.userData.highlighted })), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
       oceanLayers: this.map.getObjectByName('layered-ocean')?.children.map(child => child.name).filter(Boolean) ?? [],
       boats: this.view.board.ports.map(port => ({ edge: port.edgeId, type: port.type, ratio: port.type === 'generic' ? '3:1' : '2:1', ...portBoatPlan(port, this.geometry) })),
@@ -245,7 +286,7 @@ export class ThreeBoardRenderer {
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
-    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.assets.dispose();
+    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.activeTargetMaterial.dispose(); this.assets.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.DirectionalLight) o.shadow.dispose(); });
     this.renderer.dispose(); this.renderer.forceContextLoss(); this.canvas.remove();
   }
