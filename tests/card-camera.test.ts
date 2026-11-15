@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { OrthographicCamera } from 'three';
 import { resizeManualFrustum } from '../src/game/board/three/camera-layout.ts';
 import { createGame } from '../src/game/rules/state.ts';
 import { applyEconomyCommand } from '../src/game/rules/economy.ts';
@@ -15,6 +16,14 @@ test('manual projection preserves world-per-pixel scale and center through card-
  assert.deepEqual(f,{left:-7,right:9,top:6,bottom:-4});
  const restored=resizeManualFrustum(result,next,previous)!;
  for(const key of ['left','right','top','bottom'] as const)assert.ok(Math.abs(restored[key]-f[key])<1e-12);
+});
+test('a real Three camera retains its transform and zoom when only the frustum changes',()=>{
+ const camera=new OrthographicCamera(-7,9,6,-4,.1,100);camera.position.set(2,13,10);camera.zoom=1.6;camera.lookAt(1,0,1);camera.updateProjectionMatrix();
+ const position=camera.position.toArray(),rotation=camera.quaternion.toArray();
+ const result=resizeManualFrustum(camera,{width:800,height:500},{width:760,height:540});assert.ok(result);
+ Object.assign(camera,result);camera.updateProjectionMatrix();
+ assert.equal(camera.zoom,1.6);assert.deepEqual(camera.position.toArray(),position);assert.deepEqual(camera.quaternion.toArray(),rotation);
+ assert.ok(Math.abs((camera.right-camera.left)/760-16/800)<1e-12);
 });
 test('hidden or invalid dimensions never corrupt a saved manual projection',()=>{
  const f={left:-4,right:4,top:3,bottom:-3},size={width:800,height:600};
