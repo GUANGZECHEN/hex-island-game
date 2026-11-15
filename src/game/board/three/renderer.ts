@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
@@ -35,6 +36,8 @@ export class ThreeBoardRenderer {
   private disposed = false;
   private width = 0;
   private height = 0;
+  private manualView = false;
+  private mapBuilds = 0;
   private adjustTouch = false;
   private device = '';
   private pickCount = 0;
@@ -61,6 +64,7 @@ export class ThreeBoardRenderer {
     this.controls.minPolarAngle = .10; this.controls.maxPolarAngle = Math.PI / 3; this.controls.minZoom = .65; this.controls.maxZoom = 3;
     this.controls.maxTargetRadius = 2; this.controls.enableDamping = false;
     this.controls.addEventListener('change', this.invalidate);
+    this.controls.addEventListener('start', () => { this.manualView = true; });
     const signal = this.abort.signal;
     this.canvas.addEventListener('pointerdown', event => {
       if (event.button === 1) event.preventDefault();
@@ -78,6 +82,7 @@ export class ThreeBoardRenderer {
     this.update(view); this.touchPolicy(); this.resize();
   }
   private rebuildMap(): void {
+    this.mapBuilds++;
     disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
     this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = '';
@@ -183,17 +188,26 @@ export class ThreeBoardRenderer {
   }
   setTouchAdjustment(value: boolean): void { this.adjustTouch = value; this.down = null; this.touchPolicy(); }
   resetView(): void {
+    this.manualView = false;
     this.camera.zoom = 1; this.controls.target.copy(this.defaultTarget); this.controls.cursor.copy(this.defaultTarget);
     this.camera.position.copy(this.defaultTarget).add(new THREE.Vector3(0, 13, 10).normalize().multiplyScalar(24)); this.controls.update(); this.fit(); this.invalidate();
   }
   topView(): void {
+    this.manualView = false;
     this.camera.position.copy(this.controls.target).add(new THREE.Vector3(0, 24, 2.5)); this.camera.zoom = 1; this.controls.update(); this.fit(); this.invalidate();
   }
   private resize = (): void => {
     if (this.disposed) return; this.touchPolicy();
     const w = Math.floor(this.host.clientWidth), h = Math.floor(this.host.clientHeight);
     if (w < 1 || h < 1 || (w === this.width && h === this.height)) return;
-    this.width = w; this.height = h; this.renderer.setSize(w, h, false); this.fit(); this.invalidate();
+    // Card notices, hand rows and target controls may resize the surrounding UI.
+    // Resizing the canvas must not refit a view that the player deliberately adjusted.
+    const preserved = this.manualView ? resizeManualFrustum(this.camera,
+      { width: this.width, height: this.height }, { width: w, height: h }) : null;
+    this.width = w; this.height = h; this.renderer.setSize(w, h, false);
+    if (preserved) { Object.assign(this.camera, preserved); this.camera.updateProjectionMatrix(); }
+    else this.fit();
+    this.invalidate();
   };
   private pick = (event: PointerEvent): void => {
     const down = this.down; this.down = null;
@@ -213,7 +227,7 @@ export class ThreeBoardRenderer {
   };
   /** Public diagnostics, available through a QA-only facade. No game-state write API. */
   inspect() {
-    return { instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
+    return { frustum: [this.camera.left, this.camera.right, this.camera.top, this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width, this.height], staticKey: this.key, manualView: this.manualView, mapBuilds: this.mapBuilds, instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
       targets: [...this.view.legalTargets], targetMode: this.view.targetMode, triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
