@@ -104,7 +104,9 @@ jobs:
         if: steps.signaling_mode.outputs.mode == 'temporary'
         run: |
           set -euo pipefail
-          setsid "$RUNNER_TEMP/cloudflared" tunnel             --url http://127.0.0.1:8787             --no-autoupdate             --loglevel info             >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
+          # Use the supported TCP transport after repeated default-transport readiness failures.
+          # This changes only this temporary runner tunnel, not the permanent Worker or game protocol.
+          setsid "$RUNNER_TEMP/cloudflared" tunnel             --protocol http2             --url http://127.0.0.1:8787             --no-autoupdate             --loglevel info             >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
 
           tunnel_url=''
@@ -127,9 +129,13 @@ jobs:
         if: steps.signaling_mode.outputs.mode == 'temporary'
         run: |
           set -euo pipefail
-          for attempt in {1..30}; do
+          for attempt in {1..45}; do
             status=$(curl --silent --output /dev/null --write-out '%{http_code}'               --request OPTIONS               --header 'Origin: https://guangzechen.github.io'               --header 'Access-Control-Request-Method: POST'               --header 'Access-Control-Request-Headers: content-type'               --max-time 8               "$QA_SIGNALING_URL/rooms" || true)
             if [[ "$status" == "204" ]]; then exit 0; fi
+            if (( attempt % 10 == 0 )); then
+              registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
+              echo "QA ingress check $attempt: HTTP $status; registered transport connections: $registered"
+            fi
             sleep 2
           done
           echo '::error::QA ingress did not become reachable within the propagation window.'
@@ -159,13 +165,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
-          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs "$RUNNER_TEMP/qa-e2e/"
+          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs "$RUNNER_TEMP/qa-e2e/"
           cd "$RUNNER_TEMP/qa-e2e"
           npm init -y >/dev/null 2>&1
           npm install --silent playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
           node qa-e2e.mjs
           node qa-three-live.mjs
+          node qa-compact-actions.mjs
 
       - name: Upload integrated 3D evidence
         if: always()
@@ -174,7 +181,9 @@ jobs:
           name: integrated-three-evidence
           retention-days: 7
           if-no-files-found: ignore
-          path: ${{ runner.temp }}/qa-e2e/three-evidence
+          path: |
+            ${{ runner.temp }}/qa-e2e/three-evidence
+            ${{ runner.temp }}/qa-e2e/compact-action-evidence
 
       - name: Report QA environment
         env:
