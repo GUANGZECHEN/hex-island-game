@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
 
-const qaUrl=process.env.QA_URL;
+const baseQaUrl=process.env.QA_URL;
+const fallbackUrl=baseQaUrl?new URL(baseQaUrl):null;if(fallbackUrl)fallbackUrl.searchParams.set('renderer','2d');
+const qaUrl=fallbackUrl?.href;
 const signalingUrl=process.env.QA_SIGNALING_URL;
 if(!qaUrl)throw new Error('QA_URL is required.');
 if(!signalingUrl)throw new Error('QA_SIGNALING_URL is required.');

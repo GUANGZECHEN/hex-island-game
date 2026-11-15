@@ -38,8 +38,10 @@ export function installCompactBoardLayout(): () => void {
     frame = null;
     if (window.innerWidth <= 1100 || game.hidden) { clear(); return; }
     const svg = board.querySelector<SVGSVGElement>('svg.island-board');
-    if (!svg) { clear(); return; }
-    const bounds = svg.viewBox.baseVal;
+    const canvas = board.querySelector<HTMLCanvasElement>('canvas[data-board-aspect]');
+    const aspect = Number(canvas?.dataset.boardAspect);
+    if (!svg && !(aspect > 0)) { clear(); return; }
+    const bounds = svg ? svg.viewBox.baseVal : {width:aspect, height:1};
     const panelStyle = getComputedStyle(panel), boardStyle = getComputedStyle(board);
     const width = panel.clientWidth - px(panelStyle.paddingLeft) - px(panelStyle.paddingRight);
     const height = board.clientHeight - px(boardStyle.paddingTop) - px(boardStyle.paddingBottom);
@@ -57,11 +59,13 @@ export function installCompactBoardLayout(): () => void {
   resize?.observe(panel); resize?.observe(stage); resize?.observe(board);
   const mutation = new MutationObserver(schedule);
   mutation.observe(board, {childList: true});
+  board.addEventListener('board-layout-ready', schedule);
   window.addEventListener('resize', schedule, {passive: true});
   window.visualViewport?.addEventListener('resize', schedule, {passive: true});
   schedule();
   return () => {
     resize?.disconnect(); mutation.disconnect();
+    board.removeEventListener('board-layout-ready', schedule);
     window.removeEventListener('resize', schedule);
     window.visualViewport?.removeEventListener('resize', schedule);
     if (frame !== null) window.cancelAnimationFrame(frame);

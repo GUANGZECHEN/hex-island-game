@@ -1,4 +1,5 @@
 import './style.css';
+import { BoardRendererController } from './game/board/three/controller';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
@@ -309,7 +310,15 @@ function renderPlayerStrip(s:GameState,activeId:string){
   card.append(header,publicStats,pieces);if(awards.childElementCount)card.append(awards);strip.append(card);
  }
 }
+let boardRenderer:BoardRendererController|null=null;
 function drawBoard(){
+ if(!state)return;
+ if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)));
+ boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
+  players:state.players.map(p=>({id:p.id,name:playerName(p.id),color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
+  targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
+}
+function drawSvgBoard(){
  const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
  const legal=targetMode?new Set(legalTargetIds(s,viewer,targetMode)):new Set<string>();
  for(const edge of view.edges){
