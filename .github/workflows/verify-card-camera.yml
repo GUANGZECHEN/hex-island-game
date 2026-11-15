@@ -1,0 +1,32 @@
+name: Verify development-card camera stability
+on:
+  push:
+    branches: [fix/card-camera-stability]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-card-camera
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install source and browser dependencies
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false playwright@1.58.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Reproduce development-card camera change
+        run: node scripts/qa-card-camera.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: card-camera-evidence
+          path: camera-evidence
+          retention-days: 7
