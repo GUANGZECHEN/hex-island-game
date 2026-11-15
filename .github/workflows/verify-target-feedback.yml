@@ -1,0 +1,57 @@
+name: Verify orange target feedback
+on:
+  push:
+    branches: [ui/orange-target-feedback]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: verify-orange-target-feedback
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply bounded source patch
+        run: node scripts/prepare-target-feedback.mjs && node scripts/prepare-target-feedback-extra.mjs
+      - name: Typecheck unit tests and build
+        run: npm ci && npm run typecheck && npm test && npm run build
+      - name: Prepare browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verify target feedback and existing 3D behavior
+        run: |
+          node scripts/qa-target-feedback.mjs
+          node scripts/qa-three-live.mjs
+          npm run build
+      - name: Export verified source blobs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {readFile,writeFile,mkdir} from 'node:fs/promises';
+          const paths=['src/game/board/target-feedback.ts','src/game/board/three/controller.ts','src/game/board/three/renderer.ts','src/game-ui.ts','src/target-feedback.css','tests/target-feedback.test.ts','scripts/qa-target-feedback.mjs','docs/target-feedback.md','.github/workflows/qa-pages.yml'];
+          const entries=[];
+          for(const path of paths){
+            const content=await readFile(path,'utf8');
+            const response=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/git/blobs`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json'},body:JSON.stringify({content,encoding:'utf-8'})});
+            if(!response.ok)throw Error('Could not export verified blob');
+            entries.push({path,mode:'100644',type:'blob',sha:(await response.json()).sha});
+          }
+          await mkdir('target-evidence',{recursive:true});
+          await writeFile('target-evidence/manifest.json',JSON.stringify({base:'be4b379a82e9c13451fecf63b2cab26dc6ec7f9f',entries},null,2));
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orange-target-evidence
+          retention-days: 7
+          path: |
+            target-evidence
+            three-evidence

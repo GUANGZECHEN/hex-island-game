@@ -1,6 +1,8 @@
 import { ThreeBoardRenderer } from './renderer.ts';
-import type { BoardSceneView } from './model.ts';
+import { staticBoardKey, type BoardSceneView } from './model.ts';
+import { TargetFeedback } from '../target-feedback.ts';
 import '../../../three-board.css';
+import '../../../target-feedback.css';
 
 /** Rendering strategy only. All state and target validation belong to the caller. */
 export class BoardRendererController {
@@ -10,6 +12,7 @@ export class BoardRendererController {
   private last: BoardSceneView | null = null;
   private reason = '';
   private abort = new AbortController();
+  private preview = new TargetFeedback();
   constructor(private host: HTMLElement, private drawSVG: () => void, private choose: (id: string) => void) {
     const toggle = document.getElementById('board-render-toggle') as HTMLButtonElement;
     const reset = document.getElementById('board-view-reset') as HTMLButtonElement;
@@ -19,17 +22,44 @@ export class BoardRendererController {
     reset.addEventListener('click', () => this.instance?.resetView(), { signal: this.abort.signal });
     top.addEventListener('click', () => this.instance?.topView(), { signal: this.abort.signal });
     touch.addEventListener('change', () => this.instance?.setTouchAdjustment(touch.checked), { signal: this.abort.signal });
+    // Delegation survives SVG redraws without changing the existing click/keyboard handlers.
+    const svgTarget = (target: EventTarget | null) => target instanceof Element ? target.closest('[data-target-id]') : null;
+    const over = (event: Event) => {
+      if (this.instance || document.body.classList.contains('network-resyncing')) return;
+      this.preview.hover(svgTarget(event.target)?.getAttribute('data-target-id') ?? null); this.paintSVG();
+    };
+    const out = (event: Event) => {
+      if (this.instance) return;
+      const next = svgTarget((event as MouseEvent).relatedTarget);
+      this.preview.hover(next?.getAttribute('data-target-id') ?? null); this.paintSVG();
+    };
+    for (const type of ['pointerover', 'pointerdown', 'focusin']) host.addEventListener(type, over, { signal: this.abort.signal });
+    for (const type of ['pointerout', 'focusout', 'pointercancel', 'pointerleave']) host.addEventListener(type, out, { signal: this.abort.signal });
     window.addEventListener('pagehide', () => this.dispose(), { once: true, signal: this.abort.signal });
     if (new URLSearchParams(location.search).has('qa3d')) {
       (window as unknown as Record<string, unknown>).__hex3D = {
-        inspect: () => this.instance?.inspect() ?? { mode: '2d', reason: this.reason },
+        inspect: () => this.instance?.inspect() ?? { mode: '2d', reason: this.reason, highlightedTarget: this.preview.active },
         point: (id: string) => this.instance?.targetPoint(id) ?? null,
         loseContext: () => this.instance?.simulateContextLoss(),
       };
     }
   }
+  /** Preview from the legal-target selector; selecting alone never places a piece. */
+  highlightTarget(id: string | null): void {
+    this.preview.select(id);
+    if (this.instance) this.instance.highlightTarget(this.preview.selected);
+    else this.paintSVG();
+  }
+  private paintSVG(): void {
+    for (const target of this.host.querySelectorAll<SVGElement>('[data-target-id]')) {
+      const active = target.getAttribute('data-target-id') === this.preview.active;
+      target.classList.toggle('target-active', active);
+      target.setAttribute('data-target-active', String(active));
+    }
+  }
   update(view: BoardSceneView): void {
     this.last = view;
+    this.preview.update(`${staticBoardKey(view.board)}:${view.targetMode ?? ''}`, view.legalTargets);
     if (!this.explicit2D && !this.fallback) {
       try {
         if (this.instance) this.instance.update(view);
@@ -40,10 +70,11 @@ export class BoardRendererController {
           });
           this.instance.setTouchAdjustment((document.getElementById('board-adjust-view') as HTMLInputElement).checked);
         }
+        this.instance.highlightTarget(this.preview.selected);
       } catch (error) { this.reason = `3D unavailable: ${error instanceof Error ? error.message : String(error)}. Using 2D.`; this.fallback = true; this.instance?.dispose(); this.instance = null; }
     }
     if (this.explicit2D || this.fallback) {
-      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG();
+      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG(); this.paintSVG();
     }
     const active = !!this.instance;
     (document.getElementById('board-render-toggle') as HTMLButtonElement).textContent = active ? '2D view' : '3D view';
