@@ -4,7 +4,7 @@ on:
     branches: [fix/card-camera-stability]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: verify-card-camera
   cancel-in-progress: true
@@ -20,13 +20,50 @@ jobs:
       - name: Install source and browser dependencies
         run: |
           npm ci
-          npm install --no-save --package-lock=false playwright@1.58.0
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
-      - name: Reproduce development-card camera change
+      - name: Prepare card and layout regression suite
+        run: node scripts/prepare-card-camera-tests.mjs
+      - name: Reproduce card plus layout transition before fix
+        env:
+          CAMERA_EVIDENCE: camera-evidence/before
         run: node scripts/qa-card-camera.mjs
+      - name: Apply bounded camera-only fix
+        run: node scripts/apply-card-camera-fix.mjs
+      - name: Typecheck, unit tests and production build
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Verify card transitions retain manually adjusted view
+        env:
+          CAMERA_EVIDENCE: camera-evidence/after
+          CAMERA_EXPECT_STABLE: '1'
+        run: node scripts/qa-card-camera.mjs
+      - name: Regress integrated 3D local controls and layout
+        run: node scripts/qa-three-live.mjs
+      - name: Export validated source blobs without changing a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFile,writeFile,mkdir} from 'node:fs/promises';
+          const paths=['src/game/board/three/renderer.ts','src/game/board/three/camera-layout.ts','tests/card-camera.test.ts','scripts/qa-card-camera.mjs','docs/card-camera-stability.md'];
+          const entries=[];
+          for(const path of paths){
+            const content=await readFile(path,'utf8');
+            const response=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/git/blobs`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'},body:JSON.stringify({content,encoding:'utf-8'})});
+            if(!response.ok)throw new Error(`Blob export failed (${response.status})`);
+            const {sha}=await response.json();entries.push({path,mode:'100644',type:'blob',sha});
+            const dest=`camera-evidence/source/${path}`;await mkdir(dest.slice(0,dest.lastIndexOf('/')),{recursive:true});await writeFile(dest,content);
+          }
+          await writeFile('camera-evidence/blob-manifest.json',JSON.stringify({sourceCommit:process.env.GITHUB_SHA,entries},null,2));
+          NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: card-camera-evidence
-          path: camera-evidence
+          path: |
+            camera-evidence
+            three-evidence
           retention-days: 7
