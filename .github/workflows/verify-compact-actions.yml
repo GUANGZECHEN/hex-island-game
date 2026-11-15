@@ -1,0 +1,66 @@
+name: Verify compact action labels in isolation
+on:
+  push:
+    branches: ['ui/compact-action-labels']
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply bounded source presentation patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          path=Path('src/game-ui.ts')
+          assert subprocess.check_output(['git','hash-object',str(path)],text=True).strip()=='239dc7aca154d88cd78cf2152ef953876fbfdc39', 'Unexpected base source'
+          source=path.read_text()
+          anchor="import './style.css';"
+          assert source.count(anchor)==1
+          source=source.replace(anchor,anchor+"\nimport './compact-actions.css';\nimport { setCompactActionLabel } from './game/ui/compact-actions';")
+          anchor="text.className='action-label';text.textContent=label;b.append("
+          assert source.count(anchor)==2
+          source=source.replace(anchor,"text.className='action-label';setCompactActionLabel(b,text,label);b.append(")
+          anchor="if(cost){const list=document.createElement('span');list.className='action-cost';"
+          assert source.count(anchor)==1
+          source=source.replace(anchor,"if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';")
+          path.write_text(source)
+          PY
+      - name: Validate source and production build
+        run: npm ci && npm run typecheck && npm test && npm run build
+      - name: Install Chromium verification
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.0
+          npx playwright install --with-deps chromium > /dev/null
+      - name: Verify controls and compact layout
+        run: node scripts/qa-compact-actions.mjs
+      - name: Export verified source blobs without updating a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, urllib.request
+          paths=['src/game-ui.ts','src/game/ui/compact-actions.ts','src/compact-actions.css','tests/compact-actions.test.ts','scripts/qa-compact-actions.mjs','docs/compact-action-labels.md']
+          manifest=[]
+          for path in paths:
+              content=Path(path).read_text()
+              request=urllib.request.Request('https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/blobs',data=json.dumps({'content':content,'encoding':'utf-8'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(request,timeout=30) as response: blob=json.load(response)
+              manifest.append({'path':path,'mode':'100644','type':'blob','sha':blob['sha']})
+              target=Path('compact-action-evidence/source')/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(content)
+          Path('compact-action-evidence/blob-manifest.json').write_text(json.dumps(manifest,indent=2))
+          print('VERIFIED_SOURCE_BLOBS='+json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compact-actions-verified
+          path: compact-action-evidence
+          retention-days: 7
