@@ -1,0 +1,43 @@
+name: Verify harbor cooperative mode
+on:
+  push:
+    branches: [feature/harbor-orders]
+permissions:
+  contents: read
+concurrency:
+  group: harbor-coop-preflight
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Prepare reproducible local verification workspace
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --only-shell chromium
+          mkdir -p verification-workspace
+          git archive HEAD | gzip > verification-workspace/source.tar.gz
+          tar czf verification-workspace/dependencies.tar.gz node_modules
+          tar czf verification-workspace/browser.tar.gz -C "$HOME/.cache" ms-playwright
+      - name: Run cooperative checks when implemented
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+          if [ -f scripts/qa-harbor-coop.mjs ]; then node scripts/qa-harbor-coop.mjs; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harbor-workspace
+          retention-days: 2
+          path: |
+            verification-workspace
+            harbor-evidence
