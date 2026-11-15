@@ -1,0 +1,40 @@
+name: Prepare isolated 3D integration workbench
+on:
+  push:
+    branches: [art/three-live]
+    paths: [.github/workflows/three-workbench.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/three-runtime
+          path: prototype
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Prepare pinned local build dependencies
+        run: |
+          npm install --save-exact three@0.180.0 --no-audit --no-fund
+          npm install --save-dev --save-exact @types/three@0.180.0 --no-audit --no-fund
+          npm install --no-save playwright@1.58.0 --no-audit --no-fund
+      - name: Archive source and dependencies without git credentials
+        run: |
+          tar --exclude='./.git' --exclude='./prototype/.git' --exclude='./node_modules' --exclude='./dist' --exclude='./worktree.tar.gz' --exclude='./deps.tar.gz' -czf "$RUNNER_TEMP/worktree.tar.gz" .
+          tar -czf "$RUNNER_TEMP/deps.tar.gz" node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: three-integration-workbench
+          retention-days: 1
+          path: |
+            ${{ runner.temp }}/worktree.tar.gz
+            ${{ runner.temp }}/deps.tar.gz
