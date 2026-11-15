@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
+import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 
 /** Persistent public-only scene. Camera events never issue game commands or rebuild inputs. */
 export class ThreeBoardRenderer {
@@ -50,7 +51,7 @@ export class ThreeBoardRenderer {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, context: gl, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth <= 1100 ? 1.25 : 1.5));
     this.renderer.shadowMap.enabled = window.innerWidth > 600; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.scene.background = new THREE.Color('#8ab9b7');
+    this.scene.background = new THREE.Color('#84b9c4');
     this.scene.add(new THREE.HemisphereLight(0xfff3da, 0x536f73, 2.4));
     const sun = new THREE.DirectionalLight(0xfff6df, 3); sun.position.set(-6, 12, 7); sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -12; sun.shadow.camera.right = 12; sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12; sun.shadow.normalBias = .04; this.scene.add(sun);
@@ -77,11 +78,14 @@ export class ThreeBoardRenderer {
     this.update(view); this.touchPolicy(); this.resize();
   }
   private rebuildMap(): void {
+    disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
     this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = '';
     this.geometry = worldGeometry(this.view.board.layout);
     for (const hex of this.view.board.hexes) {
-      const terrain = makeTerrain(this.assets, hex, this.geometry.hexes.get(hex.hexId)!); this.tiles.set(hex.hexId, terrain); this.map.add(terrain.root);
+      const terrain = makeTerrain(this.assets, hex, this.geometry.hexes.get(hex.hexId)!);
+      refineTerrain(this.assets, hex, terrain.root, terrain.token);
+      this.tiles.set(hex.hexId, terrain); this.map.add(terrain.root);
     }
     for (const port of this.view.board.ports) {
       const boat = makeBoatPort(this.assets, port.type, portBoatPlan(port, this.geometry)); boat.name = `port:${port.edgeId}`; this.map.add(boat);
@@ -89,7 +93,7 @@ export class ThreeBoardRenderer {
     this.map.updateMatrixWorld(true); this.worldBounds.setFromObject(this.map);
     this.worldBounds.max.y = Math.max(.9, this.worldBounds.max.y); this.worldBounds.expandByScalar(.20);
     const radius = Math.max(this.worldBounds.max.x, -this.worldBounds.min.x, this.worldBounds.max.z, -this.worldBounds.min.z) + .12;
-    const water = this.assets.mesh(this.map, this.assets.geometry('water', () => new THREE.CylinderGeometry(radius, radius, .11, 72)), this.assets.material('#6dabae'), 0, -.24, 0); water.castShadow = false;
+    this.map.add(makeOcean(this.assets, radius, this.geometry));
     this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
     this.defaultTarget.copy(this.worldBounds.getCenter(new THREE.Vector3())); this.defaultTarget.y = .12;
     this.structureKey = ''; this.targetKey = ''; this.resetView();
@@ -212,6 +216,8 @@ export class ThreeBoardRenderer {
     return { instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
       targets: [...this.view.legalTargets], targetMode: this.view.targetMode, triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
+      artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
+      oceanLayers: this.map.getObjectByName('layered-ocean')?.children.map(child => child.name).filter(Boolean) ?? [],
       boats: this.view.board.ports.map(port => ({ edge: port.edgeId, type: port.type, ratio: port.type === 'generic' ? '3:1' : '2:1', ...portBoatPlan(port, this.geometry) })),
       deserts: this.view.board.hexes.filter(h => h.terrain === 'desert').map(h => ({ id: h.hexId, hasToken: !!this.tiles.get(h.hexId)?.token, duneMeshes: this.tiles.get(h.hexId)?.root.children.filter(c => c.userData.dunes).length, props: 0 })),
       fullyVisible: this.corners().every(p => { p.project(this.camera); return Math.abs(p.x) < 1.001 && Math.abs(p.y) < 1.001; }) };
@@ -225,7 +231,7 @@ export class ThreeBoardRenderer {
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
-    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.assets.dispose();
+    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.assets.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.DirectionalLight) o.shadow.dispose(); });
     this.renderer.dispose(); this.renderer.forceContextLoss(); this.canvas.remove();
   }
