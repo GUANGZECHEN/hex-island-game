@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "verify": "node verify.mjs"
+    "verify": "node verify.mjs && node standalone.mjs"
   },
   "dependencies": { "three": "0.180.0" },
   "devDependencies": {
