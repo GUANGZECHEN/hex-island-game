@@ -2,19 +2,22 @@ import { applySetupCommand, RESOURCES, type GameState, type SetupCommand, type H
 import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
+import { applyHarborCommand, validateHarborState, type HarborCommand } from '../rules/harbor.ts';
 import type { AuthorityRecovery } from './recovery.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
-type Command = SetupCommand | TurnCommand | BuildCommand | EconomyCommand;
+type Command = SetupCommand | TurnCommand | BuildCommand | EconomyCommand | HarborCommand;
 const setupTypes = new Set(['place-settlement','place-road']);
 const turnTypes = new Set(['roll','discard','move-robber','steal','end-turn']);
 const reversibleTypes = new Set(['place-settlement','place-road','build-road','build-settlement','build-city','bank-trade','free-road']);
+const harborTypes=new Set(['harbor-load','harbor-send']);
 const buildTypes = new Set(['build-road','build-settlement','build-city']);
 const economyTypes = new Set(['bank-trade','offer','cancel-offer','accept-offer','reject-offer','buy-card','play-card','free-road','stop-free-roads','claim-victory']);
 export interface PublicTradeSummary { revision:number; proposer:string; accepter:string; giveCount:number; receiveCount:number }
 const handSize=(hand:Record<string,number>)=>Object.values(hand).reduce((sum,count)=>sum+count,0);
 const fields: Record<string,string[]> = {
+ 'harbor-load':['orderId','cards'],'harbor-send':['recipient','cards'],
  'place-settlement':['vertexId'],'place-road':['edgeId'],undo:[],roll:[],discard:['cards'],'move-robber':['hexId'],steal:['victimId'],'end-turn':[],
  'build-road':['edgeId'],'build-settlement':['vertexId'],'build-city':['vertexId'],'bank-trade':['give','receive','rate'],
  offer:['id','targets','give','receive'],'cancel-offer':['id'],'accept-offer':['id'],'reject-offer':['id'],'buy-card':[],
@@ -22,7 +25,7 @@ const fields: Record<string,string[]> = {
 };
 /** Public state is shared with every player and spectator; private trade details remain viewer-scoped. */
 function publicProjection(state:GameState, viewer?:string, tradeSummary:PublicTradeSummary|null=null, undoPlayerId:string|null=null) {
- return {version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
+ return {mode:state.mode??'classic',harbor:state.harbor??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
 }
 /** Only public quantities and this viewer's own cards are serialized. */
 export function projectState(state:GameState, viewer:string, revision:number, gameId:string, tradeSummary:PublicTradeSummary|null=null) {
@@ -40,6 +43,7 @@ export class HostAuthority {
  constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;}
  static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
+  validateHarborState(value.state);
   const restored=new HostAuthority(value.gameId,value.state,random,value.revision);
   const pending=value.pendingDiscards??{};
   if(!pending||typeof pending!=='object'||Array.isArray(pending))throw new Error('Invalid saved pending discards.');
@@ -104,6 +108,7 @@ export class HostAuthority {
   try{
    if(setupTypes.has(command.type))this.state=applySetupCommand(this.state,command as SetupCommand);
    else if(turnTypes.has(command.type))this.state=applyTurnCommand(this.state,command as TurnCommand,this.random);
+   else if(harborTypes.has(command.type))this.state=applyHarborCommand(this.state,command as HarborCommand);
    else if(buildTypes.has(command.type))this.state=applyBuildCommand(this.state,command as BuildCommand);
    else if(economyTypes.has(command.type))this.state=applyEconomyCommand(this.state,command as EconomyCommand);
    else return reject('malformed');

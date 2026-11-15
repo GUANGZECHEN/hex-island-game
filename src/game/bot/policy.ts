@@ -1,3 +1,5 @@
+import { chooseHarborBot } from './harbor.ts';
+import type { HarborCommand } from '../rules/harbor.ts';
 import { publicVictoryPoints, type GameState, type SetupCommand } from '../rules/state.ts';
 import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
@@ -7,7 +9,7 @@ import {
  chooseInventionResources,monopolyResource,savingGoal,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
 } from './strategy.ts';
 
-export type BotCommand = SetupCommand | TurnCommand | BuildCommand | EconomyCommand;
+export type BotCommand = SetupCommand | TurnCommand | BuildCommand | EconomyCommand | HarborCommand;
 
 function playableCards(state:GameState,botId:string){
  const player=state.players.find(item=>item.id===botId);
@@ -17,6 +19,7 @@ function playableCards(state:GameState,botId:string){
 
 /** Deterministic strategy bot. It uses public board information plus its own private hand, never opponents' hidden resource identities. */
 export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
+ if(state.mode==='harbor-coop')return chooseHarborBot(state,botId);
  const player=state.players.find(item=>item.id===botId);
  if(!player||state.phase==='finished')return null;
 

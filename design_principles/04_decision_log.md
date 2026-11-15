@@ -64,3 +64,7 @@ D018: Offline/local play additionally supports a fixed three-player test mode wi
 ## Expanded local-bot decision
 
 D019: Offline/local play supports selecting one through five deterministic test bots, with Player 1 as the only human viewer. The selected bot count determines total local player count as Player 1 plus those bots. One through three bots use the standard board (2–4 total players); four or five bots automatically use the expanded 5–6 player board (5–6 total players). The local-only, deterministic, same-reducer and no-external-AI constraints from D017/D018 continue unchanged. This supersedes D018 for local bot count and board-selection behavior.
+
+## Harbor-order cooperative mode
+
+D020 (2026-11-15): Add Harbor Co-op as a separate two-player ruleset alongside Classic, supporting online two-human, local hotseat and local one-human-plus-one-bot play. Keep existing map, production, building, trading and rendering foundations. Shared timed orders are fulfilled through connected road networks; the team wins or loses together. Preserve private hands, host authority, spectator restrictions, recovery and same-room restart. The cooperative bot is deterministic, local-only and uses no external AI service. Implementation classification: complex. First-play balance defaults and cooperative card/robber adaptations are documented in docs/harbor-coop.md; balance tuning remains open to Product Owner playtesting. No automatic merge into main is authorized.

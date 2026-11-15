@@ -1,4 +1,5 @@
 import { createGame } from '../rules/state.ts';
+import type { GameMode } from '../rules/harbor.ts';
 import type { BoardLayout } from '../board/geometry.ts';
 import { HostAuthority } from './authority.ts';
 import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
@@ -11,15 +12,18 @@ type Send = (peer:string, message:string)=>void;
 /** Host-only session. Credentials must be generated with cryptographically secure randomness. */
 export class HostSession {
  private seats:Seat[]; private spectators=new Set<string>(); private authority:HostAuthority|null=null; private gameId=''; private recovering=false;
- constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number } = {}) {
-  this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;
+ constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number; mode?:GameMode } = {}) {
+  this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;this.mode=options.mode??'classic';
+  if(this.mode!=='classic'&&this.mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  if(this.mode==='harbor-coop'&&this.boardLayout!=='standard')throw new Error('Harbor Co-op requires the standard board.');
   this.seats=[{id:'Player 1',name:'Player 1',connected:true,ready:false,peer:null,token:''}];
  }
+ private mode:GameMode='classic';
  private qaTwoPlayers:boolean; private boardLayout:BoardLayout; private mapSeed:number; private send:Send; private publish:(value:unknown)=>void; private token:()=>string; private random:()=>number;
 
  static fromRecovery(privateSend:Send,privatePublish:(value:unknown)=>void,privateToken:()=>string,privateRandom:()=>number,value:unknown):HostSession {
   const recovery=parseSessionRecovery(value);
-  const host=new HostSession(privateSend,privatePublish,privateToken,privateRandom,{qaTwoPlayers:recovery.qaTwoPlayers,boardLayout:recovery.boardLayout,mapSeed:recovery.authority.state.board.seed});
+  const host=new HostSession(privateSend,privatePublish,privateToken,privateRandom,{qaTwoPlayers:recovery.qaTwoPlayers,boardLayout:recovery.boardLayout,mapSeed:recovery.authority.state.board.seed,mode:recovery.authority.state.mode??'classic'});
   host.restoreRecovery(recovery,true);
   host.announce();
   return host;
@@ -34,7 +38,7 @@ export class HostSession {
   return {version:1,authority:this.authority.checkpoint(),seats:this.seats.map(({id,token,name})=>({id,token,name})),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout};
  }
  private output(peer:string,type:string,data:unknown){this.send(peer,JSON.stringify({protocol:1,type,data}));}
- private capacity(){return this.boardLayout==='expanded-5-6'?6:4;}
+ private capacity(){if(this.mode==='harbor-coop')return 2;return this.boardLayout==='expanded-5-6'?6:4;}
  private availableSeatId(){for(let i=2;i<=this.capacity();i++)if(!this.seats.some(seat=>seat.id===`Player ${i}`))return `Player ${i}`;return null;}
  private claimSeat(peer:string,name:unknown):Seat|null{
   const vacant=this.seats.find((seat,index)=>index>0&&!seat.connected);
@@ -47,7 +51,7 @@ export class HostSession {
   this.seats.push(seat);return seat;
  }
  private announce(){
-  const lobby={seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
+  const lobby={mode:this.mode,seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
   this.publish({type:'lobby',lobby});
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'lobby',lobby);
   for(const peer of this.spectators)this.output(peer,'lobby',lobby);
@@ -57,7 +61,7 @@ export class HostSession {
   const currentPeers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
   this.qaTwoPlayers=value.qaTwoPlayers;
   this.boardLayout=value.boardLayout;
-  this.mapSeed=value.authority.state.board.seed;
+  this.mapSeed=value.authority.state.board.seed;this.mode=value.authority.state.mode??'classic';
   this.gameId=value.authority.gameId;
   this.authority=HostAuthority.fromRecovery(value.authority,this.random);
   this.seats=value.seats.map((seat,index)=>({id:seat.id,name:cleanName(seat.name,seat.id),token:seat.token,peer:currentPeers.get(seat.id)??null,connected:index===0||(currentPeers.get(seat.id)!=null),ready:false}));
@@ -135,7 +139,16 @@ export class HostSession {
  }
  setHostName(name:string){if(this.authority)throw new Error('Game started.');this.seats[0].name=cleanName(name,this.seats[0].name);this.announce();}
  setHostReady(ready:boolean){if(this.authority)throw new Error('Game started.');this.seats[0].ready=ready;this.announce();}
+ setGameMode(mode:GameMode){
+  if(this.authority||this.recovering)throw new Error('Choose the mode before starting.');
+  if(mode!=='classic'&&mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  if(mode==='harbor-coop'&&this.seats.length>2)throw new Error('Harbor Co-op has exactly two seats; extra players may switch to spectating.');
+  if(mode===this.mode)return;
+  this.mode=mode;if(mode==='harbor-coop')this.boardLayout='standard';
+  for(const seat of this.seats)seat.ready=false;this.announce();
+ }
  setMapSelection(layout:BoardLayout,seed:number){
+  if(this.mode==='harbor-coop'&&layout!=='standard')throw new Error('Harbor Co-op uses the standard board.');
   if(this.authority||this.recovering)throw new Error('Map selection is only available before a game starts.');
   if(layout!=='standard'&&layout!=='expanded-5-6')throw new Error('Invalid board layout.');
   if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
@@ -148,16 +161,16 @@ export class HostSession {
  restart(){
   if(!this.authority||this.recovering)throw new Error('No running game to restart.');
   this.gameId=this.token();
-  this.authority=new HostAuthority(this.gameId,createGame(this.mapSeed,this.seats.map(seat=>seat.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout}),this.random);
+  this.authority=new HostAuthority(this.gameId,createGame(this.mapSeed,this.seats.map(seat=>seat.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode}),this.random);
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'restart',{gameId:this.gameId});
   for(const peer of this.spectators)this.output(peer,'restart',{gameId:this.gameId});
   this.announce();this.emitCheckpoint(true);this.broadcast();
  }
  start(seed:number){
-  const countValid=this.boardLayout==='expanded-5-6'?this.seats.length>=5&&this.seats.length<=6:this.seats.length>=2&&this.seats.length<=4;
+  const countValid=this.mode==='harbor-coop'?this.seats.length===2:this.boardLayout==='expanded-5-6'?this.seats.length>=5&&this.seats.length<=6:this.seats.length>=2&&this.seats.length<=4;
   if(this.authority||!countValid||this.seats.some(s=>!s.connected||!s.ready))throw new Error(this.boardLayout==='expanded-5-6'?'Five to six connected, ready players are required for the 5–6 player board.':'Two to four connected, ready players are required for the standard board.');
   if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
-  this.mapSeed=seed;this.gameId=this.token();const state=createGame(seed,this.seats.map(s=>s.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout});this.authority=new HostAuthority(this.gameId,state,this.random);this.recovering=false;this.announce();this.emitCheckpoint();this.broadcast();
+  this.mapSeed=seed;this.gameId=this.token();const state=createGame(seed,this.seats.map(s=>s.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode});this.authority=new HostAuthority(this.gameId,state,this.random);this.recovering=false;this.announce();this.emitCheckpoint();this.broadcast();
  }
  resume(value:unknown){
   if(!this.recovering)throw new Error('No saved game is waiting to resume.');

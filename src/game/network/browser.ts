@@ -3,6 +3,7 @@ import { HostSession } from './session';
 import type { projectState, projectSpectatorState } from './authority';
 import { parseSessionRecovery } from './recovery';
 import { isTwoPlayerQa } from './qa';
+import type { GameMode } from '../rules/harbor';
 import type { BoardLayout } from '../board/geometry';
 
 type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
@@ -82,7 +83,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  const showLobby=(data:unknown)=>{
-  const lobby=data as {seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
+  const lobby=data as {mode?:GameMode;seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
   if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean'||(lobby.boardLayout!=='standard'&&lobby.boardLayout!=='expanded-5-6'))return;
   const seats=lobby.seats as Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
@@ -91,7 +92,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   const mapSeed=el<HTMLInputElement>('room-seed');
   if(Number.isSafeInteger(lobby.mapSeed)&&Number(lobby.mapSeed)>=0&&Number(lobby.mapSeed)<=0xffffffff)mapSeed.value=String(lobby.mapSeed);
   const canEditMap=role==='host'&&!lobby.started&&!lobby.recovering;
-  boardVersion.disabled=!canEditMap;mapSeed.disabled=!canEditMap;
+  const modeInput=el<HTMLSelectElement>('room-game-mode');modeInput.value=lobby.mode??'classic';modeInput.disabled=!canEditMap;
+  boardVersion.disabled=!canEditMap||lobby.mode==='harbor-coop';mapSeed.disabled=!canEditMap;
   el('room-map-lobby').hidden=!room;
   const rolePicker=el('room-role-picker'),roleSelect=el<HTMLSelectElement>('room-role');
   rolePicker.hidden=role!=='guest'||!!lobby.started||!!lobby.recovering;
@@ -109,14 +111,14 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    el('room-start').hidden=role!=='host';
   }
   const spectatorCount=Number.isSafeInteger(lobby.spectators)?Number(lobby.spectators):0;
-  el('lobby').textContent=[boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),`Map seed: ${mapSeed.value}`,spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
+  el('lobby').textContent=[lobby.mode==='harbor-coop'?'Harbor Co-op · two-player team':'Classic',boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),`Map seed: ${mapSeed.value}`,spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
   if(role==='guest'&&lobby.recovering===true&&(playerId||spectator)){
    clearSyncTimer();syncAttempts=0;setSynchronizing(true,spectator?'Spectating paused saved game. Waiting for host to resume.':`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
    el('room-ready').hidden=true;
   }
   if(role==='host'&&host){
    if(recoveryMode||lobby.recovering===true){el('room-ready').hidden=true;el('room-start').hidden=true;renderRecovery();return;}
-   const validCount=boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6:seats.length>=2&&seats.length<=4;
+   const validCount=lobby.mode==='harbor-coop'?seats.length===2:boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6:seats.length>=2&&seats.length<=4;
    const allReady=validCount&&seats.every(s=>s.connected===true&&s.ready===true);
    const start=el<HTMLButtonElement>('room-start');
    start.disabled=!allReady;
@@ -246,6 +248,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const clearRecoveryUi=()=>{recoveryMode=false;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';el('room-recovery-panel').hidden=true;el('room-recovery-options').replaceChildren();};
  const boardVersionInput=el<HTMLSelectElement>('room-board-version');
  const mapSeedInput=el<HTMLInputElement>('room-seed');
+ const modeInput=el<HTMLSelectElement>('room-game-mode');
+ modeInput.addEventListener('change',()=>{if(role!=='host'||!host)return;try{host.setGameMode(modeInput.value as GameMode);}catch(e){modeInput.value=modeInput.value==='harbor-coop'?'classic':'harbor-coop';status(e instanceof Error?e.message:'Invalid game mode.');}});
  const updateHostMap=()=>{if(role!=='host'||!host)return;try{host.setMapSelection(boardVersionInput.value as BoardLayout,mapSeedInput.valueAsNumber);}catch(e){status(e instanceof Error?e.message:'Invalid map selection.');}};
  boardVersionInput.addEventListener('change',updateHostMap);
  mapSeedInput.addEventListener('change',updateHostMap);

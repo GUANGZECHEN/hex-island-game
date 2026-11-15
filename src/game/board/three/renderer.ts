@@ -16,6 +16,7 @@ export class ThreeBoardRenderer {
   private assets = new ArtAssets();
   private map = new THREE.Group();
   private pieces = new THREE.Group();
+  private harborLabels = new THREE.Group();
   private targets = new THREE.Group();
   private targetMaterial = new THREE.MeshBasicMaterial({ color: TARGET_COLORS.legal, transparent: true, opacity: .8, depthTest: false, depthWrite: false });
   private activeTargetMaterial = new THREE.MeshBasicMaterial({ color: TARGET_COLORS.active, transparent: true, opacity: .94, depthTest: false, depthWrite: false });
@@ -62,7 +63,7 @@ export class ThreeBoardRenderer {
     this.scene.add(new THREE.HemisphereLight(0xfff3da, 0x536f73, 2.4));
     const sun = new THREE.DirectionalLight(0xfff6df, 3); sun.position.set(-6, 12, 7); sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -12; sun.shadow.camera.right = 12; sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12; sun.shadow.normalBias = .04; this.scene.add(sun);
-    this.scene.add(this.map, this.pieces, this.targets);
+    this.scene.add(this.map, this.pieces, this.targets, this.harborLabels);
     this.controls = new OrbitControls(this.camera, this.canvas);
     Object.assign(this.controls.mouseButtons, { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: null });
     this.controls.minPolarAngle = .10; this.controls.maxPolarAngle = Math.PI / 3; this.controls.minZoom = .65; this.controls.maxZoom = 3;
@@ -89,7 +90,7 @@ export class ThreeBoardRenderer {
     this.update(view); this.touchPolicy(); this.resize();
   }
   private rebuildMap(): void {
-    this.mapBuilds++;
+    this.mapBuilds++;this.harborLabels.clear();
     disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
     this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = '';
@@ -176,6 +177,10 @@ export class ThreeBoardRenderer {
         }
         mesh.userData.id = id; mesh.renderOrder = 8; mesh.name = `legal:${id}`; this.targets.add(mesh);
       }
+    }
+    this.harborLabels.visible=!!view.harborPorts;
+    if(view.harborPorts&&!this.harborLabels.children.length)for(const [index,port] of view.board.ports.entries()){
+      const plan=portBoatPlan(port,this.geometry);this.assets.sprite(this.harborLabels,this.assets.label(`P${index+1}`,'token'),plan.center.x,.93,plan.center.z,.28);
     }
     this.paintTargets(); this.resize(); this.invalidate();
   }

@@ -1,6 +1,8 @@
 import { createIslandBoard, type BoardLayout } from '../board/geometry.ts';
 import { generateBoardSetup, type BoardSetup } from '../board/setup.ts';
 
+import { beginHarbor, createHarborState, type GameMode, type HarborState } from './harbor.ts';
+
 export const RESOURCES = ['lumber', 'brick', 'wool', 'grain', 'ore'] as const;
 export type Resource = typeof RESOURCES[number];
 export type Hand = Record<Resource, number>;
@@ -12,6 +14,7 @@ export interface Player {
 export interface Building { playerId: string; kind: 'settlement' | 'city' }
 export interface TradeOffer { id: string; proposer: string; targets: string[]; give: Hand; receive: Hand; }
 export interface GameState {
+  mode?:GameMode; harbor?:HarborState;
   version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
   randomState: number; playedCards: Development[]; startingSeat: number; currentSeat: number; turn: number;
   phase: 'setup-settlement' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
@@ -42,19 +45,25 @@ export function secureIndex(random: () => number, bound: number): { state?: unde
   for (let i=0; i<128; i++) { const value=random(); if (!Number.isInteger(value) || value<0 || value>0xffffffff) throw new Error('Invalid entropy.'); if (value<limit) return {index:value%bound}; }
   throw new Error('Random index generation exhausted.');
 }
-export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout }): GameState {
+export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mode?:GameMode }): GameState {
+  const mode=options?.mode??'classic';
+  if(mode!=='classic'&&mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  if(mode==='harbor-coop'&&(ids.length!==2||(options?.boardLayout??'standard')!=='standard'))throw new Error('Harbor Co-op requires two players on the standard board.');
   const boardLayout=options?.boardLayout??'standard';
   const validCount = boardLayout==='expanded-5-6' ? ids.length>=5&&ids.length<=6 : ids.length>=2&&ids.length<=4;
   if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(boardLayout==='expanded-5-6'?'The 5–6 player board requires five or six distinct player IDs.':'The standard board requires two to four distinct player IDs.');
   const board = generateBoardSetup(seed,boardLayout);
   let randomState = seed;
   const deck: Development[] = [...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
+  if(mode==='harbor-coop')for(let i=0;i<deck.length;i++)if(deck[i]==='victory-point')deck[i]='invention';
   for (let i = deck.length - 1; i > 0; i--) {
     const draw = secureRandom ? secureIndex(secureRandom, i + 1) : drawIndex(randomState, i + 1); randomState = draw.state ?? randomState;
     [deck[i], deck[draw.index]] = [deck[draw.index], deck[i]];
   }
   const start = secureRandom ? secureIndex(secureRandom, ids.length) : drawIndex(randomState, ids.length); randomState = start.state ?? randomState;
-  return { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, playedCards: [], startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
+  const game:GameState = { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, playedCards: [], startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
+  if(mode==='harbor-coop'){game.mode=mode;game.harbor=createHarborState();for(const p of game.players)for(const r of ['lumber','brick','wool','grain'] as const){p.hand[r]++;game.bank[r]--;}}
+  return game;
 }
 export function publicVictoryPoints(state: GameState, id: string): number {
   return Object.values(state.buildings).filter(building => building.playerId === id).reduce((sum, building) => sum + (building.kind === 'city' ? 2 : 1), 0) + (state.longestHolder === id ? 2 : 0) + (state.armyHolder === id ? 2 : 0);
@@ -82,7 +91,7 @@ export function applySetupCommand(original: GameState, command: SetupCommand): G
     if (!edge || !state.pendingSettlement || !edge.vertexIds.includes(state.pendingSettlement) || state.roads[edge.id] || player.roads <= 0) throw new Error('Invalid setup road.');
     state.roads[edge.id] = player.id; player.roads--; state.pendingSettlement = null; state.setupStep++;
     const n = state.players.length;
-    if (state.setupStep === 2 * n) { state.phase = 'roll'; state.currentSeat = state.startingSeat; state.turn = 1; }
+    if (state.setupStep === 2 * n) { state.phase = 'roll'; state.currentSeat = state.startingSeat; state.turn = 1; beginHarbor(state); }
     else { const offset = state.setupStep < n ? state.setupStep : 2 * n - 1 - state.setupStep; state.currentSeat = (state.startingSeat + offset) % n; state.phase = 'setup-settlement'; }
   } else throw new Error('Command is not allowed in this phase.');
   return state;

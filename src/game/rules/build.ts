@@ -1,5 +1,6 @@
 import { createIslandBoard } from '../board/geometry.ts';
 import { RESOURCES, type GameState, type Hand } from './state.ts';
+import { isHarbor } from './harbor.ts';
 export type BuildCommand =
   | { type: 'build-road'; playerId: string; edgeId: string; free?: boolean }
   | { type: 'build-settlement'; playerId: string; vertexId: string }
@@ -33,6 +34,7 @@ export function longestRoute(state: GameState, playerId: string): number {
   return Math.max(0, ...[...incident.keys()].map(vertex => walk(vertex, new Set())));
 }
 export function updateLongestRoute(state: GameState): void {
+  if(isHarbor(state)){state.longestHolder=null;return;}
   const lengths = state.players.map(player => ({ id: player.id, length: longestRoute(state, player.id) }));
   const max = Math.max(0, ...lengths.map(x => x.length));
   const leaders = lengths.filter(x => x.length === max && max >= 5);
@@ -47,8 +49,8 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     if (!edge || state.roads[edge.id] || !player.roads) throw new Error('Invalid road location or supply.');
     const connects = edge.vertexIds.some(vertex => {
       const occupant = state.buildings[vertex];
-      if (occupant) return occupant.playerId === player.id;
-      return board.edges.some(other => other.vertexIds.includes(vertex) && state.roads[other.id] === player.id);
+      if (occupant) return occupant.playerId === player.id || isHarbor(state);
+      return board.edges.some(other => other.vertexIds.includes(vertex) && (state.roads[other.id] === player.id || (isHarbor(state)&&!!state.roads[other.id])));
     });
     if (!connects) throw new Error('Road is not connected.');
     if (command.free && !allowFreeRoad) throw new Error('Free road not authorized.');
@@ -58,7 +60,7 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     const vertex = board.vertices.find(vertex => vertex.id === command.vertexId);
     if (!vertex || state.buildings[vertex.id] || !player.settlements) throw new Error('Invalid settlement location or supply.');
     const edges = board.edges.filter(edge => edge.vertexIds.includes(vertex.id));
-    if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id)) throw new Error('Settlement is not connected or violates distance rule.');
+    if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id || (isHarbor(state)&&!!state.roads[edge.id]))) throw new Error('Settlement is not connected or violates distance rule.');
     pay(state, player.id, SETTLEMENT); state.buildings[vertex.id] = {playerId:player.id,kind:'settlement'}; player.settlements--;
   } else if (command.type === 'build-city') {
     if (state.buildings[command.vertexId]?.playerId !== player.id || state.buildings[command.vertexId]?.kind !== 'settlement' || !player.cities) throw new Error('City requires an owned settlement and available city.');

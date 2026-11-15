@@ -17,3 +17,9 @@ Detailed rules and implementation choices require the appropriate approved speci
 ## Private-room access
 
 The game website may be publicly accessible. Joining or spectating a private game room requires a valid invitation or capability; possession of the website URL alone does not grant access to a private room. Before game start, invitations may claim an available player seat up to the selected board version's capacity: four seats on the standard board or six seats on the expanded board. After game start, new invite holders join as spectators unless they present an existing player seat capability.
+
+## Harbor-order cooperative mode (2026-11-15)
+
+The Product Owner approved adding a distinct two-player harbor-order mode while retaining Classic. It supports two humans online, two humans on one device (or one person controlling both seats), and one human with one deterministic local teammate bot. The standard board has exactly two player seats in this mode; invited extras may spectate. Existing host-authoritative transport, private hands, recovery, no-paid-services and automatic-publication-without-main-merge constraints remain unchanged.
+
+Orders, shipping routes and a shared victory/defeat replace individual victory as the cooperative objective. Detailed first-play balance values and explicit adaptations to cards and the robber are recorded in docs/harbor-coop.md. Numerical defaults remain subject to playtest tuning. No remote AI seats, lighthouse campaign or new infrastructure are included.

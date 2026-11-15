@@ -1,5 +1,6 @@
 import { applyBuildCommand } from './build.ts';
 import { publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
+import { isHarbor, partnersConnected } from './harbor.ts';
 export type EconomyCommand =
  | { type:'bank-trade'; playerId:string; give:Resource; receive:Resource; rate:2|3|4 }
  | { type:'offer'; playerId:string; id:string; targets:string[]; give:Hand; receive:Hand }
@@ -18,6 +19,7 @@ function transfer(from:Hand,to:Hand,cards:Hand) {
  for(const r of RESOURCES){from[r]-=cards[r];to[r]+=cards[r];}
 }
 function updateArmy(state:GameState) {
+ if(isHarbor(state)){state.armyHolder=null;return;}
  const max=Math.max(...state.players.map(p=>p.knights));
  const leaders=state.players.filter(p=>p.knights===max && max>=3);
  state.armyHolder=leaders.length===1?leaders[0].id:leaders.some(p=>p.id===state.armyHolder)?state.armyHolder:null;
@@ -28,12 +30,14 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
  if(command.type==='accept-offer' || command.type==='reject-offer') {
   const offer=state.offer;
   if(state.phase!=='action'||!offer||offer.id!==command.id||!offer.targets.includes(player.id)||offer.proposer!==active.id)throw new Error('Offer is stale or not addressed to player.');
+  if(isHarbor(state)&&!partnersConnected(state,player.id,active.id))throw new Error('Connect both settlements before trading.');
   if(command.type==='accept-offer'){transfer(active.hand,player.hand,offer.give);transfer(player.hand,active.hand,offer.receive);state.offer=null;}
   else {offer.targets=offer.targets.filter(id=>id!==player.id);if(!offer.targets.length)state.offer=null;}
   return state;
  }
  if(player.id!==active.id)throw new Error('Not the active player.');
  if(command.type==='claim-victory') {
+  if(isHarbor(state))throw new Error('Supply the ships to win together.');
   if(state.phase==='setup-settlement'||state.phase==='setup-road'||publicVictoryPoints(state,player.id)+player.cards.filter(c=>c.type==='victory-point').length<10)throw new Error('Victory requirements not met.');
   state.phase='finished';state.winner=player.id;state.offer=null;return state;
  }
@@ -53,7 +57,8 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
    const cards=Object.fromEntries(RESOURCES.map(r=>[r,command.resources!.filter(x=>x===r).length])) as Hand;transfer(state.bank,player.hand,cards);
   } else if(command.card==='monopoly') {
    if(!validResource(command.resource))throw new Error('Choose a resource.');
-   for(const other of state.players)if(other.id!==player.id){player.hand[command.resource]+=other.hand[command.resource];other.hand[command.resource]=0;}
+   if(isHarbor(state)){const amount=Math.min(2,state.bank[command.resource]);state.bank[command.resource]-=amount;player.hand[command.resource]+=amount;}
+   else for(const other of state.players)if(other.id!==player.id){player.hand[command.resource]+=other.hand[command.resource];other.hand[command.resource]=0;}
   } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase='robber';player.knights++;updateArmy(state);}
   else if(command.card==='road-building') { if(player.roads>0){state.resumePhase=state.phase;state.phase='free-road';state.freeRoads=Math.min(2,player.roads);} }
   else throw new Error('Invalid card.');
@@ -67,6 +72,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   const give=Object.fromEntries(RESOURCES.map(r=>[r,r===command.give?command.rate:0])) as Hand,receive=Object.fromEntries(RESOURCES.map(r=>[r,r===command.receive?1:0])) as Hand;
   transfer(player.hand,state.bank,give);transfer(state.bank,player.hand,receive);
  } else if(command.type==='offer') {
+  if(isHarbor(state)&&(!Array.isArray(command.targets)||command.targets.some(id=>!partnersConnected(state,player.id,id))))throw new Error('Connect both settlements before trading.');
   if(typeof command.id!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(command.id)||!Array.isArray(command.targets)||!command.targets.length||new Set(command.targets).size!==command.targets.length||command.targets.some(id=>id===player.id||!state.players.some(p=>p.id===id))||!validHand(command.give)||!validHand(command.receive)||!handSize(command.give)||!handSize(command.receive)||RESOURCES.some(r=>command.give[r]>player.hand[r]))throw new Error('Invalid offer.');
   state.offer={id:command.id,proposer:player.id,targets:[...command.targets],give:{...command.give},receive:{...command.receive}};
  } else if(command.type==='cancel-offer') {if(state.offer?.id!==command.id)throw new Error('Offer is stale.');state.offer=null;}

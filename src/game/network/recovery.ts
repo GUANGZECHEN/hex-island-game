@@ -1,3 +1,4 @@
+import { validateHarborState } from '../rules/harbor.ts';
 import type { GameState, Hand } from '../rules/state.ts';
 import type { BoardLayout } from '../board/geometry.ts';
 
@@ -36,7 +37,7 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   if(!x||x.version!==1||typeof x.qaTwoPlayers!=='boolean'||!x.authority||!Array.isArray(x.seats))throw new Error('Invalid saved game.');
   const authority=x.authority as Partial<AuthorityRecovery>;
   if(authority.version!==1||typeof authority.gameId!=='string'||!idPattern.test(authority.gameId)||!Number.isSafeInteger(authority.revision)||Number(authority.revision)<0||!authority.state||authority.state.version!==1)throw new Error('Invalid saved game.');
-  const state=authority.state as GameState;
+  const state=authority.state as GameState;validateHarborState(state);
   const boardLayout=(x.boardLayout??state.board?.layout??'standard') as BoardLayout;
   if(boardLayout!=='standard'&&boardLayout!=='expanded-5-6')throw new Error('Saved game board layout is invalid.');
   const validCount=boardLayout==='expanded-5-6'?state.players.length>=5&&state.players.length<=6:state.players.length>=2&&state.players.length<=4;

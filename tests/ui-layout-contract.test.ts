@@ -151,7 +151,7 @@ test('local test bot selector supports one through five bots and expands the boa
  assert.ok(ui.includes('startLocalRound(activeLocalRoom)'));
  assert.ok(ui.includes("localSeats.value=String(count+1);localSeats.disabled=true"));
  assert.ok(ui.includes("count>=4?'Expanded 5–6 player board selected automatically.'"));
- assert.ok(ui.includes("if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff"));
+ assert.ok(ui.includes("if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff"));
  assert.ok(ui.includes('pendingLocalBot'));
  assert.ok(ui.includes('scheduleLocalBot()'));
  assert.ok(targets.includes("from '../rules/legal.ts'"));
@@ -379,7 +379,7 @@ test('safe Undo action is appended last in Actions for active and non-active pla
  assert.ok(ui.includes('const appendUndoAction=()=>'));
  assert.ok(ui.includes("undoRow.className='action-grid undo-action-row';actions.append(undoRow)"));
  assert.ok(ui.includes('if(viewer!==active.id){appendUndoAction();finishControls();return;}'));
- const start=ui.indexOf("if(!['setup-settlement','setup-road','finished'].includes(s.phase)");
+ const start=ui.indexOf("if(!isHarbor(s)&&!['setup-settlement','setup-road','finished'].includes(s.phase)");
  const end=ui.indexOf('finishControls();',start);
  assert.ok(start>=0&&end>start);
  assert.ok(ui.slice(start,end).includes('appendUndoAction();'));

@@ -6,7 +6,7 @@ const PLAY_ORDER: readonly PlayableDevelopment[] = ['knight','road-building','in
 
 export function playableDevelopmentTypes(state:GameState, playerId:string):PlayableDevelopment[] {
   const player=state.players.find(p=>p.id===playerId);
-  if(!player)return [];
+  if(!player||state.playedDevelopment)return [];
   return PLAY_ORDER.filter(type=>player.cards.some(card=>card.type===type&&card.boughtTurn<state.turn));
 }
 

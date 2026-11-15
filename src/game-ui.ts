@@ -1,4 +1,6 @@
 import './style.css';
+import { renderHarborPanel } from './game/ui/harbor';
+import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type GameMode, type HarborCommand } from './game/rules/harbor';
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
@@ -41,6 +43,8 @@ const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => a
 const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => applyWithLocalUndo(s,c,localTurn);
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => applyWithLocalUndo(s,c,localBuild);
 const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => applyWithLocalUndo(s,c,localEconomy);
+const applyHarborCommand=(s:GameState,c:HarborCommand)=>applyWithLocalUndo(s,c,localHarbor);
+const localMode=()=>el<HTMLSelectElement>('local-game-mode').value as GameMode;
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
@@ -69,11 +73,12 @@ function productionSummary(gains:Readonly<Record<string,Hand>>,players:readonly 
  }
  return summary;
 }
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=calculateDiceProduction(old,next.dice[0]+next.dice[1]);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0)handoff(next.players[next.currentSeat].id);render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=calculateDiceProduction(old,next.dice[0]+next.dice[1]);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
 function pendingLocalBot(s:GameState):string|null{
+ if(isHarbor(s)&&s.phase==='discard'&&s.discards[viewer])return null;
  for(const botId of localBotIds)if(s.discards[botId])return botId;
  const tradeBot=[...localBotIds].find(botId=>s.offer?.targets.includes(botId));if(tradeBot)return tradeBot;
  const active=s.players[s.currentSeat]?.id;return active&&localBotIds.has(active)?active:null;
@@ -251,6 +256,15 @@ function showActivityAlert(s:GameState){
  activityAlertTimer=window.setTimeout(()=>{alert.classList.add('activity-alert-out');activityAlertTimer=window.setTimeout(()=>{alert.remove();activityAlertTimer=null;},240);},hold);
 }
 function showVictoryAlert(s:GameState){
+ if(s.harbor&&s.harbor.outcome!=='playing'){
+  const key='harbor-'+s.harbor.outcome;if(lastWinnerAlert===key||el('game').hidden)return;lastWinnerAlert=key;
+  el('board').querySelector('.turn-alert')?.remove();el('board').querySelector('.activity-alert')?.remove();
+  const alert=document.createElement('div');alert.className='victory-alert player-1';alert.setAttribute('role','alert');
+  const title=document.createElement('strong');title.className='victory-alert-name';title.textContent=s.harbor.outcome==='won'?'TEAM VICTORY':'TRY AGAIN TOGETHER';
+  const note=document.createElement('span');note.className='victory-alert-note';note.textContent=s.harbor.event;alert.append(title,note);el('board').append(alert);
+  victoryAlertTimer=window.setTimeout(()=>{alert.remove();victoryAlertTimer=null;},5000);return;
+ }
+
  if(!s.winner||lastWinnerAlert===s.winner||el('game').hidden)return;
  const winner=s.players.find(player=>player.id===s.winner);if(!winner)return;lastWinnerAlert=s.winner;
  if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
@@ -318,7 +332,7 @@ function drawBoard(){
  if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)));
  boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
   players:state.players.map(p=>({id:p.id,name:playerName(p.id),color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
-  targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
+  harborPorts:isHarbor(state),targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
 }
 function drawSvgBoard(){
  const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
@@ -372,10 +386,12 @@ function drawSvgBoard(){
   group.onclick=()=>attempt(()=>moveTarget(id));group.onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(id));}};
  }
  renderedRoadOwners=new Map(Object.entries(s.roads));renderedBuildings=new Map<string,string>(Object.entries(s.buildings).map(([id,building])=>[id,`${building.playerId}:${building.kind}`] as [string,string]));renderedRobberHex=s.board.robberHexId;
+ if(isHarbor(s))s.board.ports.forEach((port,index)=>{const group=Array.from(svg.querySelectorAll<SVGGElement>('[data-port-edge]')).find(n=>n.dataset.portEdge===port.edgeId),face=group?.querySelector('.port-face');if(face){const tag=document.createElementNS(NS,'text');tag.setAttribute('class','harbor-port-label');tag.setAttribute('y','-.49');tag.textContent=`P${index+1}`;face.append(tag);}});
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
- el('turn-banner').textContent=turnAnnouncement(activityState(s));
+ el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
+ renderHarborPanel(el('harbor-panel'),s,viewer,c=>attempt(()=>commit(applyHarborCommand(s,c),'Supplies delivered.')),playerName);
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
  const handCard=el('private-hand-card');handCard.hidden=spectating;handCard.classList.toggle('active-hand',!spectating&&viewer===active.id);
@@ -433,7 +449,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
   if(affordable(actor.hand,{grain:2,ore:3})&&legalTargetIds(s,viewer,'city').length)action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
   bankTradeButtons(trade,s,actor);
-  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);if(RESOURCES.some(resource=>actor.hand[resource]>0))trade.append(domestic);
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);if(RESOURCES.some(resource=>actor.hand[resource]>0)&&(!isHarbor(s)||s.players.some(p=>p.id!==viewer&&partnersConnected(s,viewer,p.id))))trade.append(domestic);
   const opponent=playerSelect(domestic,'Offer trade to',s.players.filter(p=>p.id!==viewer).map(p=>p.id)), offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');action(domestic,'Make offer','trade',()=>commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:[opponent.value],give:offered(),receive:wanted()}),`${viewer} proposed a trade.`));
   if(s.offer)action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
  }
@@ -450,7 +466,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
    if(playable.includes('invention')){const box=document.createElement('div');box.className='development-effect';const first=resourceChoice(box,'First resource'),second=resourceChoice(box,'Second resource');developmentAction(box,'Play Year of Plenty','invention',()=>play('invention',{resources:[first(),second()]}));cardSection.append(box);}
   }
  }
- if(!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
+ if(!isHarbor(s)&&!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  appendUndoAction();
  finishControls();
 }
@@ -462,7 +478,7 @@ function refreshLocalMapPreview(){
  el('local-board-layout').textContent=`${count} players · ${layout==='standard'?'standard 19-hex board':'expanded 24-hex board'}`;
  if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  try{
-  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots);
+  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots,localMode());
   renderIslandBoard(preview,generateBoardSetup(settings.seed,settings.boardLayout));
   const svg=preview.querySelector('svg');
   if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Local map preview, seed ${settings.seed}, ${count} players`);}
@@ -475,6 +491,7 @@ function startLocalRound(settings:LocalRoomSettings){
  localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
  botTurnKey='';botActionCount=0;viewer='';
  state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout});
+ if(settings.mode==='harbor-coop')state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode});
  log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;lastWinnerAlert='';
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
@@ -494,7 +511,7 @@ el('start').onclick=()=>attempt(()=>{
  if(!localRoomOpen)throw new Error('Create a local room first.');
  const seed=el<HTMLInputElement>('seed');
  if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid map seed.');
- const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value));
+ const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value),localMode());
  activeLocalRoom=settings;startLocalRound(settings);
 });
 const restartLocal=()=>{
@@ -513,6 +530,13 @@ el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render(
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
 const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title=count>=4?'Expanded 5–6 player board selected automatically.':'Standard board selected automatically.';}else{localSeats.disabled=false;localSeats.title='';}refreshLocalMapPreview();};localSeats.addEventListener('change',refreshLocalMapPreview);
+const updateLocalMode=()=>{
+ const coop=localMode()==='harbor-coop';
+ for(const option of Array.from(localBotCount.options))option.disabled=coop&&Number(option.value)>1;
+ if(coop){localSeats.value='2';if(Number(localBotCount.value)>1)localBotCount.value='1';}
+ localSeats.disabled=coop||Number(localBotCount.value)>0;refreshLocalMapPreview();
+};
+el('local-game-mode').addEventListener('change',updateLocalMode);localBotCount.addEventListener('change',updateLocalMode);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
 
@@ -529,12 +553,12 @@ const network=initializeNetwork({status:connectionStatus,discardPending:()=>{
   const tradeActivity=projection&&tradeSummary?.revision===value.revision?`${publicName(tradeSummary.proposer)} traded ${tradeSummary.giveCount} card${tradeSummary.giveCount===1?'':'s'} for ${tradeSummary.receiveCount} card${tradeSummary.receiveCount===1?'':'s'} with ${publicName(tradeSummary.accepter)}.`:null;
   const nextPublic=value.public as unknown as PublicActivityState;
   if(value.public.phase!=='discard'||!value.public.discards[playerId])discardSubmitted=false;
-  const activity=tradeActivity??derivePublicActivity(previousPublic,nextPublic);
+  const activity=(value.public.harbor&&value.public.harbor.event!==projection?.public.harbor?.event?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic);
   if(projection?.public.phase==='roll'&&value.public.dice)pendingProductionSummary=calculateDiceProduction(projection.public,value.public.dice[0]+value.public.dice[1]);
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;
   const privateView=value.private;
-  state={version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:false,resumePhase:null,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
+  state={mode:pub.mode,harbor:pub.harbor??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
 }});
