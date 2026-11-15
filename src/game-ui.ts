@@ -1,4 +1,6 @@
 import './style.css';
+import './compact-actions.css';
+import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
@@ -124,8 +126,8 @@ function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer
  card.append(receive,give);parent.append(card);
 }
 function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:Partial<Record<Resource,number>>,hand?:Hand){
- const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(icon(ACTION_PATHS[symbol]),text);
- if(cost){const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';b.setAttribute('aria-label',`${label}: not enough resources`);}}
+ const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';setCompactActionLabel(b,text,label);b.append(icon(ACTION_PATHS[symbol]),text);
+ if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';b.setAttribute('aria-label',`${label}: not enough resources`);}}
  return b;
 }
 function enterGame(){
@@ -172,7 +174,7 @@ function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
  parent.append(field);return ()=>({...values});
 }
 function developmentAction(parent:HTMLElement,label:string,card:Exclude<Development,'victory-point'>,run:()=>void){
- const b=button(parent,'',run);b.className=`action-button development-action-button development-${card}`;b.dataset.development=card;const text=document.createElement('span');text.className='action-label';text.textContent=label;b.append(developmentIcon(card),text);return b;
+ const b=button(parent,'',run);b.className=`action-button development-action-button development-${card}`;b.dataset.development=card;const text=document.createElement('span');text.className='action-label';setCompactActionLabel(b,text,label);b.append(developmentIcon(card),text);return b;
 }
 function renderDevelopmentCards(parent:HTMLElement,cards:GameState['players'][number]['cards'],turn:number){
  parent.replaceChildren();for(const type of Object.keys(DEVELOPMENT_LABELS) as Development[]){const owned=cards.filter(card=>card.type===type);if(!owned.length)continue;parent.append(developmentChip(type,owned.length,owned.filter(card=>card.boughtTurn===turn).length));}
