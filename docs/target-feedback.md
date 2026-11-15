@@ -1,7 +1,9 @@
-# Orange target feedback
+# Direct board target feedback
 
-Approved UI-only change: legal building/road/robber locations remain pale yellow; the currently hovered, keyboard-focused or selector-selected target is orange. The selected default is the value displayed in the Legal target selector. Hover temporarily takes precedence, and leaving returns to the selected target. City upgrades receive the same feedback.
+Approved UI update: remove the Legal target coordinate dropdown and Use target button entirely. The target area contains only direct click/tap guidance, Cancel selection and a no-legal-target message when needed. No hidden coordinate form is retained.
 
-3D uses a dedicated orange target material, leaving the shared yellow material untouched. Preview updates only target materials and schedules an on-demand frame; they do not rebuild the board, reset the camera, redraw the controls or submit game commands. Existing click-to-place and Use target behavior remain unchanged. Touch press previews the hit target; cancellation/scrolling does not place a piece. Selection and legality are validated again through the existing commands.
+Legal building, road and robber locations remain pale yellow. The location under the pointer, touch press, or SVG keyboard focus becomes orange. Entering a mode has no automatic hidden-coordinate selection; leaving a preview clears orange. Direct canvas clicks and mobile taps still pass through the existing game validation. The SVG fallback remains keyboard-operable on the board.
 
-Selection is local to each client, clears when targets/mode become invalid, survives renderer switching when still legal, and is absent for spectators. SVG fallback uses matching target IDs and scoped styling. Regression tests cover selection precedence, invalid IDs, cleanup, actual 3D pointer/selector interactions, camera stability, SVG keyboard/fallback behavior, and touch cancellation. Disposable fixtures used to reach city and robber phases are removed before building production files.
+Preview is client-local and never submits a move, redraws controls, rebuilds the map or resets the camera. Cancellation, completed moves and mode changes clear obsolete targets. Observers have no gameplay targets.
+
+Browser tests now interact with actual board hit areas, including settlement, road, city, robber, Road Building, Undo, 2D fallback, touch cancellation, camera preservation and multiplayer reconnect. The shared browser-test helper reads only public target geometry and sends real pointer events; it is not imported by production code.

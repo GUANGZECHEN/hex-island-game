@@ -397,7 +397,11 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
    const empty=document.createElement('p');empty.className='board-trade-empty';empty.textContent='No trades available at this stage.';trade.append(empty);
   }
  };
- if(targetMode){const description=document.createElement('p');description.textContent=`Select a highlighted ${targetMode} target on the board.`;targets.append(description);const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';const choices=legalTargetIds(s,viewer,targetMode);if(choices.length){const choice=select(targets,'Legal target',choices);const preview=()=>boardRenderer?.highlightTarget(choice.value);choice.addEventListener('input',preview);choice.addEventListener('change',preview);preview();button(targets,'Use target',()=>moveTarget(choice.value));}else{const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}}
+ if(targetMode){
+  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
+  const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
+  if(!legalTargetIds(s,viewer,targetMode).length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
+ }
 
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);

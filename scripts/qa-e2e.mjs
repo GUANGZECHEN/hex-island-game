@@ -1,3 +1,4 @@
+import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
 import { chromium } from 'playwright';
 
 const baseQaUrl=process.env.QA_URL;
@@ -66,11 +67,9 @@ try{
   if(await host.locator('#actions .action-button').count()&&await host.locator('#actions .action-button[class*="action-"]').count()!==await host.locator('#actions .action-button').count())throw new Error('ART-B01 action semantic styling is incomplete.');
   const placeHumanSetupPair=async()=>{
     await host.getByRole('button',{name:'Place settlement'}).click();
-    await host.locator('#targets select').first().selectOption({index:0});
-    await host.getByRole('button',{name:'Use target'}).click();
+    await clickBoardTarget(host);
     await host.getByRole('button',{name:'Place road',exact:true}).click();
-    await host.locator('#targets select').first().selectOption({index:0});
-    await host.getByRole('button',{name:'Use target'}).click();
+    await clickBoardTarget(host);
   };
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
   await placeHumanSetupPair();
@@ -253,13 +252,11 @@ try{
     await actor.getByRole('button',{name:'Cancel selection'}).click();
     if(await actor.locator('[data-legal-target="settlement"]').count()!==0)throw new Error('Cancel selection left settlement targets active.');
     await actor.getByRole('button',{name:'Place settlement'}).click();
-    await actor.locator('#targets select').first().selectOption({index:0});
-    await actor.getByRole('button',{name:'Use target'}).click();
+    await clickBoardTarget(actor);
     await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+1,{timeout:15000});
     await actor.getByRole('button',{name:'Place road',exact:true}).click();
     if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
-    await actor.locator('#targets select').first().selectOption({index:0});
-    await actor.getByRole('button',{name:'Use target'}).click();
+    await clickBoardTarget(actor);
     await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+2,{timeout:15000});
   };
 
@@ -302,8 +299,7 @@ try{
   await actor.getByRole('button',{name:'Place settlement'}).click();
   if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget)throw new Error('Opening target mode sent a network message.');
-  await actor.locator('#targets select').first().selectOption({index:0});
-  await actor.getByRole('button',{name:'Use target'}).click();
+  await clickBoardTarget(actor);
   await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#turn-banner')?.textContent?.includes('Player 2'),null,{timeout:15000});

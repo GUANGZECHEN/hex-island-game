@@ -1,3 +1,4 @@
+import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import assert from 'node:assert/strict';
@@ -27,7 +28,7 @@ async function startLocal(page, count, seed = '24680') {
 async function canvasPlace(page, action) {
   await page.getByRole('button', { name: action, exact: true }).click();
   await page.waitForFunction(() => (window.__hex3D?.inspect().targets.length || 0) > 0);
-  const id = await page.locator('#targets select').inputValue();
+  await assertDirectTargets(page); const [id] = await boardTargetIds(page); assert.ok(id);
   const point = await page.evaluate(id => window.__hex3D.point(id), id);
   assert.ok(point); await page.mouse.click(point.x, point.y); await settle(page);
   assert.equal(await page.locator('#game-error').textContent(), '');
@@ -96,17 +97,19 @@ try {
   assert.equal((await inspect(page)).buildings.length, 0); assert.equal((await inspect(page)).roads.length, 0);
   check('Same-room local restart clears 3D pieces');
   await page.getByRole('button', { name: 'Place settlement', exact: true }).click();
-  await page.evaluate(() => window.__targetNode = document.querySelector('#targets select'));
-  const selected = await page.locator('#targets select').inputValue(); await drag(page, 30, -8);
-  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets select'))); assert.equal(await page.locator('#targets select').inputValue(), selected);
+  await assertDirectTargets(page);
+  await page.evaluate(() => window.__targetNode = document.querySelector('#targets .target-cancel'));
+  const selected = await boardTargetIds(page); await drag(page, 30, -8);
+  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
+  assert.deepEqual(await boardTargetIds(page), selected);
   await page.locator('#board-render-toggle').click(); assert.equal(await page.locator('#board svg.island-board').count(), 1);
-  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets select')));
-  await page.getByRole('button', { name: 'Use target', exact: true }).click();
+  assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
+  await clickBoardTarget(page, selected[0]);
   assert.equal(await page.locator('#board [data-building-kind]').count(), 1);
   await page.locator('#board-render-toggle').click(); await ready(page); assert.equal((await inspect(page)).buildings.length, 1);
   await page.evaluate(() => window.__hex3D.loseContext()); await page.waitForFunction(() => document.querySelector('#board')?.dataset.renderer === '2d');
   assert.equal(await page.locator('#board [data-building-kind]').count(), 1);
-  check('Camera and renderer switching retain input nodes; context loss preserves gameplay in SVG');
+  check('Camera and renderer switching retain direct-board controls; context loss preserves gameplay in SVG');
   await startLocal(page, 6, '86420'); info = await inspect(page); assert.equal(info.hexCount, 24); assert.equal(info.portCount, 11); assert.equal(info.deserts.length, 2);
   await page.screenshot({ path: `${evidence}/three-live-expanded.png`, fullPage: true });
   await delay(500); const f = (await inspect(page)).frames; await delay(500); assert.ok((await inspect(page)).frames - f <= 1);

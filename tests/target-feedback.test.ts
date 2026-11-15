@@ -34,11 +34,19 @@ test('pointer highlighting has dedicated material, cleanup and no game/UI rebuil
   assert.ok(!hover.includes('this.choose(')); assert.ok(!hover.includes('this.resetView('));
   assert.ok(source.includes("this.canvas.addEventListener('pointercancel', this.leaveTarget"));
 });
-test('3D and SVG share legal dropdown preview without changing Use target', () => {
+test('3D and SVG keep on-board feedback without coordinate selection controls', () => {
   const ui=readFileSync('src/game-ui.ts','utf8');
-  assert.ok(ui.includes('boardRenderer?.highlightTarget(choice.value)'));
-  assert.ok(ui.includes("button(targets,'Use target',()=>moveTarget(choice.value))"));
+  assert.ok(!ui.includes("select(targets,'Legal target'"));
+  assert.ok(!ui.includes("button(targets,'Use target'"));
+  assert.ok(ui.includes("button(targets,'Cancel selection'"));
+  assert.ok(ui.includes('Click or tap a highlighted'));
   assert.equal((ui.match(/setAttribute\('data-target-id'/g)||[]).length,4);
   const css=readFileSync('src/target-feedback.css','utf8');
   for(const part of ['game-target-vertex','game-target-road','game-target-city','robber-target'])assert.ok(css.includes(part+'.target-active'));
+});
+
+test('entering target mode does not preselect a hidden coordinate',()=>{
+ const preview=new TargetFeedback();preview.update('board:road',['a','b']);
+ assert.equal(preview.active,null);preview.hover('b');assert.equal(preview.active,'b');
+ preview.hover(null);assert.equal(preview.active,null);
 });

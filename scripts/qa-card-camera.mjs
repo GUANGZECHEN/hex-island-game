@@ -1,3 +1,4 @@
+import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
@@ -88,8 +89,8 @@ try{
    const roadReference=await inspect();
    for(let step=0;step<2;step++){
     await page.getByRole('button',{name:'Place road',exact:true}).click();await stable();
-    const selected=await page.locator('#targets select').inputValue();assert.ok(selected);
-    await page.getByRole('button',{name:'Use target',exact:true}).click();await stable();
+    const [selected]=await boardTargetIds(page);assert.ok(selected);
+    await clickBoardTarget(page);await stable();
     const now=await inspect();report.checks.push({width,card,step:step+1,after:now});verifyView(roadReference,now,width+' free road '+(step+1));
     assert.equal(now.game.roads.length,before.game.roads.length+step+1);
    }
@@ -98,7 +99,7 @@ try{
    const undone=await inspect();verifyView(roadReference,undone,width+' undo free road');assert.equal(undone.game.phase,'free-road');assert.equal(undone.game.roads.length,before.game.roads.length+1);
    await page.getByRole('button',{name:'Place road',exact:true}).click();await stable();
    await page.getByRole('button',{name:'Cancel selection',exact:true}).click();await stable();verifyView(roadReference,await inspect(),width+' cancel target');
-   await page.getByRole('button',{name:'Place road',exact:true}).click();await page.getByRole('button',{name:'Use target',exact:true}).click();await stable();verifyView(roadReference,await inspect(),width+' replay free road');
+   await page.getByRole('button',{name:'Place road',exact:true}).click();await clickBoardTarget(page);await stable();verifyView(roadReference,await inspect(),width+' replay free road');
   }
   await delay(2200);const timed=await inspect();report.checks.push({width,card,alertExpired:true,after:timed});verifyView(resized,timed,width+' '+card+' notice dismissal');
   if(width===1280&&card==='road-building')await page.screenshot({path:`${evidence}/road-building.png`,fullPage:true});

@@ -44,12 +44,6 @@ export class BoardRendererController {
       };
     }
   }
-  /** Preview from the legal-target selector; selecting alone never places a piece. */
-  highlightTarget(id: string | null): void {
-    this.preview.select(id);
-    if (this.instance) this.instance.highlightTarget(this.preview.selected);
-    else this.paintSVG();
-  }
   private paintSVG(): void {
     for (const target of Array.from(this.host.querySelectorAll<SVGElement>('[data-target-id]'))) {
       const active = target.getAttribute('data-target-id') === this.preview.active;

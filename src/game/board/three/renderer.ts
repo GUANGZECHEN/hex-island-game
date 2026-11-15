@@ -51,7 +51,7 @@ export class ThreeBoardRenderer {
   constructor(private host: HTMLElement, view: BoardSceneView, private choose: (id: string) => void, private failed: (reason: string) => void) {
     this.view = view; this.geometry = worldGeometry(view.board.layout);
     this.canvas = document.createElement('canvas'); this.canvas.className = 'three-island-board';
-    this.canvas.setAttribute('aria-label', '3D island board. Use the legal-target selector for keyboard placement.'); this.canvas.setAttribute('role', 'img');
+    this.canvas.setAttribute('aria-label', '3D island board. Click or tap a highlighted location. Use 2D view for keyboard placement.'); this.canvas.setAttribute('role', 'img');
     const gl = this.canvas.getContext('webgl2', { antialias: true, alpha: false });
     if (!gl) throw new Error('WebGL2 is unavailable');
     const ext = gl.getExtension('WEBGL_debug_renderer_info'); this.device = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));

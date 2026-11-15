@@ -1,3 +1,4 @@
+import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,mkdir,rm} from 'node:fs/promises';
@@ -35,22 +36,23 @@ async function ready(p){await p.waitForFunction(()=>window.__hex3D?.inspect().mo
 async function start(p,renderer){const u=new URL(url);if(renderer)u.searchParams.set('renderer',renderer);await p.goto(u.href,{waitUntil:'networkidle'});await p.locator('#local-room-create').click();await p.locator('#start').click();if(await p.locator('#pass').isVisible())await p.locator('#reveal').click();if(renderer!=='2d')await ready(p);}
 async function orange(p,id,label){const info=await inspect(p);assert.equal(info.highlightedTarget,id,label);const active=info.targetColors.filter(t=>t.active);assert.equal(active.length,1,label+' exactly one active');assert.equal(active[0].id,id);assert.equal(active[0].color,'ff981f');assert.ok(info.targetColors.filter(t=>!t.active).every(t=>t.color==='fff3a0'));return info;}
 async function preview(p,action,label){
- await p.getByRole('button',{name:action,exact:true}).click();await settle(p);
- const ids=await p.locator('#targets select option').evaluateAll(nodes=>nodes.map(n=>n.value));assert.ok(ids.length>=2,label+' needs choices');
- await p.mouse.move(0,0);const a=ids[0],b=ids[1];await orange(p,a,label+' default selection');
- const before=await inspect(p),status=await p.locator('#game-status').textContent();
- await p.evaluate(()=>window.__oldTargetSelect=document.querySelector('#targets select'));
- await p.locator('#targets select').selectOption(b);await settle(p);await orange(p,b,label+' dropdown selection');
- const point=await p.evaluate(id=>window.__hex3D.point(id),a);assert.ok(point);
- await p.mouse.move(point.x,point.y);await settle(p);await orange(p,a,label+' hover');
- await p.mouse.move(0,0);await settle(p);const after=await orange(p,b,label+' hover exit');
+ await p.getByRole('button',{name:action,exact:true}).click();await settle(p);await assertDirectTargets(p);
+ const ids=await boardTargetIds(p);assert.ok(ids.length>=2,label+' needs choices');
+ await p.mouse.move(0,0);await settle(p);assert.equal((await inspect(p)).highlightedTarget,null,label+' starts with no hidden selection');
+ const a=ids[0],b=ids[1],before=await inspect(p),status=await p.locator('#game-status').textContent();
+ await p.evaluate(()=>window.__oldTargetCancel=document.querySelector('#targets .target-cancel'));
+ const point=await boardTargetPoint(p,a);assert.ok(point);
+ await p.mouse.move(point.x,point.y);await settle(p);await orange(p,a,label+' first hover');
+ const second=await boardTargetPoint(p,b);assert.ok(second);await p.mouse.move(second.x,second.y);await settle(p);await orange(p,b,label+' second hover');
+ await p.mouse.move(0,0);await settle(p);const after=await inspect(p);assert.equal(after.highlightedTarget,null,label+' leave clears orange');
  assert.equal(after.instanceId,before.instanceId);assert.equal(after.mapBuilds,before.mapBuilds);
  assert.deepEqual(after.camera,before.camera);assert.deepEqual(after.projection,before.projection);assert.equal(after.zoom,before.zoom);
  assert.deepEqual(after.buildings,before.buildings);assert.deepEqual(after.roads,before.roads);assert.equal(after.robber,before.robber);assert.equal(after.picks,before.picks);
  assert.equal(await p.locator('#game-status').textContent(),status);
- assert.ok(await p.evaluate(()=>window.__oldTargetSelect===document.querySelector('#targets select')));
- check(label+': yellow legal / orange selected and hover; no camera, state or input reset');
- return {a,b,point,before};
+ assert.ok(await p.evaluate(()=>window.__oldTargetCancel===document.querySelector('#targets .target-cancel')));
+ await p.mouse.move(second.x,second.y);await settle(p);await orange(p,b,label+' screenshot highlight');
+ check(label+': no coordinate controls; pointer-only orange feedback preserves camera and state');
+ return {a,b,point:second,before};
 }
 try{
  if(!process.env.QA_URL){
@@ -64,9 +66,9 @@ try{
  await start(page);
  let state=await preview(page,'Place settlement','Settlement');
  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});await page.screenshot({path:`${evidence}/orange-settlement.png`,fullPage:true});
- await page.getByRole('button',{name:'Use target',exact:true}).click();await settle(page);
+ await clickBoardTarget(page,state.b);await settle(page);
  assert.ok((await inspect(page)).buildings.some(([id])=>id===state.b));assert.equal((await inspect(page)).highlightedTarget,null);
- check('Confirm places the selected settlement and removes stale highlight');
+ check('Direct board click places the pointed settlement and removes stale highlight');
  state=await preview(page,'Place road','Road');
  await page.getByRole('button',{name:'Cancel selection',exact:true}).click();await settle(page);
  assert.equal((await inspect(page)).targets.length,0);assert.equal((await inspect(page)).highlightedTarget,null);
@@ -84,7 +86,7 @@ try{
    if(card)await page.getByRole('button',{name:card==='knight'?'Play Knight':'Play Road Building',exact:true}).click();
    state=await preview(page,label,mode);
    await page.locator('#board .activity-alert').waitFor({state:'hidden',timeout:5000});await page.screenshot({path:`${evidence}/orange-${mode}.png`,fullPage:true});
-   await page.getByRole('button',{name:'Use target',exact:true}).click();await settle(page);
+   await clickBoardTarget(page,state.b);await settle(page);
    const done=await inspect(page);assert.equal(done.highlightedTarget,null);
    if(mode==='city')assert.ok(done.buildings.some(([id,piece])=>id===state.b&&piece.kind==='city'));
    if(mode==='robber')assert.equal(done.robber,state.b);
@@ -95,13 +97,16 @@ try{
  await start(page,'2d');await page.getByRole('button',{name:'Place settlement',exact:true}).click();
  const nodes=page.locator('#board [data-target-id]');assert.ok(await nodes.count()>1);
  const first=await nodes.nth(0).getAttribute('data-target-id'),second=await nodes.nth(1).getAttribute('data-target-id');
- await page.locator('#targets select').selectOption(second);assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),second);
- await nodes.nth(0).hover();assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),first);
- await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),second);
+ await assertDirectTargets(page);await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').count(),0);
+ await nodes.nth(1).hover();assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),second);
+ await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').count(),0);
  await nodes.nth(0).focus();assert.equal(await page.locator('#board .target-active').getAttribute('data-target-id'),first);
  assert.equal(await nodes.nth(0).evaluate(n=>getComputedStyle(n).fill),'rgb(255, 152, 31)');
- await page.locator('#board-render-toggle').click();await ready(page);await orange(page,second,'Renderer switching retains selected target');
- await page.getByRole('button',{name:'Cancel selection',exact:true}).click();assert.equal((await inspect(page)).highlightedTarget,null);check('SVG keyboard/hover matches orange color and selection survives 2D/3D switching');
+ await nodes.nth(0).press('Enter');assert.equal(await page.locator('#board [data-building-kind]').count(),1);
+ await page.locator('#board-render-toggle').click();await ready(page);assert.equal((await inspect(page)).buildings.length,1);assert.equal((await inspect(page)).highlightedTarget,null);
+ await page.getByRole('button',{name:'Place road',exact:true}).click();await assertDirectTargets(page);
+ await page.getByRole('button',{name:'Cancel selection',exact:true}).click();assert.equal((await inspect(page)).highlightedTarget,null);
+ check('SVG keyboard placement and renderer switching work without any coordinate picker');
  const context=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true});const phone=await context.newPage();phone.on('pageerror',e=>report.errors.push(String(e)));
  await start(phone);await phone.getByRole('button',{name:'Place settlement',exact:true}).click();await settle(phone);
  const targets=(await inspect(phone)).targets;point=await phone.evaluate(id=>window.__hex3D.point(id),targets[1]);

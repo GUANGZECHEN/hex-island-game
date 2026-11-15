@@ -1,3 +1,4 @@
+import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -27,7 +28,7 @@ try {
   const settlement=page.getByRole('button',{name:'Place settlement',exact:true});
   assert.equal(await settlement.locator('.action-label').textContent(),'Settlement');
   assert.equal(await settlement.getAttribute('title'),'Place settlement');
-  await settlement.click();await page.getByRole('button',{name:'Use target',exact:true}).click();
+  await settlement.click();await clickBoardTarget(page);
   const road=page.getByRole('button',{name:'Place road',exact:true});
   assert.equal(await road.locator('.action-label').textContent(),'Road');
   assert.match((await page.locator('#actions button').allTextContents()).at(-1),/Undo last action/);
