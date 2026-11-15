@@ -3,7 +3,7 @@ on:
   push:
     branches: [feature/harbor-orders]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: harbor-coop-preflight
   cancel-in-progress: true
@@ -18,26 +18,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Prepare reproducible local verification workspace
+      - name: Apply checksum-verified cooperative source
+        run: node scripts/apply-harbor-patch.mjs
+      - name: Install and regenerate matching design documents
         run: |
           npm ci
-          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
-          npx playwright install --only-shell chromium
-          mkdir -p verification-workspace
-          git archive HEAD | gzip > verification-workspace/source.tar.gz
-          tar czf verification-workspace/dependencies.tar.gz node_modules
-          tar czf verification-workspace/browser.tar.gz -C "$HOME/.cache" ms-playwright
-      - name: Run cooperative checks when implemented
+          python3 -m venv "$RUNNER_TEMP/harbor-docs"
+          "$RUNNER_TEMP/harbor-docs/bin/pip" install --quiet python-docx==1.2.0
+          "$RUNNER_TEMP/harbor-docs/bin/python" scripts/sync-harbor-docs.py
+      - name: Typecheck unit tests and production build
+        run: npm run typecheck && npm test && npm run build
+      - name: Prepare software WebGL browser
         run: |
-          npm run typecheck
-          npm test
-          npm run build
-          if [ -f scripts/qa-harbor-coop.mjs ]; then node scripts/qa-harbor-coop.mjs; fi
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verify real 3D cooperative flow and classic regression
+        run: |
+          node scripts/qa-harbor-coop.mjs
+          node scripts/qa-three-live.mjs
+          node scripts/qa-target-feedback.mjs
+          CAMERA_EXPECT_STABLE=1 node scripts/qa-card-camera.mjs
+      - name: Export verified source blobs without changing live branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/export-harbor-source.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: harbor-workspace
-          retention-days: 2
+          name: harbor-coop-verified
+          retention-days: 7
           path: |
-            verification-workspace
             harbor-evidence
+            three-evidence
+            target-evidence
+            camera-evidence
