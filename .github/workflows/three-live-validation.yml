@@ -4,7 +4,7 @@ on:
     branches: [art/three-live]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: three-live-validation
   cancel-in-progress: true
@@ -14,14 +14,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Apply asserted integration once and lock dependencies
-        run: |
-          if [[ -f scripts/apply-three-live.py ]]; then python3 scripts/apply-three-live.py; fi
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
       - name: Validate application and signaling
         run: |
           npm run typecheck
@@ -55,11 +54,7 @@ jobs:
           QA_URL: http://127.0.0.1:4175/hex-island-game/?qaPlayers=2
           QA_SIGNALING_URL: http://127.0.0.1:8787
         run: node scripts/qa-e2e.mjs
-      - name: Save exact tested sources for review
-        if: always()
-        run: |
-          tar --exclude='./.git' --exclude='./node_modules' --exclude='./signaling/node_modules' --exclude='./signaling/.wrangler' --exclude='./dist' --exclude='./three-evidence' --exclude='./tested-source.tar.gz' -czf "$RUNNER_TEMP/tested-source.tar.gz" .
-      - name: Upload tested build, evidence and source
+      - name: Upload tested build and evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -69,20 +64,3 @@ jobs:
             three-evidence
             dist
             package-lock.json
-            ${{ runner.temp }}/tested-source.tar.gz
-      - name: Commit only the validated integration on its isolated branch
-        if: success()
-        run: |
-          set -euo pipefail
-          git fetch origin art/three-live
-          test "$(git rev-parse origin/art/three-live)" = "$GITHUB_SHA"
-          rm -f scripts/apply-three-live.py .github/workflows/three-workbench.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json index.html src/game-ui.ts src/game/ui/compact-layout.ts scripts/qa-e2e.mjs .github/workflows/qa-pages.yml
-          git add -u scripts/apply-three-live.py .github/workflows/three-workbench.yml
-          if ! git diff --cached --quiet; then
-            git commit -m 'feat(3d): connect validated scene to actual game and lock Three.js dependencies'
-            git push origin HEAD:art/three-live
-          fi
-          echo "Validated source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
