@@ -364,8 +364,8 @@ test('dice alerts display every player and each publicly-produced resource with 
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes('function productionSummary(gains:Readonly<Record<string,Hand>>'));
- assert.ok(ui.includes('calculateDiceProduction(old,next.dice[0]+next.dice[1])'));
- assert.ok(ui.includes('calculateDiceProduction(projection.public,value.public.dice[0]+value.public.dice[1])'));
+ assert.ok(ui.includes('diceProductionSummary(old,next)'));
+ assert.ok(ui.includes('diceProductionSummary(projection.public,value.public)'));
  assert.ok(ui.includes("row.dataset.playerProduction=player.id"));
  assert.ok(ui.includes("chip.append(resourceIcon(resource),amount)"));
  assert.ok(ui.includes("none.textContent='No resources'"));

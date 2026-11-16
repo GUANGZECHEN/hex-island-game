@@ -8,7 +8,7 @@ const evidence=process.env.HARBOR_EVIDENCE||'harbor-evidence';await mkdir(eviden
 const report={scope:process.env.HARBOR_ALLOW_2D==='1'?'Fallback accepted for local functional checks':'3D required',checks:[],errors:[]};const check=(name)=>{report.checks.push({name,pass:true});console.log('PASS',name);};
 const html='__harbor-fixture.html',source='src/__harbor-fixture.ts';
 const fixture=`
-(window as any).__harborFixture={load(outcome:'playing'|'win'|'lose'|'station'|'road-support'='playing'){
+(window as any).__harborFixture={load(outcome:'playing'|'win'|'lose'|'station'|'road-support'|'own-shipping'|'seven'='playing'){
  clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();localUndoState=null;pendingLocalUndo=null;targetMode=null;lastWinnerAlert='';
  let s=createGame(24680,['Player 1','Player 2'],undefined,{mode:'harbor-coop'});
  for(let n=0;n<8;n++){const c=chooseBotCommand(s,s.players[s.currentSeat].id)!;s=applyBotCommand(s,c);}
@@ -26,6 +26,22 @@ const fixture=`
   s.buildings[edges[0].vertexIds.find(v=>v!==vertex.id)!]={playerId:'Player 1',kind:'settlement'};
   s.buildings[edges[1].vertexIds.find(v=>v!==vertex.id)!]={playerId:'Player 2',kind:'city'};
  }
+ if(outcome==='own-shipping'){
+  const geometry=createIslandBoard();
+  const start=geometry.vertices.find(v=>!port.vertexIds.includes(v.id)&&!geometry.edges.some(e=>e.vertexIds.includes(v.id)&&e.vertexIds.some(x=>port.vertexIds.includes(x))))!;
+  s.buildings={[start.id]:{playerId:'Player 1',kind:'settlement'}};s.roads={};
+  const path=fixtureRoute(s,'Player 1',port.vertexIds).path;
+  for(const id of path)s.roads[id]='Player 1';s.roads[path[1]]='Player 2';
+  const mine=geometry.edges.find(e=>e.id===path[0])!,theirs=geometry.edges.find(e=>e.id===path[1])!;
+  const junction=mine.vertexIds.find(v=>theirs.vertexIds.includes(v))!;
+  s.harbor!.stations={[junction]:{vertexId:junction,builtBy:'Player 1',lastSentTurns:{}}};
+ }
+ if(outcome==='seven'){
+  s.phase='roll';s.dice=null;s.discards={};s.victims=[];s.resumePhase=null;
+  const hands=[{lumber:9,brick:0,wool:0,grain:1,ore:0},{lumber:0,brick:0,wool:8,grain:0,ore:1}];
+  for(let seat=0;seat<2;seat++)for(const r of RESOURCES){s.bank[r]+=s.players[seat].hand[r]-hands[seat][r];s.players[seat].hand[r]=hands[seat][r];}
+  for(let seed=0;seed<100;seed++){const first=fixtureDraw(seed,6),second=fixtureDraw(first.state,6);if(first.index+second.index===5){s.randomState=seed;break;}}
+ }
  if(outcome==='road-support'){
   const geometry=createIslandBoard();const vertex=geometry.vertices.find(v=>geometry.edges.filter(e=>e.vertexIds.includes(v.id)).length===3)!;
   const edges=geometry.edges.filter(e=>e.vertexIds.includes(vertex.id)),mine=edges[0],theirs=edges[1],allowed=edges[2];
@@ -37,6 +53,11 @@ const fixture=`
  }
  state=s;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,'harbor-coop');lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;
  el('pass').hidden=true;el('game').hidden=false;enterGame();render();
+},snapshot(){return structuredClone(state);},redraw(){render();},completeOwnRoute(){
+ const port=state!.board.ports.find(p=>p.edgeId===state!.harbor!.orders[0].portId)!;
+ const route=fixtureRoute(state!,'Player 1',port.vertexIds);
+ if(!Number.isFinite(route.missing))throw Error('Expected an available own-road detour');
+ for(const id of route.path)if(!state!.roads[id])state!.roads[id]='Player 1';render();
 }};
 `;
 let server,browser,page;
@@ -54,7 +75,7 @@ async function setupPair(p){
 async function local(p,bot=false){await p.goto(base.href,{waitUntil:'networkidle'});await p.locator('#local-room-create').click();await p.locator('#local-game-mode').selectOption('harbor-coop');if(bot)await p.locator('#local-bot-count').selectOption('1');await p.locator('#start').click();await reveal(p);await ready(p);}
 try{
  if(!process.env.QA_URL){
-  const ui=await readFile('src/game-ui.ts','utf8');await writeFile(source,"import {shippingRoute as fixtureRoute} from './game/rules/harbor';\n"+ui+fixture);
+  const ui=await readFile('src/game-ui.ts','utf8');await writeFile(source,"import {shippingRoute as fixtureRoute} from './game/rules/harbor';\nimport {drawIndex as fixtureDraw} from './game/rules/state';\n"+ui+fixture);
   await writeFile(html,(await readFile('index.html','utf8')).replace('/src/game-ui.ts','/src/__harbor-fixture.ts'));
   server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','4180','--strictPort'],{stdio:'pipe'});
   for(let i=0;i<80;i++){try{if((await fetch(base)).ok)break;}catch{}await delay(150);}
@@ -112,6 +133,36 @@ try{
    await clickBoardTarget(page,roadTest.allowed);
    assert.equal(await page.locator('#game-error').textContent(),'');
    check(renderer+': owned road extends at a team junction; partner-city continuation is not highlighted or placeable');
+   await page.evaluate(()=>window.__harborFixture.load('own-shipping'));
+   assert.equal(await page.locator('.harbor-order [data-load-resource]').count(),0);
+   assert.equal(await page.locator('.harbor-station').count(),1);
+   assert.match(await page.locator('.harbor-order').first().textContent(),/Own roads needed:/);
+   await page.evaluate(()=>window.__harborFixture.completeOwnRoute());
+   assert.match(await page.locator('.harbor-order').first().textContent(),/Connected by your own roads/);
+   await page.locator('.harbor-order [data-load-resource]').first().click();
+   assert.equal(await page.locator('#game-error').textContent(),'');
+   assert.equal(Object.values((await page.evaluate(()=>window.__harborFixture.snapshot())).harbor.orders[0].loaded).reduce((a,b)=>a+b,0),1);
+   check(renderer+': a trade station never unlocks a mixed-road Load; an owned detour enables a real Load button');
+   await page.evaluate(()=>window.__harborFixture.load('seven'));
+   const beforeSeven=await page.evaluate(()=>window.__harborFixture.snapshot());
+   await page.getByRole('button',{name:'Roll dice',exact:true}).click();
+   const seven=await page.evaluate(()=>window.__harborFixture.snapshot());
+   assert.equal(seven.dice[0]+seven.dice[1],7);assert.equal(seven.phase,'action');
+   assert.deepEqual(seven.discards,{});assert.deepEqual(seven.victims,[]);
+   assert.equal(seven.board.robberHexId,beforeSeven.board.robberHexId);
+   for(let i=0;i<2;i++)assert.equal(Object.values(seven.players[i].hand).reduce((a,b)=>a+b,0),Object.values(beforeSeven.players[i].hand).reduce((a,b)=>a+b,0)+1);
+   assert.equal(await page.getByRole('button',{name:'Move robber',exact:true}).count(),0);
+   assert.equal(await page.locator('.activity-production-row').count(),2);
+   assert.equal(await page.locator('.activity-production-chip').count(),2);
+   assert.equal(await page.locator('.activity-production-none').count(),0);
+   const labels=await page.locator('.activity-production-chip').evaluateAll(ns=>ns.map(n=>n.getAttribute('aria-label')));
+   const expectedLabels=Object.values(seven.harbor.sevenReward.gains).map(hand=>Object.entries(hand).find(([,n])=>n===1)[0]+': 1');
+   assert.deepEqual(labels,expectedLabels);
+   await page.evaluate(()=>{window.__harborFixture.redraw();window.__harborFixture.redraw();});
+   assert.deepEqual((await page.evaluate(()=>window.__harborFixture.snapshot())).players,seven.players);
+   await page.screenshot({path:`${evidence}/seven-${renderer}.png`,fullPage:true});
+   check(renderer+': real Roll 7 keeps large hands, awards one resource each with exact icons, leaves robber unchanged and redraw grants nothing');
+
 
   }
  }

@@ -27,3 +27,7 @@ Orders, shipping routes and a shared victory/defeat replace individual victory a
 ## Harbor cooperative revision 2 (2026-11-16)
 
 Approved: owned-road/owned-building support only for new roads (including Road Building); settlement-cost trade stations at two-player road junctions; one resource gift per station per player turn; two asymmetric starting placements (Player 1: settlement plus two roads; Player 2: city only); and ten successful deliveries from twelve scheduled orders. The first order appears during setup with two resource types and a seven-round deadline. Further orders arrive every three rounds, increase in size and shorten in deadline. See docs/harbor-coop.md for tuning values and compatibility. Existing v1 saves keep their rules until restart; Classic and infrastructure permissions are unchanged.
+
+## Harbor shipping and seven amendment (2026-11-16)
+
+Approved for Harbor v2: Load may use only the loading player's own roads from their own settlement/city. Trade stations transfer cards, not road access. Rolling seven awards each partner one random resource from available bank stock and immediately resumes normal actions, with no discards, robber movement or theft. Knight's existing behavior, Classic, archived v1 campaigns and infrastructure constraints are unchanged.

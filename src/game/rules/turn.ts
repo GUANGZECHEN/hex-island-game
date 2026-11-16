@@ -2,6 +2,8 @@ import { createIslandBoard } from '../board/geometry.ts';
 import { drawIndex, secureIndex, RESOURCES, type GameState, type Hand } from './state.ts';
 
 import { advanceHarbor, isHarbor } from './harbor.ts';
+import { usesTradeStations } from './trade-stations.ts';
+import { awardHarborSeven } from './harbor-seven.ts';
 
 export type TurnCommand =
   | { type: 'roll'; playerId: string }
@@ -42,6 +44,19 @@ export function calculateDiceProduction(
  }
  return gains;
 }
+/** Announce a roll using public state only. Random seven rewards come from the
+ * authoritative result and must never be re-rolled or inferred from hidden hands. */
+export function diceProductionSummary(
+ before:Parameters<typeof calculateDiceProduction>[0],
+ after:Pick<GameState,'dice'|'turn'|'mode'> & {harbor?:GameState['harbor']|null},
+):Record<string,Hand> {
+ const total=after.dice?after.dice[0]+after.dice[1]:0;
+ const reward=after.harbor?.sevenReward;
+ if(total===7&&after.mode==='harbor-coop'&&after.harbor?.version===2&&reward?.turn===after.turn){
+  return structuredClone(reward.gains);
+ }
+ return calculateDiceProduction(before,total);
+}
 /** Apply exactly the publicly computable awards, preserving single-recipient shortage behavior. */
 export function produce(state:GameState,total:number):void {
  const gains=calculateDiceProduction(state,total);
@@ -59,9 +74,16 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
   if (command.type === 'roll' && state.phase === 'roll' && active.id === command.playerId) {
     const first = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(state.randomState, 6), second = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(first.state!, 6);
     state.randomState = second.state ?? state.randomState; state.dice = [first.index + 1, second.index + 1];
+    if(state.harbor)delete state.harbor.sevenReward;
     if (state.dice[0] + state.dice[1] === 7) {
-      state.discards = Object.fromEntries(state.players.filter(player => size(player.hand) > 7).map(player => [player.id, Math.floor(size(player.hand) / 2)]));
-      state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
+      if(usesTradeStations(state)){
+        // Cooperative seven only grants resources: no discard, robber move or theft.
+        state.discards={};state.victims=[];state.resumePhase=null;
+        awardHarborSeven(state,secureRandom);state.phase='action';
+      }else{
+        state.discards = Object.fromEntries(state.players.filter(player => size(player.hand) > 7).map(player => [player.id, Math.floor(size(player.hand) / 2)]));
+        state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
+      }
     } else { produce(state, state.dice[0] + state.dice[1]); state.phase = 'action'; }
   } else if (command.type === 'discard' && state.phase === 'discard') {
     const required = state.discards[command.playerId], player = state.players.find(p => p.id === command.playerId);
@@ -83,6 +105,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
     for (const resource of RESOURCES) { if (index < victim.hand[resource]) { victim.hand[resource]--; active.hand[resource]++; break; } index -= victim.hand[resource]; }
     state.victims = []; state.phase = state.resumePhase ?? 'action'; state.resumePhase = null;
   } else if (command.type === 'end-turn' && state.phase === 'action' && active.id === command.playerId) {
+    if(state.harbor)delete state.harbor.sevenReward;
     state.currentSeat = (state.currentSeat + 1) % state.players.length; state.turn++; state.dice = null; state.playedDevelopment = false; state.offer = null; state.phase = 'roll'; advanceHarbor(state);
   } else throw new Error('Command is not allowed in this phase.');
   return state;

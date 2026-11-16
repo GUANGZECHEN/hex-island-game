@@ -51,7 +51,7 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
   }
  }
  const reachable=routes.find(x=>x.route.missing===0);
- const distant=routes.find(x=>x.route.missing>0);
+ const distant=routes.find(x=>Number.isFinite(x.route.missing)&&x.route.missing>0);
  let goal:Hand=reachable?Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,reachable.order.demand[r]-reachable.order.loaded[r])])) as Hand:{...emptyCargo(),lumber:1,brick:1};
  const cards=self.cards.filter(c=>c.boughtTurn<state.turn);
  if(!state.playedDevelopment){

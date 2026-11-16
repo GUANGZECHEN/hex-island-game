@@ -18,7 +18,7 @@ import { createBoardView } from './game/board/presentation';
 import { renderIslandBoard } from './game/board/render';
 import { createGame, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
-import { applyTurnCommand as localTurn, calculateDiceProduction } from './game/rules/turn';
+import { applyTurnCommand as localTurn, diceProductionSummary } from './game/rules/turn';
 import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
 import { derivePublicActivity, turnAnnouncement, type PublicActivityState } from './game/ui/activity';
 import { applyEconomyCommand as localEconomy } from './game/rules/economy';
@@ -74,7 +74,7 @@ function productionSummary(gains:Readonly<Record<string,Hand>>,players:readonly 
  }
  return summary;
 }
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=calculateDiceProduction(old,next.dice[0]+next.dice[1]);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=diceProductionSummary(old,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -570,7 +570,7 @@ const network=initializeNetwork({status:connectionStatus,discardPending:()=>{
   const nextPublic=value.public as unknown as PublicActivityState;
   if(value.public.phase!=='discard'||!value.public.discards[playerId])discardSubmitted=false;
   const activity=(value.public.harbor&&value.public.harbor.event!==projection?.public.harbor?.event?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic);
-  if(projection?.public.phase==='roll'&&value.public.dice)pendingProductionSummary=calculateDiceProduction(projection.public,value.public.dice[0]+value.public.dice[1]);
+  if(projection?.public.phase==='roll'&&value.public.dice)pendingProductionSummary=diceProductionSummary(projection.public,value.public);
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;

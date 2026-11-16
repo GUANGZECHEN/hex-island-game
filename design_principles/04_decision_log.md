@@ -76,3 +76,9 @@ The Product Owner approved paid trade stations at vertices with roads from both 
 ### 2026-11-16: Cooperative road ownership
 
 The Product Owner explicitly requires that a partner's buildings and roads cannot support the acting player's road construction. New Harbor v2 games apply this to paid roads and development-card free roads, UI target validation, the host authority and the teammate Bot. A trade station permits bounded gifts only and is not a road anchor. Transport routes to ports remain shared as previously approved. Classic and saved Harbor v1 campaigns retain their existing rules.
+
+### 2026-11-16: Own-road shipping and resource-only seven
+
+The Product Owner superseded shared-road shipping for Harbor v2: both players must use only their own roads to Load. Trade stations remain the sole capped resource-transfer facility and confer no borrowed-road access. The request for a random one-resource grant to both players on seven was clarified twice: there is no discard and no robber movement; the roll immediately enters normal actions after the awards. Knight still uses its existing movement, without a bonus.
+
+Implementation classification: complex. Reuse host-owned entropy, shared deterministic reducers, existing public snapshots and checkpoints; publish only the two new awards, never remaining private hands. Enforce resource conservation with finite-bank shortage handling. Preserve Classic, archived v1 rules and already-recorded in-progress recovery subphases. Unit tests and real-browser checks must exercise ownership rejection, reward visibility, duplicate commands, reconnect and bank shortage before publication. Scope and architecture remain unchanged; no automatic main merge.
