@@ -1,0 +1,26 @@
+name: Verify harbor trade stations
+on:
+  push:
+    branches: [feature/harbor-stations]
+permissions:
+  contents: read
+concurrency:
+  group: harbor-stations-preflight
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export current source for isolated verification
+        run: |
+          mkdir -p verification-workspace
+          git archive HEAD | gzip > verification-workspace/source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harbor-stations-source
+          retention-days: 2
+          path: verification-workspace
