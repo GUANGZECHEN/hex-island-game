@@ -1,20 +1,28 @@
 import { createIslandBoard } from '../board/geometry.ts';
 import { RESOURCES, type GameState, type Hand, type Resource } from './state.ts';
+import { buildTradeStation, spendStationSend, usesTradeStations, isTradeJunction, type TradeStation } from './trade-stations.ts';
 
 export type GameMode = 'classic' | 'harbor-coop';
-export interface HarborOrder { id:string; portId:string; title:string; demand:Hand; loaded:Hand; dueRound:number }
+export interface HarborOrder { id:string; portId:string; title:string; demand:Hand; loaded:Hand; dueRound:number; arrivalRound?:number }
 export interface HarborState {
- version:1; round:number; completed:number; missed:number; goal:number; maxMisses:number;
+ version:1|2; stations?:Record<string,TradeStation>; round:number; completed:number; missed:number; goal:number; maxMisses:number;
  nextOrder:number; orders:HarborOrder[]; outcome:'playing'|'won'|'lost'; event:string;
 }
 export type HarborCommand =
  | {type:'harbor-load';playerId:string;orderId:string;cards:Hand}
- | {type:'harbor-send';playerId:string;recipient:string;cards:Hand};
-export const HARBOR_RULES = Object.freeze({ goal:6, maxMisses:3, activeOrders:2, deadlineRounds:9 });
+ | {type:'harbor-send';playerId:string;recipient:string;cards:Hand;stationId?:string}
+ | {type:'harbor-build-station';playerId:string;vertexId:string};
+export const LEGACY_HARBOR_RULES = Object.freeze({ goal:6, maxMisses:3, activeOrders:2, deadlineRounds:9 });
+export const HARBOR_RULES = Object.freeze({goal:10, maxMisses:3, totalOrders:12, arrivalInterval:3, firstDeadlineRounds:7});
+/** Public tuning curve: every new order adds one card; every two orders shorten the window. */
+export function harborOrderDifficulty(index:number):{quantity:number;types:number;deadlineRounds:number;arrivalRound:number}{
+ if(!Number.isInteger(index)||index<0||index>=HARBOR_RULES.totalOrders)throw new Error('Invalid order sequence.');
+ return {quantity:index+2,types:Math.min(5,2+Math.floor(index/3)),deadlineRounds:Math.max(3,7-Math.floor(index/2)),arrivalRound:1+index*3};
+}
 export const emptyCargo=():Hand=>({lumber:0,brick:0,wool:0,grain:0,ore:0});
 export const isHarbor=(s:Pick<GameState,'mode'>)=>s.mode==='harbor-coop';
 export function createHarborState():HarborState {
- return {version:1,round:1,completed:0,missed:0,goal:HARBOR_RULES.goal,maxMisses:HARBOR_RULES.maxMisses,nextOrder:0,orders:[],outcome:'playing',event:'Connect your settlements to the numbered harbors. Supply six ships together.'};
+ return {version:2,stations:{},round:1,completed:0,missed:0,goal:HARBOR_RULES.goal,maxMisses:HARBOR_RULES.maxMisses,nextOrder:0,orders:[],outcome:'playing',event:'Supply 10 of 12 ships. Build trade stations where both partners’ roads meet.'};
 }
 export function portName(state:Pick<GameState,'board'>,portId:string):string { return `P${state.board.ports.findIndex(p=>p.edgeId===portId)+1}`; }
 /** All built team roads carry cargo. Missing edges cost one new road, useful for hints and the local bot. */
@@ -49,12 +57,21 @@ function nextOrder(state:GameState):HarborOrder {
  // Early ships favor attainable ports; later ships add geographical variety. No game entropy is consumed.
  const pool=ports.slice(0,serial<2?3:5),index=((state.board.seed>>>0)+serial*7)%pool.length;
  const port=pool[index]!.p,recipe=RECIPES[((state.board.seed>>>0)+serial)%RECIPES.length];
- return {id:`ship-${serial+1}`,portId:port.edgeId,title:recipe.title,demand:{...emptyCargo(),...recipe.needs},loaded:emptyCargo(),dueRound:h.round+HARBOR_RULES.deadlineRounds-1};
+ if(h.version===2){
+  const difficulty=harborOrderDifficulty(serial),demand=emptyCargo();
+  const offset=((state.board.seed>>>0)+serial)%RESOURCES.length;
+  for(let i=0;i<difficulty.quantity;i++)demand[RESOURCES[(offset+i%difficulty.types)%RESOURCES.length]]++;
+  return {id:`ship-${serial+1}`,portId:port.edgeId,title:recipe.title,demand,loaded:emptyCargo(),arrivalRound:difficulty.arrivalRound,dueRound:difficulty.arrivalRound+difficulty.deadlineRounds-1};
+ }
+ return {id:`ship-${serial+1}`,portId:port.edgeId,title:recipe.title,demand:{...emptyCargo(),...recipe.needs},loaded:emptyCargo(),dueRound:h.round+LEGACY_HARBOR_RULES.deadlineRounds-1};
 }
 function fillOrders(state:GameState):void {
- const h=state.harbor!;while(h.outcome==='playing'&&h.orders.length<HARBOR_RULES.activeOrders)h.orders.push(nextOrder(state));
+ const h=state.harbor!;
+ if(h.version===2){
+  while(h.outcome==='playing'&&h.nextOrder<HARBOR_RULES.totalOrders&&harborOrderDifficulty(h.nextOrder).arrivalRound<=h.round)h.orders.push(nextOrder(state));
+ }else while(h.outcome==='playing'&&h.orders.length<LEGACY_HARBOR_RULES.activeOrders)h.orders.push(nextOrder(state));
 }
-export function beginHarbor(state:GameState):void { if(isHarbor(state)&&state.harbor&&!state.harbor.orders.length)fillOrders(state); }
+export function beginHarbor(state:GameState):void { if(isHarbor(state)&&state.harbor)fillOrders(state); }
 /** Advance only once after BOTH players have completed a turn. Setup never consumes deadlines. */
 export function advanceHarbor(state:GameState):void {
  if(!isHarbor(state)||!state.harbor||state.harbor.outcome!=='playing')return;
@@ -72,6 +89,9 @@ function checkedCards(cards:Hand):boolean {
 export function applyHarborCommand(original:GameState,command:HarborCommand):GameState {
  if(!isHarbor(original)||!original.harbor||original.harbor.outcome!=='playing'||original.phase!=='action'||original.players[original.currentSeat].id!==command.playerId)throw new Error('Your Harbor Co-op action turn is required.');
  const state=structuredClone(original),player=state.players[state.currentSeat],h=state.harbor!;
+ if(command.type==='harbor-build-station'){
+  buildTradeStation(state,player.id,command.vertexId);h.event=`${player.id} built a trade station. Each partner may send one card per turn here.`;return state;
+ }
  if(!checkedCards(command.cards)||RESOURCES.some(r=>command.cards[r]>player.hand[r]))throw new Error('Choose resources available in your own hand.');
  if(command.type==='harbor-load'){
   const order=h.orders.find(o=>o.id===command.orderId);if(!order||!canShip(state,player.id,order.portId))throw new Error('Connect your settlement to this harbor using team roads.');
@@ -81,21 +101,40 @@ export function applyHarborCommand(original:GameState,command:HarborCommand):Gam
   if(RESOURCES.every(r=>order.loaded[r]===order.demand[r])){
    for(const r of RESOURCES)state.bank[r]+=order.loaded[r];h.orders=h.orders.filter(o=>o.id!==order.id);h.completed++;
    h.event=`Ship completed at ${portName(state,order.portId)}! ${h.completed}/${h.goal} supplied.`;
-   if(h.completed>=h.goal){h.outcome='won';state.phase='finished';state.offer=null;h.event='All six ships supplied. You won together!';}
+   if(h.completed>=h.goal){h.outcome='won';state.phase='finished';state.offer=null;h.event=`${h.completed} ships supplied. You won together!`;}
    else fillOrders(state);
   }
  }else if(command.type==='harbor-send'){
-  const other=state.players.find(p=>p.id===command.recipient);if(!other||!partnersConnected(state,player.id,other.id))throw new Error('Connect both players with team roads before sending supplies.');
+  const other=state.players.find(p=>p.id===command.recipient);if(!other||other.id===player.id||(!usesTradeStations(state)&&!partnersConnected(state,player.id,other.id)))throw new Error('Choose a connected teammate.');
+  if(usesTradeStations(state))spendStationSend(state,player.id,command.stationId,command.cards);
   for(const r of RESOURCES){player.hand[r]-=command.cards[r];other.hand[r]+=command.cards[r];}h.event=`${player.id} sent supplies to ${other.id}.`;
  }else throw new Error('Unknown harbor command.');
  return state;
 }
-/** Old Classic saves omit mode. Reject invalid new coop saves instead of changing their rules. */
+/** Saved v1 campaigns retain their original rules; new games use version 2. */
 export function validateHarborState(state:GameState):void {
  if(state.mode!==undefined&&state.mode!=='classic'&&state.mode!=='harbor-coop')throw new Error('Invalid saved game mode.');
  if(!isHarbor(state)){if(state.harbor)throw new Error('Classic save contains cooperative state.');return;}
  const h=state.harbor;
- if(state.players.length!==2||state.board.layout!=='standard'||!h||h.version!==1||h.goal!==HARBOR_RULES.goal||h.maxMisses!==HARBOR_RULES.maxMisses||!['playing','won','lost'].includes(h.outcome)||![h.round,h.completed,h.missed,h.nextOrder].every(n=>Number.isSafeInteger(n)&&n>=0)||h.round<1||!Array.isArray(h.orders)||h.orders.length>HARBOR_RULES.activeOrders||new Set(h.orders.map(o=>o.id)).size!==h.orders.length)throw new Error('Invalid saved Harbor Co-op state.');
+ if(state.players.length!==2||state.board.layout!=='standard'||!h||![1,2].includes(h.version)||h.goal!==(h.version===2?10:6)||h.maxMisses!==3||!['playing','won','lost'].includes(h.outcome)||![h.round,h.completed,h.missed,h.nextOrder].every(n=>Number.isSafeInteger(n)&&n>=0)||h.round<1||!Array.isArray(h.orders)||h.orders.length>(h.version===2?3:2)||new Set(h.orders.map(o=>o.id)).size!==h.orders.length)throw new Error('Invalid saved Harbor Co-op state.');
  if((h.outcome!=='playing')!==(state.phase==='finished')||(h.outcome==='won'&&h.completed<h.goal)||(h.outcome==='lost'&&h.missed<h.maxMisses))throw new Error('Invalid cooperative outcome.');
  for(const order of h.orders){if(typeof order.id!=='string'||!/^ship-\d+$/.test(order.id)||!state.board.ports.some(p=>p.edgeId===order.portId)||!Number.isSafeInteger(order.dueRound)||order.dueRound<1||!checkedCards(order.demand)||!order.loaded||RESOURCES.some(r=>!Number.isSafeInteger(order.loaded[r])||order.loaded[r]<0||order.loaded[r]>order.demand[r]))throw new Error('Invalid saved harbor cargo.');}
+ if(h.version===2){
+  if(state.phase==='setup-road'&&(!Array.isArray(state.setupRoadEdges)||state.setupRoadEdges.length>1||state.currentSeat!==0||!state.pendingSettlement||state.buildings[state.pendingSettlement]?.playerId!==state.players[0].id||state.setupRoadEdges.some(id=>state.roads[id]!==state.players[0].id)))throw new Error('Invalid saved setup road pair.');
+  if(state.phase==='setup-city'&&state.currentSeat!==1)throw new Error('Invalid starting city owner.');
+  if(h.nextOrder>12||h.completed+h.missed+h.orders.length!==h.nextOrder||!h.stations||typeof h.stations!=='object'||Array.isArray(h.stations))throw new Error('Invalid campaign progress.');
+  const maxArrivals=Math.min(12,1+Math.floor((h.round-1)/3));
+  if(h.nextOrder>maxArrivals||(h.outcome==='playing'&&h.nextOrder!==maxArrivals))throw new Error('Invalid order schedule.');
+  for(const order of h.orders){
+   const index=Number(order.id.slice(5))-1,d=harborOrderDifficulty(index);
+   if(index>=h.nextOrder||order.arrivalRound!==d.arrivalRound||order.dueRound!==d.arrivalRound+d.deadlineRounds-1||RESOURCES.reduce((n,r)=>n+order.demand[r],0)!==d.quantity||RESOURCES.filter(r=>order.demand[r]>0).length!==d.types)throw new Error('Invalid scheduled order.');
+  }
+  for(const [id,station] of Object.entries(h.stations)){
+   if(!station||station.vertexId!==id||!state.players.some(p=>p.id===station.builtBy)||!isTradeJunction(state,id)||!station.lastSentTurns||typeof station.lastSentTurns!=='object'||Array.isArray(station.lastSentTurns))throw new Error('Invalid trade station.');
+   for(const [playerId,turn] of Object.entries(station.lastSentTurns)){
+    const seat=state.players.find(p=>p.id===playerId)?.seat;
+    if(seat===undefined||!Number.isSafeInteger(turn)||turn<1||turn>state.turn||(state.startingSeat+turn-1)%2!==seat)throw new Error('Invalid station allowance.');
+   }
+  }
+ }
 }

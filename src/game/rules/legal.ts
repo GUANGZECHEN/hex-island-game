@@ -2,9 +2,10 @@ import { createIslandBoard } from '../board/geometry.ts';
 import { applySetupCommand, type GameState, type Resource } from './state.ts';
 import { applyTurnCommand } from './turn.ts';
 import { applyBuildCommand } from './build.ts';
+import { applyHarborCommand } from './harbor.ts';
 import { applyEconomyCommand } from './economy.ts';
 
-export type TargetMode = 'settlement'|'road'|'city'|'robber';
+export type TargetMode = 'settlement'|'road'|'city'|'robber'|'station';
 
 /** Compute legal board targets with the same deterministic reducers used by gameplay. */
 export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):string[]{
@@ -16,8 +17,11 @@ export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):
       if(mode==='settlement'){
         if(state.phase==='setup-settlement')applySetupCommand(state,{type:'place-settlement',playerId,vertexId:id});
         else applyBuildCommand(state,{type:'build-settlement',playerId,vertexId:id});
+      }else if(mode==='station'){
+        applyHarborCommand(state,{type:'harbor-build-station',playerId,vertexId:id});
       }else if(mode==='city'){
-        applyBuildCommand(state,{type:'build-city',playerId,vertexId:id});
+        if(state.phase==='setup-city')applySetupCommand(state,{type:'place-city',playerId,vertexId:id});
+        else applyBuildCommand(state,{type:'build-city',playerId,vertexId:id});
       }else if(mode==='road'){
         if(state.phase==='setup-road')applySetupCommand(state,{type:'place-road',playerId,edgeId:id});
         else if(state.phase==='free-road')applyEconomyCommand(state,{type:'free-road',playerId,edgeId:id});

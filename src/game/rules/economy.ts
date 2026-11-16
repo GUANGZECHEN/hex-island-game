@@ -1,3 +1,4 @@
+import { usesTradeStations } from './trade-stations.ts';
 import { applyBuildCommand } from './build.ts';
 import { publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
 import { isHarbor, partnersConnected } from './harbor.ts';
@@ -27,6 +28,7 @@ function updateArmy(state:GameState) {
 export function applyEconomyCommand(original:GameState, command:EconomyCommand):GameState {
  let state=structuredClone(original);const player=state.players.find(p=>p.id===command.playerId),active=state.players[state.currentSeat];
  if(!player || state.phase==='finished')throw new Error('Unknown player or finished game.');
+ if(usesTradeStations(state)&&['offer','accept-offer'].includes(command.type))throw new Error('Use a trade station: one resource per partner per turn.');
  if(command.type==='accept-offer' || command.type==='reject-offer') {
   const offer=state.offer;
   if(state.phase!=='action'||!offer||offer.id!==command.id||!offer.targets.includes(player.id)||offer.proposer!==active.id)throw new Error('Offer is stale or not addressed to player.');

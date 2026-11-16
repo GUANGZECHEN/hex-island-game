@@ -5,6 +5,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'Place settlement': 'Settlement',
   'Build settlement': 'Settlement',
   'Upgrade city': 'City',
+  'Place city': 'City',
+  'Build trade station': 'Station',
   'Buy development card': 'Develop',
   'Roll dice': 'Roll',
   'Move robber': 'Robber',

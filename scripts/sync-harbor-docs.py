@@ -15,6 +15,12 @@ for stem in ['01_product_scope', '04_decision_log']:
     style.font.name = 'Calibri'
     style.font.size = Pt(10)
     style.paragraph_format.space_after = Pt(6)
+    if stem == '01_product_scope':
+        style.font.size = Pt(9.5)
+        style.paragraph_format.space_after = Pt(4)
+        for heading in ['Heading 1', 'Heading 2', 'Heading 3']:
+            doc.styles[heading].paragraph_format.space_before = Pt(10)
+            doc.styles[heading].paragraph_format.space_after = Pt(5)
     lines = (ROOT / 'design_principles' / f'{stem}.md').read_text().splitlines()
     i = 0
     while i < len(lines):

@@ -40,7 +40,7 @@ test('3D and SVG keep on-board feedback without coordinate selection controls', 
   assert.ok(!ui.includes("button(targets,'Use target'"));
   assert.ok(ui.includes("button(targets,'Cancel selection'"));
   assert.ok(ui.includes('Click or tap a highlighted'));
-  assert.equal((ui.match(/setAttribute\('data-target-id'/g)||[]).length,4);
+  assert.equal((ui.match(/setAttribute\('data-target-id'/g)||[]).length,5);
   const css=readFileSync('src/target-feedback.css','utf8');
   for(const part of ['game-target-vertex','game-target-road','game-target-city','robber-target'])assert.ok(css.includes(part+'.target-active'));
 });

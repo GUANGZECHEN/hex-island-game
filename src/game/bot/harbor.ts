@@ -1,3 +1,4 @@
+import { availableTradeStations, tradeStationIds, usesTradeStations, STATION_COST } from '../rules/trade-stations.ts';
 import { createIslandBoard } from '../board/geometry.ts';
 import { RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 import { canShip, shippingRoute, emptyCargo } from '../rules/harbor.ts';
@@ -13,9 +14,10 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
  if(state.phase==='discard'&&state.discards[id])return {type:'discard',playerId:id,cards:chooseDiscard(state,id,state.discards[id])};
  if(state.players[state.currentSeat].id!==id)return null;
  const choose=(ids:string[],score:(key:string)=>number)=>ids.sort((a,b)=>score(b)-score(a)||a.localeCompare(b))[0];
- if(state.phase==='setup-settlement'){
-  const vertexId=choose(legalTargetIds(state,id,'settlement'),v=>settlementScore(state,id,v)+(state.board.ports.some(p=>p.vertexIds.includes(v))?1.8:0));
-  return vertexId?{type:'place-settlement',playerId:id,vertexId}:null;
+ if(state.phase==='setup-settlement'||state.phase==='setup-city'){
+  const city=state.phase==='setup-city';
+  const vertexId=choose(legalTargetIds(state,id,city?'city':'settlement'),v=>settlementScore(state,id,v)+(state.board.ports.some(p=>p.vertexIds.includes(v))?1.8:0));
+  return vertexId?{type:city?'place-city':'place-settlement',playerId:id,vertexId}:null;
  }
  const routes=h.orders.map(order=>({order,route:shippingRoute(state,id,state.board.ports.find(p=>p.edgeId===order.portId)!.vertexIds)})).sort((a,b)=>a.route.missing-b.route.missing||a.order.dueRound-b.order.dueRound);
  const road=()=>{
@@ -35,6 +37,19 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
  if(state.phase==='free-road'){const edgeId=road();return edgeId?{type:'free-road',playerId:id,edgeId}:{type:'stop-free-roads',playerId:id};}
  if(state.phase!=='action')return null;
  for(const {order} of routes){if(!canShip(state,id,order.portId))continue;const cards=emptyCargo();for(const r of RESOURCES)cards[r]=Math.min(self.hand[r],order.demand[r]-order.loaded[r]);if(RESOURCES.some(r=>cards[r]>0))return {type:'harbor-load',playerId:id,orderId:order.id,cards};}
+ if(usesTradeStations(state)){
+  const station=availableTradeStations(state,id)[0],partner=state.players.find(p=>p.id!==id)!;
+  if(station){
+   const remoteOrder=routes.find(x=>!canShip(state,id,x.order.portId)&&canShip(state,partner.id,x.order.portId));
+   const resource=remoteOrder&&RESOURCES.find(r=>remoteOrder.order.demand[r]>remoteOrder.order.loaded[r]&&self.hand[r]>0);
+   if(resource)return {type:'harbor-send',playerId:id,recipient:partner.id,stationId:station.vertexId,cards:{...emptyCargo(),[resource]:1}};
+   const spare=RESOURCES.find(r=>self.hand[r]>2&&!routes.some(x=>x.order.demand[r]>x.order.loaded[r]));
+   if(spare)return {type:'harbor-send',playerId:id,recipient:partner.id,stationId:station.vertexId,cards:{...emptyCargo(),[spare]:1}};
+  }
+  if(!Object.keys(h.stations??{}).length&&RESOURCES.every(r=>self.hand[r]>=STATION_COST[r])){
+   const vertexId=tradeStationIds(state)[0];if(vertexId)return {type:'harbor-build-station',playerId:id,vertexId};
+  }
+ }
  const reachable=routes.find(x=>x.route.missing===0);
  const distant=routes.find(x=>x.route.missing>0);
  let goal:Hand=reachable?Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,reachable.order.demand[r]-reachable.order.loaded[r])])) as Hand:{...emptyCargo(),lumber:1,brick:1};

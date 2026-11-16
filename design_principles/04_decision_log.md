@@ -68,3 +68,11 @@ D019: Offline/local play supports selecting one through five deterministic test 
 ## Harbor-order cooperative mode
 
 D020 (2026-11-15): Add Harbor Co-op as a separate two-player ruleset alongside Classic, supporting online two-human, local hotseat and local one-human-plus-one-bot play. Keep existing map, production, building, trading and rendering foundations. Shared timed orders are fulfilled through connected road networks; the team wins or loses together. Preserve private hands, host authority, spectator restrictions, recovery and same-room restart. The cooperative bot is deterministic, local-only and uses no external AI service. Implementation classification: complex. First-play balance defaults and cooperative card/robber adaptations are documented in docs/harbor-coop.md; balance tuning remains open to Product Owner playtesting. No automatic merge into main is authorized.
+
+## Harbor cooperative revision 2 (2026-11-16)
+
+The Product Owner approved paid trade stations at vertices with roads from both players, one card sent per player per own turn per station, asymmetric two-placement openings (Player 1 settlement plus two roads each time; Player 2 city without roads), and a finite twelve-order campaign requiring ten successes. The first order is visible during setup, requires two resource types and allows seven complete team rounds. New orders arrive every three rounds with increasing cargo and decreasing deadlines. Details and explicit numerical tuning choices are in docs/harbor-coop.md; existing version-1 saves retain their original rules until restart. Classic, host authority, separate hands, online/local/Bot support and infrastructure permissions remain unchanged.
+
+### 2026-11-16: Cooperative road ownership
+
+The Product Owner explicitly requires that a partner's buildings and roads cannot support the acting player's road construction. New Harbor v2 games apply this to paid roads and development-card free roads, UI target validation, the host authority and the teammate Bot. A trade station permits bounded gifts only and is not a road anchor. Transport routes to ports remain shared as previously approved. Classic and saved Harbor v1 campaigns retain their existing rules.

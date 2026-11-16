@@ -1,6 +1,7 @@
 import { createIslandBoard } from '../board/geometry.ts';
 import { RESOURCES, type GameState, type Hand } from './state.ts';
 import { isHarbor } from './harbor.ts';
+import { usesTradeStations } from './trade-stations.ts';
 export type BuildCommand =
   | { type: 'build-road'; playerId: string; edgeId: string; free?: boolean }
   | { type: 'build-settlement'; playerId: string; vertexId: string }
@@ -47,12 +48,16 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
   if (command.type === 'build-road') {
     const edge = board.edges.find(edge => edge.id === command.edgeId);
     if (!edge || state.roads[edge.id] || !player.roads) throw new Error('Invalid road location or supply.');
+    // Preserve recorded v1 campaigns. New cooperative roads, like Classic roads,
+    // require the actor's own building or contiguous owned edge. A partner's
+    // building blocks continuation through that endpoint; a station is no anchor.
+    const legacyTeamSupport = isHarbor(state) && !usesTradeStations(state);
     const connects = edge.vertexIds.some(vertex => {
       const occupant = state.buildings[vertex];
-      if (occupant) return occupant.playerId === player.id || isHarbor(state);
-      return board.edges.some(other => other.vertexIds.includes(vertex) && (state.roads[other.id] === player.id || (isHarbor(state)&&!!state.roads[other.id])));
+      if (occupant) return occupant.playerId === player.id || legacyTeamSupport;
+      return board.edges.some(other => other.vertexIds.includes(vertex) && (state.roads[other.id] === player.id || (legacyTeamSupport && !!state.roads[other.id])));
     });
-    if (!connects) throw new Error('Road is not connected.');
+    if (!connects) throw new Error('Road must connect to your own road or building.');
     if (command.free && !allowFreeRoad) throw new Error('Free road not authorized.');
     if (!command.free) pay(state, player.id, ROAD);
     state.roads[edge.id] = player.id; player.roads--;

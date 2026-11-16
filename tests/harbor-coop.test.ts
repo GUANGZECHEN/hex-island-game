@@ -15,8 +15,10 @@ import { parseSessionRecovery } from '../src/game/network/recovery.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 const give=(s:GameState,id:string,c:Partial<Hand>)=>{const p=s.players.find(p=>p.id===id)!;for(const r of RESOURCES){const n=c[r]??0;p.hand[r]+=n;s.bank[r]-=n;}};
+// Archived v1 campaign fixtures explicitly verify saved-game compatibility.
 function fixture(){
  const s=createGame(24680,['a','b'],undefined,{mode:'harbor-coop'});s.phase='action';s.turn=1;s.currentSeat=0;
+ s.harbor={version:1,round:1,completed:0,missed:0,goal:6,maxMisses:3,nextOrder:0,orders:[],outcome:'playing',event:''};
  const ports=s.board.ports;s.buildings[ports[0].vertexIds[0]]={playerId:'a',kind:'settlement'};s.players[0].settlements--;
  s.buildings[ports[3].vertexIds[0]]={playerId:'b',kind:'settlement'};s.players[1].settlements--;beginHarbor(s);
  s.harbor!.orders[0].portId=ports[0].edgeId;return s;
@@ -26,24 +28,24 @@ function conserved(s:GameState){for(const r of RESOURCES)assert.equal(s.bank[r]+
 test('Harbor mode is explicitly two-player standard only; Classic and older local options remain intact',()=>{
  const a=createGame(7,['a','b']);assert.equal(a.harbor,undefined);assert.equal(a.deck.filter(x=>x==='victory-point').length,5);
  for(const n of [2,3,4])assert.equal(createGame(7,Array.from({length:n},(_,i)=>String(i))).players.length,n);
- const coop=createGame(7,['a','b'],undefined,{mode:'harbor-coop'});assert.equal(coop.harbor!.goal,6);assert.equal(coop.harbor!.orders.length,0);assert.equal(coop.deck.includes('victory-point'),false);conserved(coop);
+ const coop=createGame(7,['a','b'],undefined,{mode:'harbor-coop'});assert.equal(coop.harbor!.goal,10);assert.equal(coop.harbor!.orders.length,1);assert.equal(coop.deck.includes('victory-point'),false);conserved(coop);
  assert.throws(()=>createGame(7,['a','b','c'],undefined,{mode:'harbor-coop'}));assert.throws(()=>createGame(7,['a','b'],undefined,{mode:'harbor-coop',boardLayout:'expanded-5-6'}));
  assert.equal(createLocalRoomSettings(1,2,1,'harbor-coop').ids[1],'Bot');assert.equal(createLocalRoomSettings(1,2,0,'harbor-coop').totalPlayers,2);assert.throws(()=>createLocalRoomSettings(1,3,2,'harbor-coop'));
 });
-test('orders start after snake setup and share an independent deterministic sequence',()=>{
+test('new order is visible at game start and setup does not advance its deadline',()=>{
  let state=createGame(21,['a','b'],undefined,{mode:'harbor-coop'});
  for(let i=0;i<8;i++){const c=chooseBotCommand(state,state.players[state.currentSeat].id);assert.ok(c);state=applyBotCommand(state,c);}
- assert.equal(state.phase,'roll');assert.equal(state.harbor!.orders.length,2);assert.equal(state.harbor!.round,1);assert.equal(state.harbor!.orders[0].dueRound,9);validateHarborState(state);conserved(state);
+ assert.equal(state.phase,'roll');assert.equal(state.harbor!.orders.length,1);assert.equal(state.harbor!.round,1);assert.equal(state.harbor!.orders[0].dueRound,7);validateHarborState(state);conserved(state);
  const a=fixture(),b=fixture();assert.deepEqual(a.harbor,b.harbor);const entropy=a.randomState;advanceHarbor(a);assert.equal(a.randomState,entropy);
 });
-test('team roads connect cargo from either player; gifts require a real connected path',()=>{
+test('legacy v1: team roads connect cargo from either player; gifts require a real connected path',()=>{
  const s=fixture(),dest=s.board.ports[3];assert.equal(canShip(s,'a',dest.edgeId),false);assert.equal(partnersConnected(s,'a','b'),false);
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-send',playerId:'a',recipient:'b',cards:{...emptyCargo(),lumber:1}}));
  const route=shippingRoute(s,'a',dest.vertexIds);for(const [i,e] of route.path.entries()){s.roads[e]=i%2?'a':'b';s.players[i%2?0:1].roads--;}
  assert.ok(canShip(s,'a',dest.edgeId));assert.ok(partnersConnected(s,'a','b'));
  const next=applyHarborCommand(s,{type:'harbor-send',playerId:'a',recipient:'b',cards:{...emptyCargo(),lumber:1}});assert.equal(next.players[1].hand.lumber,s.players[1].hand.lumber+1);assert.equal(s.players[0].hand.lumber,1);conserved(next);
 });
-test('partial own-hand cargo is public, conserves cards and completes/replaces one order',()=>{
+test('legacy v1: partial own-hand cargo is public, conserves cards and completes/replaces one order',()=>{
  const s=fixture(),o=s.harbor!.orders[0];give(s,'a',o.demand);const resource=RESOURCES.find(r=>o.demand[r]>0)!;
  const partial=applyHarborCommand(s,{type:'harbor-load',playerId:'a',orderId:o.id,cards:{...emptyCargo(),[resource]:1}});
  assert.equal(partial.harbor!.orders[0].loaded[resource],1);assert.equal(s.harbor!.orders[0].loaded[resource],0);conserved(partial);
@@ -53,13 +55,13 @@ test('partial own-hand cargo is public, conserves cards and completes/replaces o
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-load',playerId:'a',orderId:o.id,cards:{...emptyCargo(),grain:999}}));
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-load',playerId:'a',orderId:o.id,cards:{...emptyCargo(),grain:-1}}));
 });
-test('deadlines advance after a pair of turns; expiry returns cargo and 3 misses loses for both',()=>{
+test('legacy v1: deadlines advance after a pair of turns; expiry returns cargo and 3 misses loses for both',()=>{
  let s=fixture();s.harbor!.orders[0].dueRound=1;s.harbor!.orders[1].dueRound=1;s.harbor!.missed=1;
  const o=s.harbor!.orders[0],r=RESOURCES.find(r=>o.demand[r]>0)!;give(s,'a',{[r]:1});s=applyHarborCommand(s,{type:'harbor-load',playerId:'a',orderId:o.id,cards:{...emptyCargo(),[r]:1}});
  s=applyTurnCommand(s,{type:'end-turn',playerId:'a'});assert.equal(s.harbor!.round,1);assert.equal(s.harbor!.missed,1);
  s.phase='action';s=applyTurnCommand(s,{type:'end-turn',playerId:'b'});assert.equal(s.harbor!.round,2);assert.equal(s.harbor!.missed,3);assert.equal(s.harbor!.outcome,'lost');assert.equal(s.phase,'finished');assert.equal(s.winner,null);conserved(s);
 });
-test('six supplied ships wins the team; no individual victory or teammate theft',()=>{
+test('legacy v1: six supplied ships wins the team; no individual victory or teammate theft',()=>{
  const s=fixture();s.harbor!.completed=5;const o=s.harbor!.orders[0];give(s,'a',o.demand);
  const done=applyHarborCommand(s,{type:'harbor-load',playerId:'a',orderId:o.id,cards:o.demand});assert.equal(done.harbor!.outcome,'won');assert.equal(done.phase,'finished');assert.equal(done.winner,null);conserved(done);
  assert.throws(()=>applyEconomyCommand(s,{type:'claim-victory',playerId:'a'}));

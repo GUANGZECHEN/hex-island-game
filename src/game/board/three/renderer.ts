@@ -1,3 +1,4 @@
+import { makeTradeStation } from './trade-station-art.ts';
 import * as THREE from 'three';
 import { TargetFeedback, TARGET_COLORS } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
@@ -127,7 +128,7 @@ export class ThreeBoardRenderer {
     if (this.disposed) return;
     this.view = view;
     const key = staticBoardKey(view.board); if (key !== this.key) { this.key = key; this.rebuildMap(); }
-    const structureKey = JSON.stringify([view.roads, view.buildings, view.players]);
+    const structureKey = JSON.stringify([view.roads, view.buildings, view.players, view.stations]);
     if (structureKey !== this.structureKey) {
       this.structureKey = structureKey; this.pieces.clear();
       const color = (id: string) => view.players.find(p => p.id === id)?.color || '#6f7c80';
@@ -140,6 +141,12 @@ export class ThreeBoardRenderer {
       for (const [id, building] of Object.entries(view.buildings)) {
         const p = this.geometry.vertices.get(id); if (!p) continue;
         const piece = makeBuilding(this.assets, building.kind, color(building.playerId)); piece.position.set(p.x, 0, p.z); piece.name = `building:${id}`; piece.userData = { id, owner: building.playerId, kind: building.kind }; this.pieces.add(piece);
+      }
+      for(const [id] of Object.entries(view.stations??{})){
+        const p=this.geometry.vertices.get(id);if(!p)continue;
+        const station=makeTradeStation(this.assets);station.position.set(p.x,0,p.z);
+        if(view.buildings[id])station.position.set(p.x+.23,.02,p.z-.18);
+        station.name=`station:${id}`;station.userData={id,kind:'station'};this.pieces.add(station);
       }
     }
     if (this.robberId !== view.board.robberHexId) {
@@ -173,7 +180,7 @@ export class ThreeBoardRenderer {
           mesh = new THREE.Mesh(this.assets.geometry('hex-hit', () => new THREE.CylinderGeometry(.94, .94, .025, 6)), this.targetMaterial); mesh.position.set(p.x, .16, p.z);
         } else {
           const p = this.geometry.vertices.get(id); if (!p) continue;
-          mesh = new THREE.Mesh(this.assets.geometry('vertex-hit', () => new THREE.CylinderGeometry(.22, .22, .10, 20)), this.targetMaterial); mesh.position.set(p.x, view.targetMode === 'city' ? .72 : .20, p.z);
+          mesh = new THREE.Mesh(this.assets.geometry('vertex-hit', () => new THREE.CylinderGeometry(.22, .22, .10, 20)), this.targetMaterial); mesh.position.set(p.x, (view.targetMode === 'city' || view.targetMode === 'station' && !!view.buildings[id]) ? .72 : .20, p.z);
         }
         mesh.userData.id = id; mesh.renderOrder = 8; mesh.name = `legal:${id}`; this.targets.add(mesh);
       }
@@ -273,7 +280,7 @@ export class ThreeBoardRenderer {
   /** Public diagnostics, available through a QA-only facade. No game-state write API. */
   inspect() {
     return { frustum: [this.camera.left, this.camera.right, this.camera.top, this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width, this.height], staticKey: this.key, manualView: this.manualView, mapBuilds: this.mapBuilds, instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
-      camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
+      camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, stations:Object.keys(this.view.stations??{}), roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
       targets: [...this.view.legalTargets], targetMode: this.view.targetMode, highlightedTarget: this.preview.active, selectedTarget: this.preview.selected,
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => ({ id: o.userData.id, color: (o.material as THREE.MeshBasicMaterial).color.getHexString(), active: o.userData.highlighted })), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),

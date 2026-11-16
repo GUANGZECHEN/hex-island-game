@@ -6,6 +6,7 @@ import type { TargetMode } from '../../rules/legal.ts';
 /** Public scene data only: never hands, deck, entropy or room credentials. */
 export interface BoardSceneView {
   harborPorts?:boolean;
+  stations?:Readonly<Record<string,{builtBy:string}>>;
   board: BoardSetup;
   players: readonly { id: string; name: string; color: string }[];
   roads: Readonly<Record<string, string>>;

@@ -8,24 +8,24 @@ import type { AuthorityRecovery } from './recovery.ts';
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
 type Command = SetupCommand | TurnCommand | BuildCommand | EconomyCommand | HarborCommand;
-const setupTypes = new Set(['place-settlement','place-road']);
+const setupTypes = new Set(['place-settlement','place-city','place-road']);
 const turnTypes = new Set(['roll','discard','move-robber','steal','end-turn']);
-const reversibleTypes = new Set(['place-settlement','place-road','build-road','build-settlement','build-city','bank-trade','free-road']);
-const harborTypes=new Set(['harbor-load','harbor-send']);
+const reversibleTypes = new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','bank-trade','free-road']);
+const harborTypes=new Set(['harbor-load','harbor-send','harbor-build-station']);
 const buildTypes = new Set(['build-road','build-settlement','build-city']);
 const economyTypes = new Set(['bank-trade','offer','cancel-offer','accept-offer','reject-offer','buy-card','play-card','free-road','stop-free-roads','claim-victory']);
 export interface PublicTradeSummary { revision:number; proposer:string; accepter:string; giveCount:number; receiveCount:number }
 const handSize=(hand:Record<string,number>)=>Object.values(hand).reduce((sum,count)=>sum+count,0);
 const fields: Record<string,string[]> = {
- 'harbor-load':['orderId','cards'],'harbor-send':['recipient','cards'],
- 'place-settlement':['vertexId'],'place-road':['edgeId'],undo:[],roll:[],discard:['cards'],'move-robber':['hexId'],steal:['victimId'],'end-turn':[],
+ 'harbor-load':['orderId','cards'],'harbor-send':['recipient','cards','stationId'],'harbor-build-station':['vertexId'],
+ 'place-settlement':['vertexId'],'place-city':['vertexId'],'place-road':['edgeId'],undo:[],roll:[],discard:['cards'],'move-robber':['hexId'],steal:['victimId'],'end-turn':[],
  'build-road':['edgeId'],'build-settlement':['vertexId'],'build-city':['vertexId'],'bank-trade':['give','receive','rate'],
  offer:['id','targets','give','receive'],'cancel-offer':['id'],'accept-offer':['id'],'reject-offer':['id'],'buy-card':[],
  'play-card':['card','resources','resource'],'free-road':['edgeId'],'stop-free-roads':[],'claim-victory':[]
 };
 /** Public state is shared with every player and spectator; private trade details remain viewer-scoped. */
 function publicProjection(state:GameState, viewer?:string, tradeSummary:PublicTradeSummary|null=null, undoPlayerId:string|null=null) {
- return {mode:state.mode??'classic',harbor:state.harbor??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
+ return {mode:state.mode??'classic',harbor:state.harbor??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,setupRoadEdges:state.setupRoadEdges,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
 }
 /** Only public quantities and this viewer's own cards are serialized. */
 export function projectState(state:GameState, viewer:string, revision:number, gameId:string, tradeSummary:PublicTradeSummary|null=null) {

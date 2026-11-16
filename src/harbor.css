@@ -8,3 +8,5 @@
 .harbor-event{font-size:.71rem;color:#315b50}.harbor-result{font-size:.9rem;font-weight:900;padding:.5rem;background:#fff1b6;border-radius:.4rem}#harbor-panel[data-outcome="lost"] .harbor-result{background:#ffe0d4}
 #harbor-panel details{font-size:.71rem}#harbor-panel summary{cursor:pointer;font-weight:800}#local-game-mode,#room-game-mode{max-width:100%;margin:.3rem 0 .55rem}.harbor-port-label{font-size:.2px;font-weight:900;fill:#244d4d;paint-order:stroke;stroke:#fff8dc;stroke-width:.05px;text-anchor:middle}
 @media(max-width:1100px){#harbor-panel{grid-column:1/-1}.board-workspace .board-player-column:has(#harbor-panel:not([hidden])){display:grid;grid-template-columns:1fr 1fr}.board-workspace .board-player-column #player-strip{grid-column:1/-1}.board-workspace .board-player-column #board-ledger{grid-column:1/-1}}
+
+.harbor-station{margin:.4rem 0;padding:.4rem;border:1px solid #76a99a;border-radius:.4rem;background:#f4fbf1}.harbor-station p{font-size:.69rem;margin:.25rem 0}.trade-station-piece{pointer-events:none}
