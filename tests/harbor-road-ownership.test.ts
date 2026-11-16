@@ -28,6 +28,35 @@ test('teammate roads or buildings alone never support a paid road in Harbor v2',
   assert.ok(!legalTargetIds(s,'a','road').includes(edges[1].id));assert.deepEqual(s,before);
  }
 });
+
+test('Harbor v2 settlements require your own road even when a partner road touches the vertex',()=>{
+ for(const [seat,actor,partner] of [[0,'a','b'],[1,'b','a']] as const){
+  const s=fixture();s.currentSeat=seat;s.turn=seat+1;s.roads[edges[0].id]=partner;
+  const before=structuredClone(s);
+  assert.throws(()=>applyBuildCommand(s,{type:'build-settlement',playerId:actor,vertexId:junction.id}),/Settlement is not connected/);
+  assert.ok(!legalTargetIds(s,actor,'settlement').includes(junction.id));
+  assert.deepEqual(s,before);
+  s.roads[edges[1].id]=actor;
+  assert.ok(legalTargetIds(s,actor,'settlement').includes(junction.id));
+  const next=applyBuildCommand(s,{type:'build-settlement',playerId:actor,vertexId:junction.id});
+  assert.deepEqual(next.buildings[junction.id],{playerId:actor,kind:'settlement'});
+  for(const r of ['lumber','brick','wool','grain'] as const)assert.equal(next.players[seat].hand[r],s.players[seat].hand[r]-1);
+ }
+});
+test('Host rejects forged partner-road settlements without spending cards or advancing revision',()=>{
+ const s=fixture();s.roads[edges[0].id]='b';
+ const host=new HostAuthority('own-settlement-test',s,()=>0),before=host.snapshot('a');
+ const result=host.receive('a',JSON.stringify({protocol:1,gameId:'own-settlement-test',revision:0,commandId:'foreign-settlement',sender:'a',command:{type:'build-settlement',playerId:'a',vertexId:junction.id}}));
+ assert.equal(result.code,'illegal');assert.equal(result.revision,0);assert.deepEqual(host.snapshot('a'),before);
+});
+test('Classic settlements require own roads while archived Harbor v1 retains shared-road support',()=>{
+ const s=fixture();s.roads[edges[0].id]='b';
+ const classic=structuredClone(s);classic.mode='classic';delete classic.harbor;
+ assert.throws(()=>applyBuildCommand(classic,{type:'build-settlement',playerId:'a',vertexId:junction.id}),/Settlement is not connected/);
+ const legacy=structuredClone(s);legacy.harbor!.version=1;
+ assert.equal(applyBuildCommand(legacy,{type:'build-settlement',playerId:'a',vertexId:junction.id}).buildings[junction.id].playerId,'a');
+});
+
 test('owned road or owned settlement/city permits construction and spends exactly its cost',()=>{
  for(const anchor of ['road','settlement','city'] as const){
   const s=fixture();if(anchor==='road')s.roads[edges[0].id]='a';else s.buildings[junction.id]={playerId:'a',kind:anchor};

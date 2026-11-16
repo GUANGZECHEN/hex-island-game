@@ -45,13 +45,13 @@ export function updateLongestRoute(state: GameState): void {
 export function applyBuildCommand(original: GameState, command: BuildCommand, allowFreeRoad = false): GameState {
   const state = structuredClone(original), player = state.players[state.currentSeat], board = createIslandBoard(original.board.layout);
   if (state.phase !== 'action' || command.playerId !== player.id) throw new Error('Not the active action phase.');
+  const legacyTeamSupport = isHarbor(state) && !usesTradeStations(state);
   if (command.type === 'build-road') {
     const edge = board.edges.find(edge => edge.id === command.edgeId);
     if (!edge || state.roads[edge.id] || !player.roads) throw new Error('Invalid road location or supply.');
     // Preserve recorded v1 campaigns. New cooperative roads, like Classic roads,
     // require the actor's own building or contiguous owned edge. A partner's
     // building blocks continuation through that endpoint; a station is no anchor.
-    const legacyTeamSupport = isHarbor(state) && !usesTradeStations(state);
     const connects = edge.vertexIds.some(vertex => {
       const occupant = state.buildings[vertex];
       if (occupant) return occupant.playerId === player.id || legacyTeamSupport;
@@ -65,7 +65,9 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     const vertex = board.vertices.find(vertex => vertex.id === command.vertexId);
     if (!vertex || state.buildings[vertex.id] || !player.settlements) throw new Error('Invalid settlement location or supply.');
     const edges = board.edges.filter(edge => edge.vertexIds.includes(vertex.id));
-    if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id || (isHarbor(state)&&!!state.roads[edge.id]))) throw new Error('Settlement is not connected or violates distance rule.');
+    // Harbor v2 settlements need the builder's own adjacent road, just like Classic.
+    // Only archived Harbor v1 games retain their original shared-road support.
+    if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id || (legacyTeamSupport && !!state.roads[edge.id]))) throw new Error('Settlement is not connected or violates distance rule.');
     pay(state, player.id, SETTLEMENT); state.buildings[vertex.id] = {playerId:player.id,kind:'settlement'}; player.settlements--;
   } else if (command.type === 'build-city') {
     if (state.buildings[command.vertexId]?.playerId !== player.id || state.buildings[command.vertexId]?.kind !== 'settlement' || !player.cities) throw new Error('City requires an owned settlement and available city.');
