@@ -1,0 +1,72 @@
+name: Verify owned shipping and resource-only seven release
+on:
+  push:
+    branches: [verify/harbor-seven-release]
+permissions:
+  contents: write
+concurrency:
+  group: harbor-seven-release-preflight
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply exact checksum-verified source update
+        run: node scripts/release-seven/apply.mjs
+      - name: Install and verify paired rule documents
+        run: |
+          npm ci
+          python3 -m venv "$RUNNER_TEMP/seven-docs"
+          "$RUNNER_TEMP/seven-docs/bin/pip" install --quiet python-docx==1.2.0
+          "$RUNNER_TEMP/seven-docs/bin/python" scripts/sync-harbor-docs.py
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from hashlib import sha256
+          expected={
+            '01_product_scope':('13f4ee7136c7e791f82ab85a1fe1cea7b9b01fe6ac4e2b059efb8f57ec7a69bd','1152296e7d3154a290d211911226404a96697199540c9d76c1efe66cb9f0ffd7'),
+            '04_decision_log':('9e7fdcad5f06a50194f95653019beafbee4b443dad9ed41444db5eaa72455950','0c31c801a2bb1f70599a0769ed8b3677faf175b2f6c6a4828c6918ae48e31428')}
+          for name,hashes in expected.items():
+            with ZipFile(f'design_principles/{name}.docx') as z:
+              for part,h in zip(['word/document.xml','word/styles.xml'],hashes):
+                assert sha256(z.read(part)).hexdigest()==h,(name,part)
+          print('Paired documents match the reviewed update.')
+          PY
+      - name: Typecheck unit tests and production build
+        run: |
+          mkdir -p release-evidence
+          npm run typecheck 2>&1 | tee release-evidence/typecheck.log
+          npm test 2>&1 | tee release-evidence/unit-tests.log
+          npm run build 2>&1 | tee release-evidence/build.log
+      - name: Prepare real software WebGL browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Exercise real Load Roll-seven stations and cooperative game flow
+        run: node scripts/qa-harbor-coop.mjs
+      - name: Verify classic 3D direct targets and camera stability
+        run: |
+          node scripts/qa-three-live.mjs
+          node scripts/qa-target-feedback.mjs
+          CAMERA_EXPECT_STABLE=1 node scripts/qa-card-camera.mjs
+      - name: Export verified source objects without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-seven/export.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harbor-seven-release-verified
+          retention-days: 7
+          path: |
+            release-evidence
+            harbor-evidence
+            three-evidence
+            target-evidence
+            camera-evidence
