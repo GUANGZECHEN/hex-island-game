@@ -70,7 +70,11 @@ try {
   const ambient1 = (await inspect(page)).ambientMotion;
   assert.notDeepEqual(ambient0.waveSamples, ambient1.waveSamples);
   assert.notDeepEqual(ambient0.boats, ambient1.boats);
-  check('Calm surface undulates only vertically, without drifting wave stripes; boats gently bob');
+  assert.equal(ambient1.waterReceivesShadow, false, 'Real water surface must not receive black cast-shadow patches');
+  assert.equal(ambient1.oceanDepthFaces, 128 * 6, 'Ocean depth has side walls only, no dark top cap');
+  assert.ok(ambient1.waterNormalVersion > 0, 'Water geometry must recompute normals as the physical surface undulates');
+  assert.ok(ambient1.waterNormalVersion > ambient0.waterNormalVersion, 'Normals must update each motion frame');
+  check('Sea mesh visibly deforms and relights without submerged dark disk; boats keep their original sway');
 
   for (const kind of ['tree','sheep','rock','brick','wheat']) {
     const point = await page.evaluate(kind => window.__hex3D.decorativePoint(kind), kind);

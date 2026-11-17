@@ -175,3 +175,8 @@ The 3D city has an upgraded fortified town-hall silhouette, clearly taller/wider
 - Trees sway, sheep bounce, ore rocks and brick stacks wobble, and wheat gently nods when clicked. Reactions are short, never block game interaction, and never reset the camera.
 - While placing game pieces, only legal placement targets respond. On mobile, ordinary tapping can trigger decoration responses when Adjust view is off.
 - Every animation is presentation-only, capped around 20 FPS and disabled for reduced-motion preferences and hidden/offscreen boards.
+
+
+## 2026-11-17 ocean corrections: physical water and original ships
+
+The sea must read as one gently rippling **3D modeled surface**, with highlights from changing vertex normals—not animated lines, fake shadow overlays, or a dark solid disk penetrating its waves. Use broad low-height swell deformations of the water mesh and a seamless open side skirt. Disable shadow reception on the water to avoid dark moving blotches. Retain the subtle color gradient and quiet shoreline. Restore the original more visible harbor-boat rocking; do not change docks, resource props, gameplay or the camera.

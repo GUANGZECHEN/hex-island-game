@@ -158,9 +158,31 @@ export function makeOcean(assets: ArtAssets, radius: number, geometry: World): T
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); g.setIndex(indices); g.computeVertexNormals(); return g;
   });
-  const side = assets.mesh(root, assets.geometry('ocean-depth', () => new THREE.CylinderGeometry(radius, radius, .11, 96)), assets.material('#276d81'), 0, -.24, 0); side.castShadow = false;
+  // A moving open-sided skirt, not an opaque cylinder cap. The previous solid
+  // top (y=-.185) overlapped the animated sea troughs and produced dark patches.
+  // The skirt's upper vertices share the *exact* positions of the water rim.
+  const sideGeometry = assets.geometry('ocean-depth', () => {
+    const positions: number[] = [], indices: number[] = [];
+    for (let i = 0; i < segments; i++) {
+      const angle = i * Math.PI * 2 / segments;
+      const x = Math.sin(angle) * radius, z = Math.cos(angle) * radius;
+      const staticRelief = Math.sin(x * 1.05 + z * .35) * Math.cos(z * .85 - x * .25) * .001;
+      positions.push(x, -.178 + staticRelief, z, x, -.36, z);
+    }
+    for (let i = 0; i < segments; i++) {
+      const a = 2 * i, b = 2 * ((i + 1) % segments);
+      indices.push(a, a + 1, b, b, a + 1, b + 1);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices); geometry.computeVertexNormals(); return geometry;
+  });
+  const side = assets.mesh(root, sideGeometry, assets.material('#276d81'));
+  side.name = 'ocean-depth'; side.castShadow = false; side.receiveShadow = false;
   const water = assets.mesh(root, surface, assets.extra(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .48, metalness: .06, side: THREE.DoubleSide })));
-  water.name = 'depth-gradient-water'; water.castShadow = false;
+  water.name = 'depth-gradient-water'; water.castShadow = false; water.receiveShadow = false;
+  // The water is the ONLY shaded top surface. Update its vertex normals at
+  // runtime, so actual mesh relief is visible instead of moving dark overlaps.
   const foamPoints: THREE.Vector3[] = [];
   for (const edge of coast) for (let i = 0; i < 18; i++) {
     const point = (t: number) => {

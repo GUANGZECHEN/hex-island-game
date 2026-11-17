@@ -436,9 +436,13 @@ export class ThreeBoardRenderer {
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => ({ id: o.userData.id, color: (o.material as THREE.MeshBasicMaterial).color.getHexString(), active: o.userData.highlighted })), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
       oceanLayers: this.map.getObjectByName('layered-ocean')?.children.map(child => child.name).filter(Boolean) ?? [],
-      ambientMotion: { enabled: this.motionEnabled(), waveSamples: this.oceanMotion?.sample() ?? [], boats: this.boats.map(b => ({
-        height: b.model.position.y, pitch: b.model.rotation.x, roll: b.model.rotation.z
-      })), decorations: this.decorations.length, reacting: this.reactions.size, lastReactionKind: this.lastReactionKind },
+      ambientMotion: { enabled: this.motionEnabled(), waveSamples: this.oceanMotion?.sample() ?? [],
+        waterNormalVersion: ((this.map.getObjectByName('depth-gradient-water') as THREE.Mesh | undefined)?.geometry.getAttribute('normal') as THREE.BufferAttribute | undefined)?.version ?? 0,
+        waterReceivesShadow: (this.map.getObjectByName('depth-gradient-water') as THREE.Mesh | undefined)?.receiveShadow ?? null,
+        oceanDepthFaces: (this.map.getObjectByName('ocean-depth') as THREE.Mesh | undefined)?.geometry.getIndex()?.count ?? 0,
+        boats: this.boats.map(b => ({
+          height: b.model.position.y, pitch: b.model.rotation.x, roll: b.model.rotation.z
+        })), decorations: this.decorations.length, reacting: this.reactions.size, lastReactionKind: this.lastReactionKind },
       boats: this.view.board.ports.map(port => ({ edge: port.edgeId, type: port.type, ratio: port.type === 'generic' ? '3:1' : '2:1', ...portBoatPlan(port, this.geometry) })),
       deserts: this.view.board.hexes.filter(h => h.terrain === 'desert').map(h => ({ id: h.hexId, hasToken: !!this.tiles.get(h.hexId)?.token, duneMeshes: this.tiles.get(h.hexId)?.root.children.filter(c => c.userData.dunes).length, props: 0 })),
       fullyVisible: this.corners().every(p => { p.project(this.camera); return Math.abs(p.x) < 1.001 && Math.abs(p.y) < 1.001; }) };

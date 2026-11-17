@@ -6,17 +6,19 @@ export const AMBIENT_FRAME_MS = 50; // At most ~20 scene updates/second, includi
 export const REACTION_DURATION_MS = 950;
 
 export function oceanWaveHeight(x: number, z: number, seconds: number): number {
-  // Broad, slow, low-relief surface breathing: no choppy crests or sideways travel.
-  return .006 * Math.sin(x * .78 + z * .20 + seconds * .42)
-    + .004 * Math.cos(z * .93 - x * .25 - seconds * .35);
+  // Actual shallow relief on the water mesh, with slow broad swell directions.
+  // No scrolling stripe textures, horizontal shifts or effects on gameplay.
+  return .017 * Math.sin(x * .90 + z * .16 + seconds * .52)
+    + .007 * Math.cos(z * 1.16 - x * .23 - seconds * .39);
 }
 
 export function boatPose(seconds: number, index: number, x: number, z: number) {
-  const phase = seconds * .65 + index * 1.47;
+  // Restore the original, user-approved ship rocking amplitude and tempo.
+  const phase = seconds * 1.1 + index * 1.47;
   return {
-    height: oceanWaveHeight(x, z, seconds) * .8 + .006 * Math.sin(phase),
-    pitch: .008 * Math.sin(phase + .8),
-    roll: .011 * Math.cos(phase * .82),
+    height: oceanWaveHeight(x, z, seconds) * .8 + .016 * Math.sin(phase),
+    pitch: .019 * Math.sin(phase + .8),
+    roll: .027 * Math.cos(phase * .82),
   };
 }
 
@@ -46,39 +48,50 @@ export function decorationReaction(kind: DecorationKind, elapsedMs: number) {
 }
 
 interface MovingBuffer {
+  geometry: THREE.BufferGeometry;
   attribute: THREE.BufferAttribute;
   original: Float32Array;
-  amplitude: number;
 }
 
-/** Reuses existing Three buffer attributes and materials: no new geometry per frame. */
+/** Animate the real ocean surface and its open sidewalls, keeping them seamless.
+ * Updating its vertex normals makes the low physical relief visible in lighting.
+ * There is no overlapping underwater cap and no animated shadow overlay.
+ */
 export class OceanMotion {
-  private layers: MovingBuffer[];
+  private water: MovingBuffer;
+  private rim: MovingBuffer;
   constructor(ocean: THREE.Group) {
-    this.layers = [
-      this.layer(ocean, 'depth-gradient-water', 1),
-    ];
+    this.water = this.layer(ocean, 'depth-gradient-water');
+    this.rim = this.layer(ocean, 'ocean-depth');
   }
-  private layer(root: THREE.Group, name: string, amplitude: number): MovingBuffer {
+  private layer(root: THREE.Group, name: string): MovingBuffer {
     const object = root.getObjectByName(name);
-    if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) throw new Error('Missing ocean art layer: ' + name);
-    const attribute = object.geometry.getAttribute('position');
+    if (!(object instanceof THREE.Mesh)) throw new Error('Missing ocean mesh: ' + name);
+    const geometry = object.geometry;
+    const attribute = geometry.getAttribute('position');
     if (!(attribute instanceof THREE.BufferAttribute)) throw new Error('Missing ocean positions: ' + name);
-    return { attribute, original: Float32Array.from(attribute.array), amplitude };
+    return { geometry, attribute, original: Float32Array.from(attribute.array) };
   }
   update(seconds: number): void {
-    for (const layer of this.layers) {
-      const { original, amplitude, attribute } = layer;
-      for (let i = 0; i < attribute.count; i++) {
-        const k = i * 3;
-        // Only the sea surface is animated; the shoreline, X/Z layout,
-        // foam, docks and all gameplay targets remain completely stationary.
-        attribute.setY(i, original[k + 1] + amplitude * oceanWaveHeight(original[k], original[k + 2], seconds));
-      }
-      attribute.needsUpdate = true;
+    const { original, attribute, geometry } = this.water;
+    for (let i = 0; i < attribute.count; i++) {
+      const k = i * 3;
+      attribute.setY(i, original[k + 1] + oceanWaveHeight(original[k], original[k + 2], seconds));
     }
+    attribute.needsUpdate = true;
+    geometry.computeVertexNormals();
+
+    // Every other rim vertex is an upper edge point. The lower half of the
+    // sidewall stays fixed; its upper edge follows the sea surface exactly.
+    const side = this.rim;
+    for (let i = 0; i < side.attribute.count; i += 2) {
+      const k = i * 3;
+      side.attribute.setY(i, side.original[k + 1] + oceanWaveHeight(side.original[k], side.original[k + 2], seconds));
+    }
+    side.attribute.needsUpdate = true;
+    side.geometry.computeVertexNormals();
   }
-  sample() {
-    return this.layers.map(layer => layer.attribute.getY(Math.min(24, layer.attribute.count - 1)));
+  sample(): number[] {
+    return [this.water.attribute.getY(Math.min(24, this.water.attribute.count - 1))];
   }
 }

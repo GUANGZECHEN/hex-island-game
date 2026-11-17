@@ -32,3 +32,12 @@ Tapping a tree, sheep, rock, pile of bricks or wheat patch when no gameplay targ
 Motion is frame-capped to about 20 scene updates per second and pauses when the page is hidden, the board leaves the viewport, or the user requests `prefers-reduced-motion: reduce`. A preference change restores animals and props to their resting pose. The whole scene, cached GPU assets and RAF subscriptions are disposed as before. Camera pose is never reset by a frame or decoration interaction; Reset/Top view remain the only explicit camera reset actions.
 
 Verification includes finite periodic wave/boat math, buffer reuse and port connector stability, decorative resource model hit ownership, pure reaction timing, actual browser pixels, click-based animation, unchanged camera and game action counts, reduced motion and bounded frame rate, plus previous gameplay/reconnect tests.
+
+
+## Ocean geometry fix: no dark shadows, visible physical swells (2026-11-17)
+
+The dark moving patches came from the old opaque seabed cylinder cap intersecting the animated water surface: its top was at y=-0.185, just below the resting water at about y=-0.178. When a trough dipped below the top face, the seabed showed through. In addition, wave vertices moved but their normals were not recomputed, so the mesh looked flat while the dark overlaps moved.
+
+The seabed is now an **open-sided skirt** with no top cap. Its upper 128 vertices follow the same animated positions as the outer water-ring vertices, creating a seamless solid shoreline. The water's actual vertex heights and surface normals update together, letting lighting reveal its gentle three-dimensional rise and fall. The sea does not receive cast shadows, so underwater geometry or nearby props cannot produce stray black moving blobs. The water remains a single cached graded mesh; no white moving wave decals or gameplay geometry are introduced.
+
+Harbor boats return to their original approved bobbing speed and amplitude (pitch 0.019 rad, roll 0.027 rad, independent ±0.016 height motion). Both docks and port/gameplay coordinates remain fixed. This is presentation-only, preserves camera pose, honors reduced motion and does not change any networking/game rules.
