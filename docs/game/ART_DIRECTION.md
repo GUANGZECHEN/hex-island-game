@@ -163,3 +163,7 @@ Port shadows, number-token shadows, robber-token shadows, building shadows and r
 Port docks sit farther outside the island and no longer route both coastal vertices into one shared stem. Each of the two coastal vertices connects directly to a different end of the same dock. A small tangent offset makes the two pier legs naturally unequal in length and prevents the dock board from visually covering their junction.
 
 Brick-producing hills use a stronger red-clay quarry language: exposed clay faces, stepped quarry cuts and small stacked-brick details. Ore-producing mountains use exposed angular rock faces, quarry benches and loose rubble. These background cues strengthen resource recognition while remaining subordinate to the resource icon and number token.
+
+## 2026-11-17: 3D city landmark
+
+The 3D city has an upgraded fortified town-hall silhouette, clearly taller/wider than a settlement: a raised stone plinth, player-colored hall, dark slate roof, two warm-lit windows, short steps and a distinctive crenellated keep. Its neutral trim keeps all six player colors readable. The settlement cottage remains unchanged, and SVG fallback keeps its existing B3 building pieces. The piece uses reusable low-poly shapes and cached Three.js materials, without changing rules, roads, build target IDs or production.

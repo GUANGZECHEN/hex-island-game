@@ -13,6 +13,10 @@ const check = (name, details = {}) => { report.checks.push({ name, ...details, p
 const inspect = page => page.evaluate(() => window.__hex3D?.inspect());
 const settle = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const moved = (a, b) => Math.hypot(...a.map((x, i) => x - b[i]));
+function assertCameraUnchanged(before,after,reason){
+ for(const key of ['camera','target','quaternion'])assert.ok(moved(before[key],after[key]) < .002,`${reason}: ${key} shifted`);
+ assert.ok(Math.abs(before.zoom-after.zoom)<.0001,`${reason}: zoom shifted`);
+}
 let server, browser;
 const url = new URL(process.env.QA_URL || 'http://127.0.0.1:4175/hex-island-game/');
 url.searchParams.set('qa3d', '1'); url.searchParams.set('qaPlayers', '2'); url.searchParams.delete('renderer');
@@ -70,13 +74,19 @@ try {
   const placed = await canvasPlace(page, 'Place settlement');
   info = await inspect(page); assert.ok(info.buildings.some(([id]) => id === placed)); assert.ok(moved(cameraBeforeBuild, info.camera) < .001);
   const buttons = await page.locator('#actions button').allTextContents(); assert.match(buttons.at(-1), /Undo last action/);
-  await page.getByRole('button', { name: 'Undo last action', exact: true }).click(); assert.equal((await inspect(page)).buildings.length, 0);
+  const viewBeforeUndo=await inspect(page);
+  await page.getByRole('button', { name: 'Undo last action', exact: true }).click();
+  assert.equal((await inspect(page)).buildings.length, 0);
+  assertCameraUnchanged(viewBeforeUndo,await inspect(page),'Undo');
   check('Rotated 3D ray picking executes a real settlement command; safe Undo removes it');
   await page.locator('#board-view-reset').click();
   for (let i = 0; i < 6; i++) { await reveal(page); await canvasPlace(page, 'Place settlement'); await canvasPlace(page, 'Place road'); }
   await reveal(page); info = await inspect(page);
   assert.equal(info.buildings.length, 6); assert.equal(info.roads.length, 6);
+  await drag(page,35,-14);
+  const beforeDice=await inspect(page);
   await page.getByRole('button', { name: 'Roll dice', exact: true }).click(); await settle(page);
+  assertCameraUnchanged(beforeDice,await inspect(page),'Dice roll');
   assert.ok((await page.locator('#game-status').textContent()).includes('dice '));
   assert.equal(await page.locator('.activity-production-row').count(), 3);
   if (await page.getByRole('button', { name: 'Move robber', exact: true }).count()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
@@ -102,11 +112,13 @@ try {
   const selected = await boardTargetIds(page); await drag(page, 30, -8);
   assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
   assert.deepEqual(await boardTargetIds(page), selected);
+  const beforeRendererSwitch=await inspect(page);
   await page.locator('#board-render-toggle').click(); assert.equal(await page.locator('#board svg.island-board').count(), 1);
   assert.ok(await page.evaluate(() => window.__targetNode === document.querySelector('#targets .target-cancel')));
   await clickBoardTarget(page, selected[0]);
   assert.equal(await page.locator('#board [data-building-kind]').count(), 1);
   await page.locator('#board-render-toggle').click(); await ready(page); assert.equal((await inspect(page)).buildings.length, 1);
+  assertCameraUnchanged(beforeRendererSwitch,await inspect(page),'2D/3D switch');
   await page.evaluate(() => window.__hex3D.loseContext()); await page.waitForFunction(() => document.querySelector('#board')?.dataset.renderer === '2d');
   assert.equal(await page.locator('#board [data-building-kind]').count(), 1);
   check('Camera and renderer switching retain direct-board controls; context loss preserves gameplay in SVG');
@@ -145,10 +157,29 @@ try {
     await guest.waitForFunction(() => !document.body.classList.contains('network-resyncing') && (window.__hexQaReconnectCount?.() || 0) > 0, null, { timeout: 30000 });
     assert.ok(moved(beforeReconnect, (await inspect(guest)).camera) < .001);
     check('A real guest connection loss/rejoin does not reset the 3D camera');
+    const beforeSameRoomRestart=await inspect(guest);
     host.once('dialog', dialog => dialog.accept()); await host.locator('#game-restart').click();
     await guest.waitForFunction(() => document.querySelector('#game-status')?.textContent.includes('Revision 0')); await ready(guest);
     assert.equal((await inspect(guest)).buildings.length, 0); assert.equal((await inspect(spectator)).targets.length, 0);
-    check('Same-room multiplayer restart resets all 3D clients and preserves spectator restrictions');
+    assertCameraUnchanged(beforeSameRoomRestart,await inspect(guest),'Same-room restart');
+    check('Same-room multiplayer restart resets pieces but preserves camera and spectator restrictions');
+
+    // Exit to the shared board's setup overlay, change the map, then start with
+    // the original seats. Both clients retain their own 3D camera settings.
+    const beforeAbort=await inspect(guest);
+    host.once('dialog',dialog=>dialog.accept());
+    await host.locator('#game-change-map').click();
+    await guest.waitForFunction(()=>document.body.classList.contains('room-configuring'),null,{timeout:15000});
+    await host.locator('#room-seed').fill('13579');
+    await host.locator('#room-seed').dispatchEvent('change');
+    await guest.waitForFunction(()=>document.querySelector('#room-seed')?.value==='13579',null,{timeout:15000});
+    await host.locator('#room-ready').click();
+    await guest.locator('#room-ready').click();
+    await host.waitForFunction(()=>!document.querySelector('#room-start')?.disabled,null,{timeout:15000});
+    await host.locator('#room-start').click();
+    await ready(host);await ready(guest);
+    assertCameraUnchanged(beforeAbort,await inspect(guest),'Abort / select new map / start');
+    check('Map re-selection and a fresh room game preserve each player camera');
     await hc.close(); await gc.close(); await sc.close();
   }
   assert.deepEqual(report.errors, []); check('No page, shader or rendering errors');

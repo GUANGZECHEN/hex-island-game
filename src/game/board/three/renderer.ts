@@ -7,6 +7,16 @@ import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 
+/** Local rendering preference; never sent to the host or put into game snapshots. */
+export interface BoardCameraView {
+  position: [number, number, number];
+  target: [number, number, number];
+  cursor: [number, number, number];
+  zoom: number;
+  frustum: { left: number; right: number; top: number; bottom: number };
+  viewport: { width: number; height: number };
+}
+
 /** Persistent public-only scene. Camera events never issue game commands or rebuild inputs. */
 export class ThreeBoardRenderer {
   readonly canvas: HTMLCanvasElement;
@@ -110,7 +120,11 @@ export class ThreeBoardRenderer {
     this.map.add(makeOcean(this.assets, radius, this.geometry));
     this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
     this.defaultTarget.copy(this.worldBounds.getCenter(new THREE.Vector3())); this.defaultTarget.y = .12;
-    this.structureKey = ''; this.targetKey = ''; this.resetView();
+    this.structureKey = ''; this.targetKey = '';
+    // Only the very first board load gets a default perspective. A new map or
+    // a fresh match is a game operation, not permission to reset the camera.
+    if (this.mapBuilds === 1) this.resetView();
+    else this.controls.update();
     const corners = this.corners().map(p => p.applyMatrix4(this.camera.matrixWorldInverse));
     const w = Math.max(...corners.map(p => p.x)) - Math.min(...corners.map(p => p.x));
     const h = Math.max(...corners.map(p => p.y)) - Math.min(...corners.map(p => p.y));
@@ -241,6 +255,29 @@ export class ThreeBoardRenderer {
     this.canvas.style.touchAction = this.controls.enabled ? 'none' : 'pan-y';
   }
   setTouchAdjustment(value: boolean): void { this.adjustTouch = value; this.leaveTarget(); this.touchPolicy(); }
+  /** Camera survives 3D/2D switching and temporary teardown during room setup. */
+  captureView(): BoardCameraView {
+    return {
+      position: this.camera.position.toArray() as [number, number, number],
+      target: this.controls.target.toArray() as [number, number, number],
+      cursor: this.controls.cursor.toArray() as [number, number, number],
+      zoom: this.camera.zoom,
+      frustum: { left: this.camera.left, right: this.camera.right, top: this.camera.top, bottom: this.camera.bottom },
+      viewport: { width: this.width, height: this.height },
+    };
+  }
+  restoreView(view: BoardCameraView): void {
+    if (!Number.isFinite(view.zoom) || view.zoom <= 0) return;
+    this.camera.position.fromArray(view.position);
+    this.controls.target.fromArray(view.target);
+    this.controls.cursor.fromArray(view.cursor);
+    this.camera.zoom = view.zoom;
+    const bounds = resizeManualFrustum(view.frustum, view.viewport, { width: this.width, height: this.height });
+    if (bounds) Object.assign(this.camera, bounds);
+    this.controls.update();
+    this.camera.updateProjectionMatrix();
+    this.manualView = true; this.invalidate();
+  }
   resetView(): void {
     this.manualView = false;
     this.camera.zoom = 1; this.controls.target.copy(this.defaultTarget); this.controls.cursor.copy(this.defaultTarget);
@@ -256,7 +293,7 @@ export class ThreeBoardRenderer {
     if (w < 1 || h < 1 || (w === this.width && h === this.height)) return;
     // Card notices, hand rows and target controls may resize the surrounding UI.
     // Resizing the canvas must not refit a view that the player deliberately adjusted.
-    const preserved = this.manualView ? resizeManualFrustum(this.camera,
+    const preserved = this.width > 0 && this.height > 0 ? resizeManualFrustum(this.camera,
       { width: this.width, height: this.height }, { width: w, height: h }) : null;
     this.width = w; this.height = h; this.renderer.setSize(w, h, false);
     if (preserved) { Object.assign(this.camera, preserved); this.camera.updateProjectionMatrix(); }

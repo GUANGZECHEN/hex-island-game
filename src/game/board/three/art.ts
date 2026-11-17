@@ -135,13 +135,47 @@ export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPl
   sail.name = 'boat-ratio'; sail.userData = { ratio: type === 'generic' ? '3:1' : '2:1', resource: type === 'generic' ? null : type };
   root.add(boat); return root;
 }
+/** Distinct tabletop silhouettes: a cottage settlement and a fortified, two-level city.
+ * Geometry/materials are cached by ArtAssets; all details remain part of one board piece. */
 export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city', color: string): THREE.Group {
   const g = new THREE.Group(); g.userData.kind = kind;
-  assets.box(g, color, kind === 'city' ? [.43, .27, .34] : [.27, .25, .29], 0, .265, 0);
-  const roof = assets.geometry('house-roof', () => { const geo = new THREE.ConeGeometry(.245, .20, 4); geo.rotateY(Math.PI / 4); return geo; });
-  assets.mesh(g, roof, assets.material(color), kind === 'city' ? -.12 : 0, .47, 0);
-  if (kind === 'city') { assets.box(g, color, [.20, .47, .25], .16, .37, .04); assets.box(g, color, [.25, .065, .30], .16, .63, .04); }
-  assets.box(g, '#f4ebd2', [.065, .09, .01], -.06, .285, .151);
-  assets.box(g, '#574a3b', [.068, .14, .012], .065, .22, .153);
+  if (kind === 'settlement') {
+    assets.box(g, color, [.27, .25, .29], 0, .265, 0).name = 'settlement-walls';
+    const roof = assets.geometry('house-roof', () => { const geo = new THREE.ConeGeometry(.245, .20, 4); geo.rotateY(Math.PI / 4); return geo; });
+    assets.mesh(g, roof, assets.material(color), 0, .47, 0).name = 'settlement-roof';
+    assets.box(g, '#f4ebd2', [.065, .09, .01], -.06, .285, .151);
+    assets.box(g, '#574a3b', [.068, .14, .012], .065, .22, .153);
+    return g;
+  }
+
+  // A small fortified town hall: readable colored walls, raised slate roof,
+  // warm lit windows and a taller crenellated tower. Distinct even at phone size.
+  const stone = '#d5d0bd', trim = '#ece3c9', slate = '#485f65', lit = '#ffe1a1';
+  const accent = `#${new THREE.Color(color).multiplyScalar(.72).getHexString()}`;
+  assets.box(g, '#8b8d80', [.65, .10, .52], 0, .17, 0).name = 'city-foundation';
+  assets.box(g, accent, [.68, .06, .55], 0, .235, 0).name = 'city-footing-rim';
+  assets.box(g, color, [.44, .39, .39], -.12, .455, 0).name = 'city-hall';
+  assets.box(g, stone, [.475, .055, .425], -.12, .675, 0).name = 'city-cornice';
+  const roof = assets.geometry('city-pavilion-roof', () => {
+    const geo = new THREE.ConeGeometry(.32, .22, 4);
+    geo.rotateY(Math.PI / 4);
+    return geo;
+  });
+  assets.mesh(g, roof, assets.material(slate), -.12, .785, 0).name = 'city-hall-roof';
+  assets.box(g, color, [.245, .54, .275], .205, .565, -.02).name = 'city-keep';
+  assets.box(g, stone, [.29, .08, .31], .205, .87, -.02).name = 'city-keep-cap';
+  for (const x of [.095, .315]) for (const z of [-.135, .095]) {
+    assets.box(g, trim, [.085, .095, .075], x, .95, z).name = 'city-battlement';
+  }
+  assets.box(g, '#655145', [.125, .19, .029], -.12, .36, .214).name = 'city-door';
+  assets.box(g, stone, [.17, .035, .04], -.12, .464, .215).name = 'city-door-lintel';
+  for (const x of [-.265, .035]) {
+    assets.box(g, trim, [.084, .13, .023], x, .535, .208).name = 'city-window-frame';
+    assets.box(g, lit, [.052, .095, .026], x, .54, .225).name = 'city-window';
+    assets.box(g, accent, [.014, .10, .028], x, .54, .24).name = 'city-window-mullion';
+  }
+  assets.box(g, trim, [.075, .145, .022], .205, .67, .126).name = 'city-keep-window-frame';
+  assets.box(g, lit, [.042, .105, .026], .205, .67, .145).name = 'city-keep-window';
+  assets.box(g, '#b1ada0', [.26, .04, .13], -.12, .18, .31).name = 'city-stairs';
   return g;
 }

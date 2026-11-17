@@ -5,6 +5,7 @@ import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type Ga
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
+import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
@@ -234,11 +235,12 @@ function enterNetworkRoom(){
  scheduleDesktopBoardFit();
 }
 function renderNetworkLobby(view:RoomTableLobby){
- enterNetworkRoom();
+ if(!view.started||view.recovering)enterNetworkRoom();
  document.body.classList.toggle('room-configuring',!view.started||view.recovering);
  document.body.classList.toggle('room-running',view.started&&!view.recovering);
  if(view.started&&!view.recovering)return;
  if(el('room-reconnect').parentElement===el('reconnect-holder'))el('room-section').append(el('room-reconnect'));
+ rememberedBoardCamera=boardRenderer?.cameraView()??rememberedBoardCamera;
  boardRenderer?.dispose();boardRenderer=null;
  const strip=el('player-strip');strip.replaceChildren();
  strip.dataset.playerCount=String(view.seats.length);
@@ -383,10 +385,10 @@ function renderPlayerStrip(s:GameState,activeId:string){
   card.append(header,publicStats,pieces);if(awards.childElementCount)card.append(awards);strip.append(card);
  }
 }
-let boardRenderer:BoardRendererController|null=null;
+let boardRenderer:BoardRendererController|null=null,rememberedBoardCamera:BoardCameraView|null=null;
 function drawBoard(){
  if(!state)return;
- if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)));
+ if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)),rememberedBoardCamera);
  boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
   players:state.players.map(p=>({id:p.id,name:playerName(p.id),color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
   stations:state.harbor?.stations,harborPorts:isHarbor(state),targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
