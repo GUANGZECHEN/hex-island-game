@@ -25,7 +25,7 @@ The camera retains its transform (position, look target, orientation, zoom and o
 
 ## Living board: ocean, boats and playful resources (2026-11-17)
 
-Product Owner approved a small visual-only ambient/interactive layer for the existing 3D game. The depth-gradient sea undulates on the original cached geometry; foam rises gently and pale wave strokes drift across the surface. Harbor boats roll and bob independently while their **two actual dock connectors remain fixed** to the original coast vertices. Nothing moves harbor hit targets, resource tokens, roads, buildings, terrain tiles, ports or their gameplay IDs.
+Product Owner approved a small visual-only ambient/interactive layer for the existing 3D game. The depth-gradient sea has broad, low-amplitude vertical swells in the original cached geometry. Shoreline foam is understated and stationary; the moving pale ripple stripes have been removed after visual feedback. Harbor boats very gently roll and bob independently while their **two actual dock connectors remain fixed** to the original coast vertices. Nothing moves harbor hit targets, resource tokens, roads, buildings, terrain tiles, ports or their gameplay IDs.
 
 Tapping a tree, sheep, rock, pile of bricks or wheat patch when no gameplay target mode is active triggers a short local sway/hop. Gameplay target picking always takes precedence; selecting a road, settlement, city or robber disables decorative click reactions. No game state, randomness, private information, websocket message or saved checkpoint contains the animation. Spectators can see the same ambient art; decoration clicks are private to their browser. Existing 2D fallback remains static and fully playable.
 

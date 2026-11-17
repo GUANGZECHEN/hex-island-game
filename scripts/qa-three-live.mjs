@@ -63,12 +63,14 @@ try {
   await page.screenshot({ path: `${evidence}/three-live-desktop.png`, fullPage: true });
   assert.equal(info.ambientMotion.enabled, true);
   assert.ok(info.ambientMotion.decorations > 15);
+  assert.equal(info.oceanLayers.includes('sea-ripples'), false, 'Sea must have no drifting white lines');
+  assert.ok(info.oceanLayers.includes('depth-gradient-water'), 'Actual sea surface remains animated');
   const ambient0 = info.ambientMotion;
   await delay(380);
   const ambient1 = (await inspect(page)).ambientMotion;
   assert.notDeepEqual(ambient0.waveSamples, ambient1.waveSamples);
   assert.notDeepEqual(ambient0.boats, ambient1.boats);
-  check('Water undulates and docked boats rock independently of their fixed piers');
+  check('Calm surface undulates only vertically, without drifting wave stripes; boats gently bob');
 
   for (const kind of ['tree','sheep','rock','brick','wheat']) {
     const point = await page.evaluate(kind => window.__hex3D.decorativePoint(kind), kind);

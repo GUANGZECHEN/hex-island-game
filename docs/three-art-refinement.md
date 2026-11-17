@@ -7,7 +7,7 @@ Approved by Product Owner: raise bare dunes, use rectangular brick stacks, exact
 - Sand relief is multiplied by 1.65 above the existing .123 seam height. No desert prop is added.
 - Brick tiles contain nine rectangular cuboids in three stacks. Pastures contain three modeled sheep. Fields contain fifteen vertical stalks with raised ears; stems and grain use GPU instances.
 - Every terrain has linear-RGB vertex-color gradients. No arithmetic is performed on CSS color strings.
-- Ocean depth colors use distance to the actual outer coast, with short foam strokes and nonanimated ripples. Static scenes continue to render on demand.
+- Ocean depth colors use distance to the actual outer coast; a thin, static shoreline foam trace remains. The previously drawn sea-ripple strokes have been removed in the 2026-11-17 calm-ocean art correction. The water mesh undergoes very small vertical movement when visible; gameplay and 2D fallback stay unchanged.
 - Shared geometry/materials retain their existing owner. Instance buffers are disposed before replacement and shutdown.
 
 ## Acceptance

@@ -65,10 +65,9 @@ test('ocean derives shallow water and foam from actual coastline on both board s
       distinct.add(values.map(n => n.toFixed(3)).join(','));
     }
     assert.ok(distinct.size > 100);
-    for (const name of ['shore-foam', 'sea-ripples']) {
-      const line = ocean.getObjectByName(name) as THREE.LineSegments;
-      assert.ok(line.geometry.getAttribute('position').count > 100);
-    }
+    const foam=ocean.getObjectByName('shore-foam') as THREE.LineSegments;
+    assert.ok(foam.geometry.getAttribute('position').count > 100);
+    assert.equal(ocean.getObjectByName('sea-ripples'),undefined,'calm sea has no decorative stripe pattern');
     assert.equal(surface.castShadow, false); assets.dispose();
   }
 });

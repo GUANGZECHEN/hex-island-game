@@ -37,7 +37,8 @@ try {
       if (tile.terrain === 'fields') assert.ok(tile.stems === 15 && tile.upward);
       if (tile.terrain === 'desert') assert.ok(tile.duneMax > .4 && Math.abs(tile.duneMin - .123) < .0001);
     }
-    assert.ok(['depth-gradient-water', 'shore-foam', 'sea-ripples'].every(n => info.oceanLayers.includes(n)));
+    assert.ok(['depth-gradient-water', 'shore-foam'].every(n => info.oceanLayers.includes(n)));
+    assert.ok(!info.oceanLayers.includes('sea-ripples'), 'calm water should have no wandering surface stripes');
     assert.ok(info.boats.every(b => b.decks.length === 2 && b.decks[0].vertexId !== b.decks[1].vertexId));
     const screenshot = await page.locator('#board canvas').screenshot(); const png = PNG.sync.read(screenshot), colors = new Set();
     for (let i = 0; i < png.data.length; i += 16) colors.add(`${png.data[i] >> 3},${png.data[i + 1] >> 3},${png.data[i + 2] >> 3}`);

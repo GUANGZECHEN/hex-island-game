@@ -131,15 +131,7 @@ export function coastDistance(x: number, z: number, coast: readonly CoastSegment
   }
   return best;
 }
-function insideIsland(x: number, z: number, geometry: World): boolean {
-  for (const hex of geometry.hexes.values()) {
-    const dx = Math.abs(x - hex.x), dz = Math.abs(z - hex.z);
-    if (dx <= .8661 && dz <= 1.001 && dx + Math.sqrt(3) * dz <= Math.sqrt(3) + .002) return true;
-  }
-  return false;
-}
-
-/** Distance-to-shore color and tiny static wave relief, without a full-time render loop. */
+/** Calm graded water surface; only its height moves in the separate motion layer. */
 export function makeOcean(assets: ArtAssets, radius: number, geometry: World): THREE.Group {
   const root = new THREE.Group(); root.name = 'layered-ocean'; root.userData.artRevision = ART_REVISION;
   const coast = coastline(geometry), segments = 128, rings = 48;
@@ -148,11 +140,11 @@ export function makeOcean(assets: ArtAssets, radius: number, geometry: World): T
     const deep = new THREE.Color('#216d89'), mid = new THREE.Color('#328fa8'), shallow = new THREE.Color('#7acbd0');
     const add = (x: number, z: number) => {
       const distance = coastDistance(x, z, coast);
-      const wave = Math.sin(x * 8.2 + z * 3.4) * Math.cos(z * 5.7 - x * .9);
-      positions.push(x, -.178 + wave * .003, z);
+      const wave = Math.sin(x * 1.05 + z * .35) * Math.cos(z * .85 - x * .25);
+      positions.push(x, -.178 + wave * .001, z);
       const color = deep.clone().lerp(mid, Math.exp(-distance * .56));
       color.lerp(shallow, .86 * Math.exp(-distance * distance / .23));
-      color.multiplyScalar(.99 + .035 * wave); colors.push(color.r, color.g, color.b);
+      color.multiplyScalar(1 + .012 * wave); colors.push(color.r, color.g, color.b);
     };
     add(0, 0);
     for (let r = 1; r <= rings; r++) for (let s = 0; s < segments; s++) {
@@ -178,19 +170,8 @@ export function makeOcean(assets: ArtAssets, radius: number, geometry: World): T
     };
     if (i % 7 !== 0) foamPoints.push(point(.035 + .93 * i / 18), point(.035 + .93 * (i + 1) / 18));
   }
-  const foam = new THREE.LineSegments(assets.geometry('shore-foam', () => new THREE.BufferGeometry().setFromPoints(foamPoints)), assets.extra(new THREE.LineBasicMaterial({ color: '#d4f3e9', transparent: true, opacity: .48, depthWrite: false })));
+  const foam = new THREE.LineSegments(assets.geometry('shore-foam', () => new THREE.BufferGeometry().setFromPoints(foamPoints)), assets.extra(new THREE.LineBasicMaterial({ color: '#d4f3e9', transparent: true, opacity: .22, depthWrite: false })));
   foam.name = 'shore-foam'; root.add(foam);
-  const ripples: THREE.Vector3[] = [];
-  for (let row = -12; row <= 12; row++) for (let col = -12; col <= 12; col++) {
-    const x = col * .63 + .16 * Math.sin(row * 1.3), z = row * .61 + .14 * Math.sin(col * 2.1);
-    if (Math.hypot(x, z) > radius - .3 || insideIsland(x, z, geometry) || coastDistance(x, z, coast) < .28) continue;
-    const length = .18 + .12 * (.5 + .5 * Math.sin(col * 6 + row * 3));
-    for (let j = 0; j < 6; j++) for (const k of [j, j + 1]) {
-      const t = k / 6; ripples.push(new THREE.Vector3(x + (t - .5) * length, -.168, z + .018 * Math.sin(t * Math.PI * 1.4 + row)));
-    }
-  }
-  const waves = new THREE.LineSegments(assets.geometry('sea-ripples', () => new THREE.BufferGeometry().setFromPoints(ripples)), assets.extra(new THREE.LineBasicMaterial({ color: '#b2e8e5', transparent: true, opacity: .24, depthWrite: false })));
-  waves.name = 'sea-ripples'; root.add(waves);
   return root;
 }
 
