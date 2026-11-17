@@ -92,11 +92,16 @@ export function makeTerrain(assets: ArtAssets, hex: HexSetup, p: GroundPoint): {
   }
   offsets.forEach(([x, z], i) => {
     if (hex.terrain === 'forest') {
-      assets.mesh(root, assets.geometry('tree-trunk', () => new THREE.CylinderGeometry(.036, .05, .27, 6)), assets.material('#705135'), x, .25, z);
-      const tree = assets.mesh(root, assets.geometry('tree-crown', () => new THREE.ConeGeometry(.21, .59, 7)), assets.material(i % 2 ? '#3d7250' : '#2d6246'), x, .55, z); tree.rotation.y = i * .6;
+      // Pivot each tree at ground level so tapping a crown sways the whole tree.
+      const tree = new THREE.Group(); tree.name = `tree:${i}`; tree.userData.decorative = 'tree';
+      tree.position.set(x, 0, z); tree.rotation.y = i * .6; root.add(tree);
+      assets.mesh(tree, assets.geometry('tree-trunk', () => new THREE.CylinderGeometry(.036, .05, .27, 6)), assets.material('#705135'), 0, .25, 0);
+      assets.mesh(tree, assets.geometry('tree-crown', () => new THREE.ConeGeometry(.21, .59, 7)), assets.material(i % 2 ? '#3d7250' : '#2d6246'), 0, .55, 0);
     } else if (hex.terrain === 'mountains' || hex.terrain === 'hills') {
-      const rock = assets.mesh(root, assets.geometry('rock', () => new THREE.DodecahedronGeometry(.24, 0)), assets.material(hex.terrain === 'mountains' ? (i % 2 ? '#74838b' : '#63717d') : (i % 2 ? '#bd6647' : '#ab5138')), x, .26, z);
-      rock.scale.set(1, hex.terrain === 'mountains' ? 1.25 : .58, .9); rock.rotation.y = i * .7;
+      const stone = new THREE.Group(); stone.name = `rock:${i}`; stone.userData.decorative = 'rock';
+      stone.position.set(x, 0, z); stone.rotation.y = i * .7; root.add(stone);
+      const rock = assets.mesh(stone, assets.geometry('rock', () => new THREE.DodecahedronGeometry(.24, 0)), assets.material(hex.terrain === 'mountains' ? (i % 2 ? '#74838b' : '#63717d') : (i % 2 ? '#bd6647' : '#ab5138')), 0, .26, 0);
+      rock.scale.set(1, hex.terrain === 'mountains' ? 1.25 : .58, .9);
       if (hex.terrain === 'hills' && i === 2) for (let j = 0; j < 3; j++) assets.box(root, '#d68b61', [.13, .075, .13], x + (j - 1) * .16, .19, z + .12);
     } else if (hex.terrain === 'fields') {
       for (let j = 0; j < 3; j++) assets.box(root, j % 2 ? '#e2bd54' : '#efd471', [.06, .11, .34], x + (j - 1) * .10, .18, z);

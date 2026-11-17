@@ -61,7 +61,42 @@ try {
   assert.ok(info.boats.every(b => b.decks.length === 2 && b.decks[0].vertexId !== b.decks[1].vertexId));
   check('Actual game defaults to nonblank 3D with sand dunes and nine boat ports', { triangles: info.triangles, calls: info.calls, colors: colorCount });
   await page.screenshot({ path: `${evidence}/three-live-desktop.png`, fullPage: true });
-  const startCamera = info.camera;
+  assert.equal(info.ambientMotion.enabled, true);
+  assert.ok(info.ambientMotion.decorations > 15);
+  const ambient0 = info.ambientMotion;
+  await delay(380);
+  const ambient1 = (await inspect(page)).ambientMotion;
+  assert.notDeepEqual(ambient0.waveSamples, ambient1.waveSamples);
+  assert.notDeepEqual(ambient0.boats, ambient1.boats);
+  check('Water undulates and docked boats rock independently of their fixed piers');
+
+  for (const kind of ['tree','sheep','rock','brick','wheat']) {
+    const point = await page.evaluate(kind => window.__hex3D.decorativePoint(kind), kind);
+    assert.ok(point, `No decorative ${kind} object to tap`);
+    const before = await inspect(page);
+    await page.mouse.click(point.x, point.y);
+    await page.waitForFunction(kind => window.__hex3D.inspect().ambientMotion.lastReactionKind === kind, kind, { timeout: 5000 });
+    const during = await inspect(page);
+    assertCameraUnchanged(before, during, `Tapped ${kind}`);
+    assert.equal(during.picks, before.picks, `Tapped ${kind} issued a game command`);
+    assert.equal(during.ambientMotion.lastReactionKind, kind);
+  }
+  await page.screenshot({ path: `${evidence}/three-live-reactive-art.png`, fullPage: true });
+  await delay(1100);
+  assert.equal((await inspect(page)).ambientMotion.reacting, 0);
+  check('Clicking each resource model triggers only a temporary local animation, without moving the camera or gameplay state');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(() => !window.__hex3D.inspect().ambientMotion.enabled);
+  const paused = await inspect(page);
+  await delay(260);
+  const pausedAfter = await inspect(page);
+  assert.deepEqual(paused.ambientMotion.waveSamples, pausedAfter.ambientMotion.waveSamples);
+  assert.ok(pausedAfter.frames - paused.frames <= 1);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.waitForFunction(() => window.__hex3D.inspect().ambientMotion.enabled);
+  check('Reduced-motion preference pauses ambient animation and keeps the canvas static');
+  const startCamera = (await inspect(page)).camera;
   await drag(page, 90, -20); let rotated = await inspect(page);
   assert.ok(moved(startCamera, rotated.camera) > .2); assert.equal(rotated.buildings.length, 0); assert.equal(rotated.picks, 0);
   await drag(page, 20, 15, true); assert.ok(moved(rotated.target, (await inspect(page)).target) > .005);
@@ -124,8 +159,10 @@ try {
   check('Camera and renderer switching retain direct-board controls; context loss preserves gameplay in SVG');
   await startLocal(page, 6, '86420'); info = await inspect(page); assert.equal(info.hexCount, 24); assert.equal(info.portCount, 11); assert.equal(info.deserts.length, 2);
   await page.screenshot({ path: `${evidence}/three-live-expanded.png`, fullPage: true });
-  await delay(500); const f = (await inspect(page)).frames; await delay(500); assert.ok((await inspect(page)).frames - f <= 1);
-  check('Expanded 24-hex game has eleven boats and two bare dune tiles; idle rendering stops');
+  await delay(300); const f = (await inspect(page)).frames; await delay(550);
+  const animatedFrames = (await inspect(page)).frames - f;
+  assert.ok(animatedFrames >= 1 && animatedFrames <= 17, `Ambient 3D frame budget exceeded: ${animatedFrames}`);
+  check('Expanded board has eleven moving boats, two dunes and a capped ambient animation frame rate', { animatedFrames });
   const unsupported = watch(await browser.newPage());
   await unsupported.addInitScript(() => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (type, ...args) { return type === 'webgl2' ? null : get.call(this, type, ...args); }; });
   await unsupported.goto(url.href); await unsupported.locator('#local-room-create').click(); await unsupported.locator('#start').click(); await reveal(unsupported);

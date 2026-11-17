@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
+import { AMBIENT_FRAME_MS, OceanMotion, boatPose, decorationReaction, type DecorationKind } from './motion.ts';
 
 /** Local rendering preference; never sent to the host or put into game snapshots. */
 export interface BoardCameraView {
@@ -46,6 +47,16 @@ export class ThreeBoardRenderer {
   private defaultTarget = new THREE.Vector3();
   private frame: number | null = null;
   private frameCount = 0;
+  private motionFrame: number | null = null;
+  private motionLastTick = 0;
+  private oceanMotion: OceanMotion | null = null;
+  private boats: { model: THREE.Group; x: number; z: number; index: number }[] = [];
+  private decorations: THREE.Group[] = [];
+  private reactions = new Map<THREE.Group, { started: number; kind: DecorationKind }>();
+  private lastReactionKind: DecorationKind | null = null;
+  private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private withinViewport = true;
+  private visibilityObserver: IntersectionObserver | null = null;
   private down: { x: number; y: number } | null = null;
   private abort = new AbortController();
   private observer: ResizeObserver;
@@ -96,12 +107,23 @@ export class ThreeBoardRenderer {
       event.preventDefault(); queueMicrotask(() => { if (!this.disposed) this.failed('3D connection to the graphics device was lost. Switched to 2D.'); });
     }, { signal });
     window.addEventListener('resize', this.resize, { passive: true, signal });
+    document.addEventListener('visibilitychange', this.scheduleMotion, { signal });
+    this.reducedMotion.addEventListener('change', this.scheduleMotion, { signal });
     this.observer = new ResizeObserver(this.resize); this.observer.observe(this.host);
+    if (typeof IntersectionObserver !== 'undefined') {
+      this.visibilityObserver = new IntersectionObserver(entries => {
+        this.withinViewport = !!entries[0]?.isIntersecting;
+        this.scheduleMotion();
+      }, { threshold: .01 });
+      this.visibilityObserver.observe(this.host);
+    }
     host.replaceChildren(this.canvas); host.dataset.renderer = '3d';
-    this.update(view); this.touchPolicy(); this.resize();
+    this.update(view); this.touchPolicy(); this.resize(); this.scheduleMotion();
   }
   private rebuildMap(): void {
     this.mapBuilds++;this.harborLabels.clear();
+    this.oceanMotion = null; this.boats = []; this.decorations = [];
+    this.reactions.clear(); this.lastReactionKind = null;
     disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
     this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = '';
@@ -110,14 +132,24 @@ export class ThreeBoardRenderer {
       const terrain = makeTerrain(this.assets, hex, this.geometry.hexes.get(hex.hexId)!);
       refineTerrain(this.assets, hex, terrain.root, terrain.token);
       this.tiles.set(hex.hexId, terrain); this.map.add(terrain.root);
+      terrain.root.traverse(object => {
+        if (object instanceof THREE.Group && ['tree','sheep','rock','brick','wheat'].includes(object.userData.decorative)) {
+          this.decorations.push(object);
+        }
+      });
     }
-    for (const port of this.view.board.ports) {
-      const boat = makeBoatPort(this.assets, port.type, portBoatPlan(port, this.geometry)); boat.name = `port:${port.edgeId}`; this.map.add(boat);
+    for (const [index, port] of this.view.board.ports.entries()) {
+      const plan = portBoatPlan(port, this.geometry);
+      const dock = makeBoatPort(this.assets, port.type, plan); dock.name = `port:${port.edgeId}`; this.map.add(dock);
+      const model = dock.getObjectByName('port-boat');
+      if (model instanceof THREE.Group) this.boats.push({ model, x: plan.center.x, z: plan.center.z, index });
     }
     this.map.updateMatrixWorld(true); this.worldBounds.setFromObject(this.map);
     this.worldBounds.max.y = Math.max(.9, this.worldBounds.max.y); this.worldBounds.expandByScalar(.20);
     const radius = Math.max(this.worldBounds.max.x, -this.worldBounds.min.x, this.worldBounds.max.z, -this.worldBounds.min.z) + .12;
-    this.map.add(makeOcean(this.assets, radius, this.geometry));
+    const ocean = makeOcean(this.assets, radius, this.geometry);
+    this.map.add(ocean);
+    this.oceanMotion = new OceanMotion(ocean);
     this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
     this.defaultTarget.copy(this.worldBounds.getCenter(new THREE.Vector3())); this.defaultTarget.y = .12;
     this.structureKey = ''; this.targetKey = '';
@@ -203,7 +235,7 @@ export class ThreeBoardRenderer {
     if(view.harborPorts&&!this.harborLabels.children.length)for(const [index,port] of view.board.ports.entries()){
       const plan=portBoatPlan(port,this.geometry);this.assets.sprite(this.harborLabels,this.assets.label(`P${index+1}`,'token'),plan.center.x,.93,plan.center.z,.28);
     }
-    this.paintTargets(); this.resize(); this.invalidate();
+    this.paintTargets(); this.resize(); this.invalidate(); this.scheduleMotion();
   }
   /** Presentation-only highlight: never changes the camera, scene identity or game. */
   highlightTarget(id: string | null): void {
@@ -234,10 +266,86 @@ export class ThreeBoardRenderer {
     if (!event.isPrimary) return;
     const dragging = (event.buttons & 6) !== 0 || !!this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 5;
     const id = dragging ? null : this.targetAt(event.clientX, event.clientY);
-    this.preview.hover(id); this.canvas.style.cursor = id ? 'pointer' : ''; this.paintTargets();
+    const decorative = !dragging && !id ? this.decorationAt(event.clientX, event.clientY) : null;
+    this.preview.hover(id); this.canvas.style.cursor = id || decorative ? 'pointer' : ''; this.paintTargets();
   };
   private leaveTarget = (): void => {
     this.down = null; this.preview.hover(null); this.canvas.style.cursor = ''; this.paintTargets();
+  };
+  /** Hit decorative models only when no gameplay target has been selected. */
+  private decorationAt(x: number, y: number): THREE.Group | null {
+    if (this.view.targetMode || this.adjustTouch || this.reducedMotion.matches || !this.decorations.length) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+    this.scene.updateMatrixWorld(true); this.camera.updateMatrixWorld(true);
+    this.ray.setFromCamera(new THREE.Vector2((x - rect.left) / rect.width * 2 - 1, -(y - rect.top) / rect.height * 2 + 1), this.camera);
+    const hit = this.ray.intersectObjects(this.decorations, true)[0];
+    for (let object: THREE.Object3D | null = hit?.object ?? null; object; object = object.parent) {
+      if (object instanceof THREE.Group && this.decorations.includes(object)) return object;
+    }
+    // Fine wheat stems are narrower than a finger. The resource tile surface
+    // is a generous fallback tap target only when no game action is selected.
+    const tileHit = this.ray.intersectObjects([...this.tiles.values()].map(tile => tile.root), true)
+      .find(result => {
+        for (let parent: THREE.Object3D | null = result.object; parent; parent = parent.parent) {
+          if (parent instanceof THREE.Group && parent.userData.terrain === 'fields') return true;
+        }
+        return false;
+      });
+    if (tileHit) {
+      for (let parent: THREE.Object3D | null = tileHit.object; parent; parent = parent.parent) {
+        if (parent instanceof THREE.Group && parent.userData.terrain === 'fields') {
+          return this.decorations.find(item => item.parent === parent && item.userData.decorative === 'wheat') ?? null;
+        }
+      }
+    }
+    return null;
+  }
+  private touchDecoration(object: THREE.Group): void {
+    const kind = object.userData.decorative as DecorationKind;
+    if (this.reducedMotion.matches) return;
+    this.reactions.set(object, { started: performance.now(), kind });
+    this.lastReactionKind = kind;
+    this.scheduleMotion();
+  }
+  private motionEnabled(): boolean {
+    return !this.disposed && !this.reducedMotion.matches && !document.hidden && this.withinViewport && this.width > 0 && this.height > 0;
+  }
+  private scheduleMotion = (): void => {
+    if (!this.motionEnabled()) {
+      if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
+      this.motionFrame = null;
+      if (this.reducedMotion.matches && this.reactions.size) {
+        for (const item of this.reactions.keys()) { item.position.y = 0; item.rotation.x = 0; item.rotation.z = 0; }
+        this.reactions.clear(); this.invalidate();
+      }
+      return;
+    }
+    if (this.motionFrame === null) this.motionFrame = requestAnimationFrame(this.motionTick);
+  };
+  private motionTick = (now: number): void => {
+    this.motionFrame = null;
+    if (!this.motionEnabled()) return;
+    if (now - this.motionLastTick >= AMBIENT_FRAME_MS) {
+      this.motionLastTick = now;
+      const seconds = now * .001;
+      this.oceanMotion?.update(seconds);
+      for (const { model, x, z, index } of this.boats) {
+        const pose = boatPose(seconds, index, x, z);
+        model.position.y = pose.height;
+        model.rotation.x = pose.pitch;
+        model.rotation.z = pose.roll;
+      }
+      for (const [object, reaction] of this.reactions) {
+        const pose = decorationReaction(reaction.kind, now - reaction.started);
+        object.position.y = pose.y;
+        object.rotation.x = pose.x;
+        object.rotation.z = pose.z;
+        if (pose.finished) this.reactions.delete(object);
+      }
+      this.invalidate();
+    }
+    this.scheduleMotion();
   };
   private corners(): THREE.Vector3[] {
     const points: THREE.Vector3[] = [];
@@ -300,13 +408,17 @@ export class ThreeBoardRenderer {
     if (preserved) { Object.assign(this.camera, preserved); this.camera.updateProjectionMatrix(); }
     else if (firstSize) this.fit(); // Only a first render can automatically frame the board.
     else this.camera.updateProjectionMatrix(); // Never re-fit an established game view.
-    this.invalidate();
+    this.invalidate(); this.scheduleMotion();
   };
   private pick = (event: PointerEvent): void => {
     const down = this.down; this.down = null;
     if (this.disposed || event.button !== 0 || !down || this.adjustTouch || document.body.classList.contains('network-resyncing') || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return;
     const id = this.targetAt(event.clientX, event.clientY);
     if (id) { this.preview.hover(id); this.paintTargets(); this.pickCount++; this.choose(id); }
+    else if (!this.view.targetMode) {
+      const decorative = this.decorationAt(event.clientX, event.clientY);
+      if (decorative) this.touchDecoration(decorative);
+    }
     if (event.pointerType === 'touch') this.leaveTarget();
   };
   private invalidate = (): void => {
@@ -324,6 +436,9 @@ export class ThreeBoardRenderer {
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => ({ id: o.userData.id, color: (o.material as THREE.MeshBasicMaterial).color.getHexString(), active: o.userData.highlighted })), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
       oceanLayers: this.map.getObjectByName('layered-ocean')?.children.map(child => child.name).filter(Boolean) ?? [],
+      ambientMotion: { enabled: this.motionEnabled(), waveSamples: this.oceanMotion?.sample() ?? [], boats: this.boats.map(b => ({
+        height: b.model.position.y, pitch: b.model.rotation.x, roll: b.model.rotation.z
+      })), decorations: this.decorations.length, reacting: this.reactions.size, lastReactionKind: this.lastReactionKind },
       boats: this.view.board.ports.map(port => ({ edge: port.edgeId, type: port.type, ratio: port.type === 'generic' ? '3:1' : '2:1', ...portBoatPlan(port, this.geometry) })),
       deserts: this.view.board.hexes.filter(h => h.terrain === 'desert').map(h => ({ id: h.hexId, hasToken: !!this.tiles.get(h.hexId)?.token, duneMeshes: this.tiles.get(h.hexId)?.root.children.filter(c => c.userData.dunes).length, props: 0 })),
       fullyVisible: this.corners().every(p => { p.project(this.camera); return Math.abs(p.x) < 1.001 && Math.abs(p.y) < 1.001; }) };
@@ -333,10 +448,22 @@ export class ThreeBoardRenderer {
     this.scene.updateMatrixWorld(true); const p = mesh.getWorldPosition(new THREE.Vector3()).project(this.camera), rect = this.canvas.getBoundingClientRect();
     return { x: rect.left + (p.x + 1) * rect.width / 2, y: rect.top + (1 - p.y) * rect.height / 2 };
   }
+  /** QA-only projection of a visible decorative model; never invokes a gameplay command. */
+  decorationPoint(kind: string): { x: number; y: number } | null {
+    const group = this.decorations.find(o => o.userData.decorative === kind);
+    if (!group) return null;
+    const localHeight = kind === 'tree' ? .58 : kind === 'sheep' ? .31 : kind === 'wheat' ? .37 : .28;
+    this.scene.updateMatrixWorld(true); this.camera.updateMatrixWorld(true);
+    const point = group.localToWorld(new THREE.Vector3(0, localHeight, 0)).project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.left + (point.x + 1) * rect.width / 2, y: rect.top + (1 - point.y) * rect.height / 2 };
+  }
   simulateContextLoss(): void { this.renderer.getContext().getExtension('WEBGL_lose_context')?.loseContext(); }
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
+    if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
+    this.motionFrame = null; this.visibilityObserver?.disconnect(); this.reactions.clear();
     this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.activeTargetMaterial.dispose(); this.assets.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.DirectionalLight) o.shadow.dispose(); });
     this.renderer.dispose(); this.renderer.forceContextLoss(); this.canvas.remove();

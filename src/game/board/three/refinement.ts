@@ -38,7 +38,7 @@ function topGradient(assets: ArtAssets, root: THREE.Group, hex: HexSetup): void 
 
 function addSheep(assets: ArtAssets, root: THREE.Group): void {
   OFFSETS.forEach(([x, z], index) => {
-    const sheep = new THREE.Group(); sheep.name = `sheep:${index}`; sheep.userData.animal = 'sheep';
+    const sheep = new THREE.Group(); sheep.name = `sheep:${index}`; sheep.userData = { animal: 'sheep', decorative: 'sheep' };
     sheep.position.set(x, 0, z); sheep.rotation.y = [.30, -1.1, 2.15][index]; root.add(sheep);
     const body = assets.mesh(sheep, assets.geometry('wool-body', () => new THREE.IcosahedronGeometry(.13, 1)), assets.material('#f7f3df'), 0, .29, 0);
     body.scale.set(1.35, .94, .94);
@@ -54,7 +54,7 @@ function addSheep(assets: ArtAssets, root: THREE.Group): void {
 
 function addBricks(assets: ArtAssets, root: THREE.Group): void {
   OFFSETS.forEach(([x, z], index) => {
-    const pile = new THREE.Group(); pile.name = `brick-pile:${index}`; pile.position.set(x, 0, z); pile.rotation.y = [.08, -.32, .22][index]; root.add(pile);
+    const pile = new THREE.Group(); pile.name = `brick-pile:${index}`; pile.userData.decorative = 'brick'; pile.position.set(x, 0, z); pile.rotation.y = [.08, -.32, .22][index]; root.add(pile);
     for (let j = 0; j < 3; j++) {
       // Two on the bottom, one crossing their joint. All are true rectangular cuboids.
       const brick = assets.box(pile, ['#c26b48', '#d68b5a', '#b85e40'][j], [.235, .095, .125], j < 2 ? (j - .5) * .25 : 0, .169 + (j === 2 ? .10 : 0), 0);
@@ -64,6 +64,7 @@ function addBricks(assets: ArtAssets, root: THREE.Group): void {
 }
 
 function addWheat(assets: ArtAssets, root: THREE.Group): void {
+  const field = new THREE.Group(); field.name = 'wheat-field'; field.userData.decorative = 'wheat'; root.add(field);
   const count = OFFSETS.length * 5;
   const stems = new THREE.InstancedMesh(assets.geometry('upright-wheat-stem', () => new THREE.CylinderGeometry(.008, .011, 1, 5)), assets.material('#b18c35'), count);
   const kernels = new THREE.InstancedMesh(assets.geometry('wheat-kernel', () => new THREE.IcosahedronGeometry(.032, 0)), assets.material('#efce62'), count * 7);
@@ -82,7 +83,7 @@ function addWheat(assets: ArtAssets, root: THREE.Group): void {
       transform.position.set(sx, .123 + height + .055, sz); transform.rotation.set(0, 0, 0); transform.scale.set(.60, 1.4, .60); transform.updateMatrix(); kernels.setMatrixAt(grain++, transform.matrix);
     }
   });
-  for (const mesh of [stems, kernels]) { mesh.instanceMatrix.needsUpdate = true; mesh.castShadow = true; mesh.receiveShadow = true; mesh.computeBoundingBox(); mesh.computeBoundingSphere(); root.add(mesh); }
+  for (const mesh of [stems, kernels]) { mesh.instanceMatrix.needsUpdate = true; mesh.castShadow = true; mesh.receiveShadow = true; mesh.computeBoundingBox(); mesh.computeBoundingSphere(); field.add(mesh); }
 }
 
 /** Refines only visible terrain. The original boats, tokens and logical IDs are untouched. */

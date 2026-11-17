@@ -167,3 +167,11 @@ Brick-producing hills use a stronger red-clay quarry language: exposed clay face
 ## 2026-11-17: 3D city landmark
 
 The 3D city has an upgraded fortified town-hall silhouette, clearly taller/wider than a settlement: a raised stone plinth, player-colored hall, dark slate roof, two warm-lit windows, short steps and a distinctive crenellated keep. Its neutral trim keeps all six player colors readable. The settlement cottage remains unchanged, and SVG fallback keeps its existing B3 building pieces. The piece uses reusable low-poly shapes and cached Three.js materials, without changing rules, roads, build target IDs or production.
+
+## 2026-11-17 motion pass: living tabletop
+
+- The original graded ocean now has low-amplitude flowing waves and gently shifting foam/ripples. It keeps the coastal geometry exact.
+- Boats gently roll and bob against the waves; both fixed wooden pier legs still connect to their original coastal vertices.
+- Trees sway, sheep bounce, ore rocks and brick stacks wobble, and wheat gently nods when clicked. Reactions are short, never block game interaction, and never reset the camera.
+- While placing game pieces, only legal placement targets respond. On mobile, ordinary tapping can trigger decoration responses when Adjust view is off.
+- Every animation is presentation-only, capped around 20 FPS and disabled for reduced-motion preferences and hidden/offscreen boards.

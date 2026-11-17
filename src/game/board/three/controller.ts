@@ -42,6 +42,7 @@ export class BoardRendererController {
       (window as unknown as Record<string, unknown>).__hex3D = {
         inspect: () => this.instance?.inspect() ?? { mode: '2d', reason: this.reason, highlightedTarget: this.preview.active },
         point: (id: string) => this.instance?.targetPoint(id) ?? null,
+        decorativePoint: (kind: string) => this.instance?.decorationPoint(kind) ?? null,
         loseContext: () => this.instance?.simulateContextLoss(),
       };
     }
