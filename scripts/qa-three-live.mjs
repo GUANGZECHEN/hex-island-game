@@ -169,9 +169,14 @@ try {
   assert.equal(await unsupported.locator('#board svg.island-board').count(), 1); await unsupported.close();
   check('A device without WebGL2 starts a playable SVG game automatically');
   if (process.env.QA_SIGNALING_URL) {
+    // Animated local art has already been verified above. Free SwiftShader GPU
+    // budget before spinning up three independent live multiplayer windows.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const hc = await browser.newContext(), gc = await browser.newContext(), sc = await browser.newContext();
     const host = current = watch(await hc.newPage()), guest = watch(await gc.newPage()), spectator = watch(await sc.newPage());
     for (const p of [host, guest, spectator]) await p.setViewportSize({ width: 1280, height: 900 });
+    await guest.emulateMedia({ reducedMotion: 'reduce' });
+    await spectator.emulateMedia({ reducedMotion: 'reduce' });
     await host.goto(url.href); await host.locator('#room-create').click();
     await host.waitForFunction(() => document.querySelector('#room-invite')?.value.includes('#join='), null, { timeout: 30000 });
     const invite = await host.locator('#room-invite').inputValue();
