@@ -1544,7 +1544,8 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .room-table.room-configuring .board-map-column .island-board{pointer-events:none}
 .room-table #game-change-map{padding:.42rem .65rem;font-size:.77rem;margin:.4rem 0 0;font-weight:850;border:1px solid #b57a54;background:#fff2d9;color:#754b22;border-radius:.55rem}
 .room-table #game-change-map:hover{background:#ffe3a9}
-.invite-entry.room-table.room-configuring #room-reconnect{display:none!important}
+html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!important}
+.room-table #room-ready[hidden],.room-table #room-start[hidden]{display:none!important}
 @media(max-width:1100px){
  .room-table.room-configuring .board-workspace .board-command-column #room-section{grid-area:status}
  .room-table .room-map-row{grid-template-columns:minmax(0,1fr) auto}
