@@ -69,6 +69,7 @@ test('routes only through host',()=>{
 
 test('host checkpoint controls are strict and bounded',()=>{
   assert.deepEqual(parseRoomControl(JSON.stringify({type:'checkpoint-list'})),{type:'checkpoint-list'});
+  assert.deepEqual(parseRoomControl(JSON.stringify({type:'checkpoint-clear'})),{type:'checkpoint-clear'});
   assert.deepEqual(parseRoomControl(JSON.stringify({type:'checkpoint-load',id:'cp_abc_1'})),{type:'checkpoint-load',id:'cp_abc_1'});
   assert.deepEqual(
     parseRoomControl(JSON.stringify({type:'checkpoint-save',revision:7,round:2,replace:false,data:'{"ok":true}'})),
@@ -81,6 +82,7 @@ test('host checkpoint controls are strict and bounded',()=>{
     JSON.stringify({type:'checkpoint-save',revision:1,round:1,replace:'no',data:'x'}),
     JSON.stringify({type:'checkpoint-save',revision:1,round:1,replace:false,data:'x'.repeat(MAX_CHECKPOINT_DATA+1)}),
     JSON.stringify({type:'checkpoint-list',extra:true}),
+    JSON.stringify({type:'checkpoint-clear',revision:0}),
   ]) assert.equal(parseRoomControl(invalid),null);
 });
 

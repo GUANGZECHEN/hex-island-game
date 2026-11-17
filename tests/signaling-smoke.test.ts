@@ -66,6 +66,11 @@ class GoodSocket extends EventEmitter {
       queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-list',checkpoints})),false));
       return;
     }
+    if(this.role==='host'&&message.type==='checkpoint-clear'){
+      this.checkpointLatest=null;this.checkpointHistory=[];
+      queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-cleared'})),false));
+      return;
+    }
     if(this.role==='host'&&message.type==='checkpoint-load'){
       const checkpoint=[...(this.checkpointLatest?[this.checkpointLatest]:[]),...this.checkpointHistory].find(x=>x.id===message.id);
       queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'checkpoint-data',checkpoint})),false));

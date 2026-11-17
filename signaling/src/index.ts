@@ -144,6 +144,7 @@ export class Room {
       if(member.role!=='host'){ws.close(1008,'invalid');return;}
       if(control.type==='checkpoint-save'){await this.saveCheckpoint(ws,control.revision,control.round,control.replace,control.data);return;}
       if(control.type==='checkpoint-list'){await this.listCheckpoints(ws);return;}
+      if(control.type==='checkpoint-clear'){await this.clearCheckpoints(ws);return;}
       if(control.type==='checkpoint-load'){await this.loadCheckpoint(ws,control.id);return;}
     }
 
@@ -187,6 +188,12 @@ export class Room {
 
   private meta(value:SavedCheckpoint,latest:boolean):SavedCheckpointMeta {
     const {data:_data,...rest}=value;return {...rest,latest};
+  }
+
+  private async clearCheckpoints(ws:WebSocket):Promise<void> {
+    // Authenticated host-only operation. Preserve room capabilities and expiry.
+    await this.state.storage.delete(['checkpoint:latest','checkpoint:history:0','checkpoint:history:1','checkpoint:history:2']);
+    ws.send(JSON.stringify({type:'checkpoint-cleared'}));
   }
 
   private async listCheckpoints(ws:WebSocket):Promise<void> {

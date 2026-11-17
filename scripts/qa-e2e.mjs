@@ -185,6 +185,8 @@ try{
   await host.goto(qaUrl,{waitUntil:'networkidle'});
   await host.getByRole('button',{name:'Create room'}).click();
   await host.locator('#room-map-lobby').waitFor({state:'visible'});
+  await host.locator('#game').waitFor({state:'visible'});
+  if(!(await host.evaluate(()=>document.querySelector('#room-section')?.closest('.board-command-column')!==null&&document.querySelectorAll('#board [data-hex-id]').length===19)))throw new Error('Host did not enter the shared board workspace before starting.');
   await host.locator('#room-seed').fill('24680');
   await host.locator('#room-seed').dispatchEvent('change');
   await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
@@ -200,6 +202,7 @@ try{
   await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
+  if(!(await guest.evaluate(()=>!document.querySelector('#game')?.hidden&&document.querySelector('#room-section')?.closest('.board-command-column')!==null&&document.querySelectorAll('#board [data-hex-id]').length===19)))throw new Error('Guest did not see the board directly inside the room.');
   await guest.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24680',null,{timeout:10000});
   if(!(await guest.locator('#room-seed').isDisabled()))throw new Error('Guest can change the host-selected map.');
   if(await guest.locator('#room-map-preview [data-hex-id]').count()!==19)throw new Error('Guest did not receive a shared map preview.');
@@ -423,7 +426,25 @@ try{
   await hostRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});
   await guestRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});
   if(await guestRecovered.locator('#player-strip .player-summary').count()!==2)throw new Error('Same-room restart did not preserve player seats.');
-  console.log('E2E passed: lobby map preview, pregame role switch, reconnect, recovery and authoritative same-room restart.');
+  // Host can abort to the same board workspace, change mode and seed, and start again.
+  if(await guestRecovered.locator('#game-change-map').isVisible())throw new Error('Non-host can abort or reconfigure.');
+  hostRecovered.once('dialog',dialog=>dialog.accept());
+  await hostRecovered.locator('#game-change-map').click();
+  await hostRecovered.waitForFunction(()=>document.body.classList.contains('room-configuring')&&document.querySelector('#room-map-lobby')?.getClientRects().length>0,null,{timeout:15000});
+  await guestRecovered.waitForFunction(()=>document.body.classList.contains('room-configuring')&&document.querySelectorAll('#board [data-hex-id]').length===19,null,{timeout:15000});
+  if(await guestRecovered.locator('#room-game-mode').isEnabled())throw new Error('Guest can change mode after an abort.');
+  if(await hostRecovered.locator('#room-start').isEnabled())throw new Error('Abort failed to clear old readiness.');
+  await hostRecovered.locator('#room-game-mode').selectOption('harbor-coop');
+  await hostRecovered.locator('#room-seed').fill('67890');
+  await hostRecovered.locator('#room-seed').dispatchEvent('change');
+  await guestRecovered.waitForFunction(()=>document.querySelector('#room-game-mode')?.value==='harbor-coop'&&document.querySelector('#room-seed')?.value==='67890',null,{timeout:15000});
+  await hostRecovered.locator('#room-ready').click();
+  await guestRecovered.locator('#room-ready').click();
+  await hostRecovered.waitForFunction(()=>!document.querySelector('#room-start')?.disabled,null,{timeout:15000});
+  await hostRecovered.locator('#room-start').click();
+  await hostRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Seed 67890')&&document.querySelector('#turn-banner')?.textContent?.includes('Harbor Co-op'),null,{timeout:15000});
+  await guestRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Seed 67890')&&document.querySelector('#turn-banner')?.textContent?.includes('Harbor Co-op'),null,{timeout:15000});
+  console.log('E2E passed: immediate board, room setup, role switching, reconnect/recovery, restart, abort and reconfigure.');
 } finally {
   await spectatorContext.close();
   await guestContext.close();

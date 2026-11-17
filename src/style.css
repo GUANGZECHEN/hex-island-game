@@ -1513,3 +1513,48 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .board-workspace .board-stage .board-map-column #board{height:auto;max-height:none}
  .board-workspace .board-map-column .island-board{height:auto;max-height:none}
 }
+
+/* ROOM-IN-BOARD: setup, restart and spectator seating share the normal game surface. */
+.playing.room-table.room-configuring #room-section{display:block!important;min-width:0;margin:0;padding:.55rem;background:#f4f8f3;border:1px solid #cadbd0;border-radius:.68rem;box-shadow:none}
+.playing.room-table.room-running #room-section{display:none!important}
+.room-table #room-section>h2{font-size:.9rem;margin:0 0 .3rem;color:#274d3c}
+.room-table #room-create,.room-table #room-map-preview{display:none!important}
+.room-table #room-host-tools{display:flex;flex-direction:column;gap:.2rem;margin:.35rem 0}
+.room-table #room-host-tools label{margin:0;font-size:.73rem}
+.room-table #room-invite{font-size:.68rem;padding:.35rem;min-width:0}
+.room-table .room-identity{margin:.35rem 0}
+.room-table .room-identity>label{font-size:.74rem;margin:0 0 .18rem}
+.room-table .room-identity-row{gap:.25rem}
+.room-table .room-identity-row input{flex:1 1 7rem;padding:.36rem;font-size:.75rem}
+.room-table .room-identity-row button{font-size:.7rem;padding:.3rem .4rem;min-height:36px}
+.room-table .room-map-lobby{margin:.45rem 0;padding:.5rem;border-radius:.5rem}
+.room-table .room-map-lobby h3{font-size:.81rem}
+.room-table .room-map-controls{padding:.45rem;margin:.4rem 0}
+.room-table .room-map-controls label,.room-table .room-map-lobby>label{margin:.32rem 0 .15rem;font-size:.73rem}
+.room-table .room-map-lobby select,.room-table .room-map-lobby input{max-width:100%;font-size:.75rem;padding:.36rem}
+.room-table .room-map-row{grid-template-columns:minmax(0,1fr) auto;gap:.2rem}
+.room-table .room-map-row button{margin:0;min-height:38px;font-size:.7rem;padding:.35rem}
+.room-table #room-ready,.room-table #room-start{display:inline-flex;align-items:center;justify-content:center;max-width:100%;min-height:38px;margin:.26rem .2rem .26rem 0;font-size:.77rem;padding:.34rem .55rem}
+.room-table #lobby{font-size:.72rem;color:#4e6b5c;overflow-wrap:anywhere;line-height:1.35;margin:.35rem 0}
+.room-table #network-status{font-size:.76rem;line-height:1.3;margin:.2rem 0;color:#315e4c}
+.room-table .room-seat-readiness{font-size:.72rem;font-weight:700;color:#4e6b5c}
+.room-table.room-configuring .board-heading{margin-bottom:.12rem}
+.room-table.room-configuring .board-workspace .board-command-column #room-section{order:-1}
+.room-table.room-configuring .board-view-toolbar,.room-table.room-configuring #turn-card,.room-table.room-configuring #private-hand-card,.room-table.room-configuring #board-action-pane,.room-table.room-configuring #board-trade-pane,.room-table.room-configuring #board-ledger,.room-table.room-configuring #harbor-panel{display:none!important}
+.room-table.room-configuring .board-map-column .island-board{pointer-events:none}
+.room-table #game-change-map{padding:.42rem .65rem;font-size:.77rem;margin:.4rem 0 0;font-weight:850;border:1px solid #b57a54;background:#fff2d9;color:#754b22;border-radius:.55rem}
+.room-table #game-change-map:hover{background:#ffe3a9}
+.invite-entry.room-table.room-configuring #room-reconnect{display:none!important}
+@media(max-width:1100px){
+ .room-table.room-configuring .board-workspace .board-command-column #room-section{grid-area:status}
+ .room-table .room-map-row{grid-template-columns:minmax(0,1fr) auto}
+ .room-table.room-configuring .board-stage .board-map-column{grid-row:2}
+ .room-table.room-configuring .board-stage .board-command-column{grid-row:3}
+}
+@media(max-width:550px){
+ .room-table .room-map-row{grid-template-columns:minmax(0,1fr)}
+ .room-table .room-map-row button{width:100%}
+ .room-table.room-configuring .board-workspace>.board-panel{padding:.4rem}
+ .room-table #room-ready,.room-table #room-start{width:100%;margin:.22rem 0}
+ .room-table #game-change-map{width:100%}
+}

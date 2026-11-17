@@ -302,6 +302,36 @@ test('host restarts the current game in same room with fresh identity and specta
  assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'second-move',0).ok,true);
 });
 
+test('host abort returns to map selection with the original seats and spectator privacy',()=>{
+ const outgoing=new Map<string,any[]>(),published:any[]=[];let serial=0;
+ const host=new HostSession((peer,text)=>outgoing.set(peer,[...(outgoing.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0);
+ const send=(peer:string,command:object)=>host.receive(peer,JSON.stringify({protocol:1,...command}));
+ send('friend',{type:'hello'});const credential=outgoing.get('friend')!.find(x=>x.type==='seat').data.token;
+ send('friend',{type:'ready',ready:true});host.setHostReady(true);host.start(23);
+ send('viewer',{type:'hello'});assert.equal(host.spectatorCount(),1);
+ const old=host.recovery().authority.gameId;
+ host.abortToSetup();
+ assert.throws(()=>host.recovery(),/not started/);
+ assert.throws(()=>host.restart(),/No running game/);
+ assert.equal(host.lobby().length,2);assert.equal(host.spectatorCount(),1);
+ assert.ok(host.lobby().every(s=>!s.ready));
+ assert.equal(outgoing.get('friend')!.at(-2).type,'abort');
+ assert.equal(outgoing.get('viewer')!.at(-2).type,'abort');
+ assert.equal(published.filter(x=>x.type==='checkpoint-clear').length,1);
+ assert.equal(published.filter(x=>x.type==='abort').length,1);
+ host.setGameMode('harbor-coop');host.setMapSelection('standard',44);
+ send('friend',{type:'map',boardLayout:'expanded-5-6',mapSeed:999});
+ const lobby=outgoing.get('friend')!.filter(x=>x.type==='lobby').at(-1).data;
+ assert.equal(lobby.mode,'harbor-coop');assert.equal(lobby.mapSeed,44);assert.equal(lobby.started,false);
+ assert.throws(()=>host.start(44),/ready players/);
+ send('friend',{type:'ready',ready:true});host.setHostReady(true);host.start(44);
+ assert.equal(host.recovery().authority.state.mode,'harbor-coop');
+ assert.equal(host.recovery().authority.state.board.seed,44);
+ assert.notEqual(host.recovery().authority.gameId,old);
+ assert.equal(host.recovery().seats[1].token,credential);
+ assert.equal(outgoing.get('viewer')!.filter(x=>x.type==='snapshot').at(-1).data.private,null);
+});
+
 test('seven discards do not broadcast a refreshed game until all players submit',()=>{
  const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
  const output=(peer:string,text:string)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]);

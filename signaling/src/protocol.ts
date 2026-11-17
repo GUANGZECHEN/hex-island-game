@@ -65,6 +65,7 @@ export type RoutedMessage = {
 export type RoomControl =
   | {type:'checkpoint-save';revision:number;round:number;replace:boolean;data:string}
   | {type:'checkpoint-list'}
+  | {type:'checkpoint-clear'}
   | {type:'checkpoint-load';id:string};
 
 export function parseRoomControl(input:string):RoomControl|null {
@@ -72,6 +73,7 @@ export function parseRoomControl(input:string):RoomControl|null {
   let x:Record<string,unknown>;try{x=JSON.parse(input)}catch{return null}
   if(!x||typeof x!=='object'||Array.isArray(x)||typeof x.type!=='string')return null;
   if(x.type==='checkpoint-list'&&Object.keys(x).join(',')==='type')return {type:'checkpoint-list'};
+  if(x.type==='checkpoint-clear'&&Object.keys(x).join(',')==='type')return {type:'checkpoint-clear'};
   if(x.type==='checkpoint-load'&&Object.keys(x).sort().join(',')==='id,type'&&typeof x.id==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(x.id))return {type:'checkpoint-load',id:x.id};
   if(
     x.type==='checkpoint-save'&&

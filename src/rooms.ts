@@ -242,7 +242,7 @@ export class RoomClient {
           return;
         }
 
-        if(msg.type==='checkpoint-saved'&&connection.role==='host')return;
+        if((msg.type==='checkpoint-saved'||msg.type==='checkpoint-cleared')&&connection.role==='host')return;
         if(msg.type==='checkpoint-error'&&connection.role==='host'){this.events.error('Saved game checkpoint could not be processed.');return;}
 
         if(msg.type==='relay' && validPeerId(msg.from) && typeof msg.data==='string'){
@@ -310,6 +310,7 @@ export class RoomClient {
   }
 
   requestCheckpoints():void {this.sendControl({type:'checkpoint-list'});}
+  clearCheckpoints():void {this.sendControl({type:'checkpoint-clear'});}
   loadCheckpoint(id:string):void {
     if(!/^[A-Za-z0-9_-]{1,80}$/.test(id))throw new Error('Invalid saved game ID.');
     this.sendControl({type:'checkpoint-load',id});

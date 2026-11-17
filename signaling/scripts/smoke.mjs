@@ -267,6 +267,12 @@ export async function smokeSignaling(origin, {
     hostSocket.send(JSON.stringify({type:'checkpoint-load',id:historyItem.id}));
     const loaded=(await loadPromise).checkpoint;
     if(loaded.data!==savedByRound.get(2).data||loaded.revision!==3)throw new SmokeError('Saved game checkpoint load failed.');
+    const clearPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-cleared',timeoutMs);
+    hostSocket.send(JSON.stringify({type:'checkpoint-clear'}));
+    await clearPromise;
+    const emptyPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-list'&&Array.isArray(m.checkpoints),timeoutMs);
+    hostSocket.send(JSON.stringify({type:'checkpoint-list'}));
+    if((await emptyPromise).checkpoints.length!==0)throw new SmokeError('Aborted game checkpoints were not cleared.');
   } finally {
     for(const socket of [guestSocket,hostSocket]){
       try{if(socket?.readyState===1)socket.close(1000);else if(socket?.readyState===0)socket.terminate();}catch{}

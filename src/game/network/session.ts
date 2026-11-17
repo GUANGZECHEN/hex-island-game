@@ -158,6 +158,18 @@ export class HostSession {
   for(const seat of this.seats)seat.ready=false;
   this.announce();
  }
+ /** Close the current match while preserving seats, spectators and invitation capabilities. */
+ abortToSetup(){
+  if(!this.authority||this.recovering)throw new Error('No active game to end.');
+  // If the room WebSocket is disconnected, fail before modifying any game state.
+  this.publish({type:'checkpoint-clear'});
+  this.authority=null;this.gameId='';
+  for(const seat of this.seats)seat.ready=false;
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'abort',{});
+  for(const peer of this.spectators)this.output(peer,'abort',{});
+  this.publish({type:'abort'});
+  this.announce();
+ }
  restart(){
   if(!this.authority||this.recovering)throw new Error('No running game to restart.');
   this.gameId=this.token();

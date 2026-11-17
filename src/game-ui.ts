@@ -9,7 +9,7 @@ import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, develo
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
 import { incomingTradeView, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
-import { initializeNetwork, type BrowserGame } from './game/network/browser';
+import { initializeNetwork, type BrowserGame, type RoomTableLobby } from './game/network/browser';
 import type { projectState, projectSpectatorState } from './game/network/authority';
 import { createIslandBoard } from './game/board/geometry';
 import { generateBoardSetup } from './game/board/setup';
@@ -138,6 +138,11 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
 }
 function enterGame(){
  document.body.classList.add('playing');
+ document.body.classList.remove('room-configuring');
+ if(remote)document.body.classList.add('room-running');
+ el('turn-card').hidden=false;el('board-ledger').hidden=false;
+ el('game').querySelector<HTMLElement>('.board-view-toolbar')!.hidden=false;
+ el('game').querySelector<HTMLElement>('.board-help')!.textContent='Choose an action, then select a highlighted target on the board.';
  const local=!remote&&activeLocalRoom!==null;
  el('local-restart').hidden=!local;el('pass-local-restart').hidden=!local;
  if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}
@@ -200,7 +205,57 @@ function renderPieceSupply(player:GameState['players'][number]){
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  const boardVersion=el<HTMLSelectElement>('room-board-version').value;
- renderIslandBoard(preview,generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard'));const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
+ const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard');
+ renderIslandBoard(preview,setup);const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
+ // Pre-start map preview lives on the very same board used during the round.
+ if(document.body.classList.contains('room-configuring')&&!state){
+  const large=el('board');renderIslandBoard(large,setup);large.dataset.renderer='2d';
+  const full=large.querySelector('svg');if(full){full.removeAttribute('aria-hidden');full.setAttribute('aria-label',`Room map preview, seed ${input.value}`);}
+  scheduleDesktopBoardFit();
+ }
+}
+function enterNetworkRoom(){
+ document.body.classList.add('playing','room-table','room-configuring');
+ document.body.classList.remove('room-running');
+ const sidebar=el('game').querySelector<HTMLElement>('.board-command-column')!;
+ const room=el('room-section');
+ if(room.parentElement!==sidebar)sidebar.insertBefore(room,el('turn-card'));
+ el('pass').hidden=true;el('game').hidden=false;
+ if(!state){
+  el('turn-card').hidden=true;el('private-hand-card').hidden=true;
+  el('board-action-pane').hidden=true;el('board-trade-pane').hidden=true;
+  el('board-ledger').hidden=true;el('harbor-panel').hidden=true;
+  el('game').querySelector<HTMLElement>('.board-view-toolbar')!.hidden=true;
+  el('game').querySelector<HTMLElement>('.board-help')!.textContent='Map preview · The selected map will be used for the next game.';
+  el('turn-banner').textContent='Choose your island';
+  el('public-action').textContent='The host selects the mode and map here. Everyone sees the same preview.';
+  renderRoomMapPreview();
+ }
+ scheduleDesktopBoardFit();
+}
+function renderNetworkLobby(view:RoomTableLobby){
+ enterNetworkRoom();
+ document.body.classList.toggle('room-configuring',!view.started||view.recovering);
+ document.body.classList.toggle('room-running',view.started&&!view.recovering);
+ if(view.started&&!view.recovering)return;
+ if(el('room-reconnect').parentElement===el('reconnect-holder'))el('room-section').append(el('room-reconnect'));
+ boardRenderer?.dispose();boardRenderer=null;
+ const strip=el('player-strip');strip.replaceChildren();
+ strip.dataset.playerCount=String(view.seats.length);
+ for(const [index,seat] of view.seats.entries()){
+  const row=document.createElement('div');row.className=`player-summary player-${index+1}`;row.dataset.seat=String(index+1);
+  const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(index+1);
+  const name=document.createElement('strong');name.className='player-summary-name';name.textContent=seat.name;
+  const readiness=document.createElement('span');readiness.className='room-seat-readiness';readiness.textContent=seat.connected?(seat.ready?'✓ Ready':'Not ready'):'Disconnected';
+  row.append(marker,name,readiness);strip.append(row);
+ }
+ el('turn-card').hidden=true;el('private-hand-card').hidden=true;el('board-action-pane').hidden=true;el('board-trade-pane').hidden=true;
+ el('board-ledger').hidden=true;el('harbor-panel').hidden=true;
+ el('game').querySelector<HTMLElement>('.board-view-toolbar')!.hidden=true;
+ el('turn-banner').textContent=view.recovering?'Recovering saved room':view.started?'Resuming game':view.mode==='harbor-coop'?'Harbor Co-op · room setup':'Classic · room setup';
+ el('public-action').textContent=view.recovering?'Waiting for original players to reconnect.':`${view.seats.length} seated · ${view.spectators} spectating · Host chooses mode and map`;
+ renderRoomMapPreview();
+ scheduleDesktopBoardFit();
 }
 document.addEventListener('hex-room-map-updated',renderRoomMapPreview);
 function moveTarget(id:string){if(!state)return;const current=state.players[state.currentSeat].id;if(viewer!==current)return;
@@ -402,7 +457,7 @@ function drawSvgBoard(){
  if(isHarbor(s))s.board.ports.forEach((port,index)=>{const group=Array.from(svg.querySelectorAll<SVGGElement>('[data-port-edge]')).find(n=>n.dataset.portEdge===port.edgeId),face=group?.querySelector('.port-face');if(face){const tag=document.createElementNS(NS,'text');tag.setAttribute('class','harbor-port-label');tag.setAttribute('y','-.49');tag.textContent=`P${index+1}`;face.append(tag);}});
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
 }
-function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
+function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
  renderHarborPanel(el('harbor-panel'),s,viewer,c=>attempt(()=>commit(applyHarborCommand(s,c),'Supplies delivered.')),playerName);
  el('public-action').textContent=publicActivity||'Game ready.';
@@ -554,13 +609,13 @@ const updateLocalMode=()=>{
 };
 el('local-game-mode').addEventListener('change',updateLocalMode);localBotCount.addEventListener('change',updateLocalMode);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
-el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();};renderRoomMapPreview();
+el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();roomSeed.dispatchEvent(new Event('change',{bubbles:true}));};renderRoomMapPreview();
 
-const network=initializeNetwork({status:connectionStatus,discardPending:()=>{
+const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkRoom,lobby:renderNetworkLobby,discardPending:()=>{
  discardSubmitted=true;
  if(state?.phase==='discard')render();
 },reset:()=>{
-  discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=true;
+  discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
