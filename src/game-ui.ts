@@ -5,6 +5,7 @@ import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type Ga
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
+import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
@@ -138,6 +139,7 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function enterGame(){
+ const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
  document.body.classList.remove('room-configuring');
  if(remote)document.body.classList.add('room-running');
@@ -148,25 +150,31 @@ function enterGame(){
  el('local-restart').hidden=!local;el('pass-local-restart').hidden=!local;
  if(remote){el('reconnect-holder').append(el('room-reconnect'));el('turn-card').append(el('qa-indicator'));}
  else el('connection-summary').textContent=localBotIds.size?`Local game · ${localBotIds.size} test bot${localBotIds.size===1?'':'s'} enabled`:'Local game';
+ // The setup-to-game transition changes the shell; fit once for this new layout.
+ if(wasConfiguring){boardFitReady=false;scheduleDesktopBoardFit();}
 }
-// Keep the entire desktop SVG board inside the visible browser height. The side trays scroll separately.
-let boardFitScheduled=false;
+// Set the board's desktop height at entry or a true viewport resize, never on
+// every game action. Trade controls can scroll the document and must not resize
+// the board (and its camera) during a transaction.
+let boardFitScheduled=false,boardFitReady=false;
 function fitBoardToDesktopViewport(){
  boardFitScheduled=false;
  const stage=el('game').querySelector<HTMLElement>('.board-stage');
  if(!stage||el('game').hidden)return;
- if(window.innerWidth<=1100){stage.style.removeProperty('--board-fit-height');return;}
- const top=stage.getBoundingClientRect().top;
- const available=Math.max(180,Math.floor(window.innerHeight-top-18));
- stage.style.setProperty('--board-fit-height',`${available}px`);
+ if(window.innerWidth<=1100){stage.style.removeProperty('--board-fit-height');boardFitReady=true;return;}
+ // Scroll-invariant document coordinates: rect.top alone changes as users scroll.
+ const top=stage.getBoundingClientRect().top+window.scrollY;
+ stage.style.setProperty('--board-fit-height',`${stableBoardFitHeight(window.innerHeight,top)}px`);
+ boardFitReady=true;
 }
 function scheduleDesktopBoardFit(){
- if(boardFitScheduled)return;
+ if(boardFitReady||boardFitScheduled)return;
  boardFitScheduled=true;
  window.requestAnimationFrame(fitBoardToDesktopViewport);
 }
-window.addEventListener('resize',scheduleDesktopBoardFit);
-window.visualViewport?.addEventListener('resize',scheduleDesktopBoardFit);
+function onViewportSizeChange(){boardFitReady=false;scheduleDesktopBoardFit();}
+window.addEventListener('resize',onViewportSizeChange);
+window.visualViewport?.addEventListener('resize',onViewportSizeChange);
 
 function connectionStatus(value:string){const lower=value.toLowerCase();el('connection-summary').textContent=lower.includes('watching')?'Spectating':lower.includes('paused')||lower.includes('unavailable')||lower.includes('failed')?'Disconnected · rejoin may be required':lower.includes('reconnected')?'Reconnected':lower.includes('reconnect')||lower.includes('interrupted')?'Reconnecting…':lower.includes('connected')||lower.includes('started')?'Connected':lower.includes('connecting')?'Connecting…':'';}
 function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
@@ -472,7 +480,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
- drawBoard();scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
+ drawBoard();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
  if(spectating||!actor)return;

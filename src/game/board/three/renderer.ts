@@ -293,11 +293,13 @@ export class ThreeBoardRenderer {
     if (w < 1 || h < 1 || (w === this.width && h === this.height)) return;
     // Card notices, hand rows and target controls may resize the surrounding UI.
     // Resizing the canvas must not refit a view that the player deliberately adjusted.
-    const preserved = this.width > 0 && this.height > 0 ? resizeManualFrustum(this.camera,
+    const firstSize = this.width <= 0 || this.height <= 0;
+    const preserved = !firstSize ? resizeManualFrustum(this.camera,
       { width: this.width, height: this.height }, { width: w, height: h }) : null;
     this.width = w; this.height = h; this.renderer.setSize(w, h, false);
     if (preserved) { Object.assign(this.camera, preserved); this.camera.updateProjectionMatrix(); }
-    else this.fit();
+    else if (firstSize) this.fit(); // Only a first render can automatically frame the board.
+    else this.camera.updateProjectionMatrix(); // Never re-fit an established game view.
     this.invalidate();
   };
   private pick = (event: PointerEvent): void => {

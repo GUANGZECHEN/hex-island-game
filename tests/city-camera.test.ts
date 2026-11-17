@@ -44,7 +44,8 @@ test('camera is never auto-fitted by an in-game action, a map refresh or a canva
  const controller=readFileSync('src/game/board/three/controller.ts','utf8');
  const ui=readFileSync('src/game-ui.ts','utf8');
  assert.ok(renderer.includes('if (this.mapBuilds === 1) this.resetView()'));
- assert.ok(renderer.includes('this.width > 0 && this.height > 0 ? resizeManualFrustum'));
+ assert.ok(renderer.includes('const preserved = !firstSize ? resizeManualFrustum'));
+ assert.ok(renderer.includes('else if (firstSize) this.fit()'));
  assert.ok(renderer.includes('captureView(): BoardCameraView'));
  assert.ok(renderer.includes('restoreView(view: BoardCameraView)'));
  assert.ok(controller.includes('if (this.rememberedCamera) this.instance.restoreView(this.rememberedCamera)'));
