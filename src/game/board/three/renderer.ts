@@ -358,7 +358,10 @@ export class ThreeBoardRenderer {
     if (!this.motionEnabled()) {
       if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
       this.motionFrame = null;
-      if (this.reducedMotion.matches && this.reactions.size) {
+      // Full-page screenshots, tab switches and scrolling can move the board
+      // offscreen during a reaction. Never leave pieces frozen mid-hop; restore
+      // every decorative model whenever ambient rendering is suspended.
+      if (this.reactions.size) {
         for (const item of this.reactions.keys()) { item.position.y = 0; item.rotation.x = 0; item.rotation.z = 0; }
         this.reactions.clear(); this.invalidate();
       }
