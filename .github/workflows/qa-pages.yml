@@ -129,16 +129,41 @@ jobs:
         if: steps.signaling_mode.outputs.mode == 'temporary'
         run: |
           set -euo pipefail
-          for attempt in {1..45}; do
-            status=$(curl --silent --output /dev/null --write-out '%{http_code}'               --request OPTIONS               --header 'Origin: https://guangzechen.github.io'               --header 'Access-Control-Request-Method: POST'               --header 'Access-Control-Request-Headers: content-type'               --max-time 8               "$QA_SIGNALING_URL/rooms" || true)
-            if [[ "$status" == "204" ]]; then exit 0; fi
-            if (( attempt % 10 == 0 )); then
-              registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
-              echo "QA ingress check $attempt: HTTP $status; registered transport connections: $registered"
+          # Quick Tunnel names can be allocated while their public route is
+          # still unreachable. Retry the same already-approved free transport
+          # with a fresh temporary tunnel, never switching infrastructure.
+          for tunnel_attempt in 1 2 3; do
+            if (( tunnel_attempt > 1 )); then
+              kill -- -"$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null || true
+              setsid "$RUNNER_TEMP/cloudflared" tunnel --protocol http2 --url http://127.0.0.1:8787 --no-autoupdate --loglevel info >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
+              echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
+              next_url=''
+              for wait in {1..30}; do
+                next_url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
+                if [[ -n "$next_url" ]]; then break; fi
+                if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then break; fi
+                sleep 1
+              done
+              if [[ ! "$next_url" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ ]]; then
+                echo "QA temporary ingress attempt $tunnel_attempt did not yield an endpoint."
+                continue
+              fi
+              QA_SIGNALING_URL="$next_url"
             fi
-            sleep 2
+            for attempt in {1..20}; do
+              status=$(curl --silent --output /dev/null --write-out '%{http_code}' --request OPTIONS --header 'Origin: https://guangzechen.github.io' --header 'Access-Control-Request-Method: POST' --header 'Access-Control-Request-Headers: content-type' --max-time 8 "$QA_SIGNALING_URL/rooms" || true)
+              if [[ "$status" == "204" ]]; then
+                echo "QA_SIGNALING_URL=$QA_SIGNALING_URL" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              if (( attempt % 10 == 0 )); then
+                registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
+                echo "QA ingress attempt $tunnel_attempt check $attempt: HTTP $status; registered transport connections: $registered"
+              fi
+              sleep 2
+            done
           done
-          echo '::error::QA ingress did not become reachable within the propagation window.'
+          echo '::error::QA ingress did not become reachable across three temporary tunnel allocations.'
           exit 1
 
       - name: Verify full relay and checkpoint path
