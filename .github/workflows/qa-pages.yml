@@ -111,7 +111,7 @@ jobs:
 
           tunnel_url=''
           for attempt in {1..45}; do
-            tunnel_url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
+            tunnel_url=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
             if [[ -n "$tunnel_url" ]]; then break; fi
             if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then
               echo '::error::QA ingress process exited before publishing an endpoint.'
@@ -139,7 +139,7 @@ jobs:
               echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
               next_url=''
               for wait in {1..30}; do
-                next_url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
+                next_url=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
                 if [[ -n "$next_url" ]]; then break; fi
                 if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then break; fi
                 sleep 1
