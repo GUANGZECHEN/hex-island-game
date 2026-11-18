@@ -122,7 +122,9 @@ test('public gameplay actions surface as centered board alerts without replacing
  assert.ok(ui.includes("kind==='build'?'BUILD'"));
  assert.ok(ui.includes("kind==='robber'?'ROBBER'"));
  assert.ok(ui.includes("kind==='trade'?'TRADE'"));
- assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);'));
+ assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);'));
+  assert.ok(ui.includes("el('board').querySelector('.turn-alert')?.remove()"));
+  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
  assert.ok(!ui.includes('rolled dice|built a road|built a settlement'));
  assert.ok(css.includes('.activity-alert{'));
  assert.ok(css.includes('.activity-alert-message{'));
@@ -204,7 +206,8 @@ test('a winner gets a one-shot animated board-centered victory celebration',()=>
  assert.ok(ui.includes('WINS!'));
  assert.ok(ui.includes("alert.classList.add('victory-alert-out')"));
  assert.ok(ui.includes('},5000)'));
- assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
+ assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);'));
+  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
  assert.ok(css.includes('.victory-alert{'));
  assert.ok(css.includes('@keyframes victory-confetti-pop'));
  assert.ok(css.includes('.victory-alert.victory-alert-out'));
