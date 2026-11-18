@@ -31,3 +31,12 @@ Approved: owned-road/owned-building support only for new roads (including Road B
 ## Harbor shipping and seven amendment (2026-11-16)
 
 Approved for Harbor v2: Load may use only the loading player's own roads from their own settlement/city. Trade stations transfer cards, not road access. Rolling seven awards each partner one random resource from available bank stock and immediately resumes normal actions, with no discards, robber movement or theft. Knight's existing behavior, Classic, archived v1 campaigns and infrastructure constraints are unchanged.
+
+
+## Optional Classic rule toggles (approved 2026-11-18)
+
+The Product Owner approved two independent, host-selected **Classic** rule switches shown to all lobby participants before readiness/start. They default off, are part of authoritative game state and recovery, and are retained for same-room restarts. Existing Harbor Co-op mechanics are preserved unchanged; these two variants are disabled for Harbor Co-op. All gameplay and bot actions use the same host-authoritative reducer and public rule projection.
+
+**Catch-up resources:** After a player's own dice roll (including seven), if any player has at least five publicly visible victory points and the current roller has three or fewer, give that roller one randomly chosen stocked bank resource. Once the leader reaches six or more, give two **different** stocked resource types where available. The host owns the random draws; award stock is removed from the bank, recorded as public per-roll metadata, and shown with the actual resource icons. It does not alter robbery, discard or production rules. Hidden development VP are not used for the public threshold.
+
+**Harbor ships:** A player who already owns a port may pay three lumber, three brick and three ore to add a ship to any vacant port vertex that otherwise satisfies the settlement-distance and **own-road-connection** constraints. A ship occupies that vertex and blocks construction at adjacent vertices; it provides one victory point, one (settlement-level) resource per active neighboring resource tile, and access to that port's trade ratio. A ship can never be upgraded to a city, anchor a new road, or continue a longest-road traversal. There is no separate ship-piece stock restriction beyond the finite legal harbor vertices. This rule adds no new network service or game mode.

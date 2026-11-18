@@ -3,6 +3,7 @@ import { generateBoardSetup, type BoardSetup } from '../board/setup.ts';
 
 import { beginHarbor, createHarborState, type GameMode, type HarborState } from './harbor.ts';
 import { usesTradeStations } from './trade-stations.ts';
+import { validateOptionalRules, type OptionalRules } from './optional-rules.ts';
 
 export const RESOURCES = ['lumber', 'brick', 'wool', 'grain', 'ore'] as const;
 export type Resource = typeof RESOURCES[number];
@@ -12,10 +13,11 @@ export interface Player {
   id: string; seat: number; hand: Hand; cards: { type: Development; boughtTurn: number }[];
   roads: number; settlements: number; cities: number; knights: number;
 }
-export interface Building { playerId: string; kind: 'settlement' | 'city' }
+export interface Building { playerId: string; kind: 'settlement' | 'city' | 'ship' }
 export interface TradeOffer { id: string; proposer: string; targets: string[]; give: Hand; receive: Hand; }
 export interface GameState {
-  mode?:GameMode; harbor?:HarborState;
+  mode?:GameMode; harbor?:HarborState; rules?:OptionalRules;
+  catchUpReward?: {turn:number;playerId:string;gains:Hand};
   version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
   randomState: number; playedCards: Development[]; startingSeat: number; currentSeat: number; turn: number;
   phase: 'setup-settlement' | 'setup-city' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
@@ -46,9 +48,11 @@ export function secureIndex(random: () => number, bound: number): { state?: unde
   for (let i=0; i<128; i++) { const value=random(); if (!Number.isInteger(value) || value<0 || value>0xffffffff) throw new Error('Invalid entropy.'); if (value<limit) return {index:value%bound}; }
   throw new Error('Random index generation exhausted.');
 }
-export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mode?:GameMode }): GameState {
+export function createGame(seed: number, ids: readonly string[], secureRandom?: () => number, options?: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mode?:GameMode; rules?:OptionalRules }): GameState {
   const mode=options?.mode??'classic';
   if(mode!=='classic'&&mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  const rules=validateOptionalRules(options?.rules);
+  if(mode==='harbor-coop'&&(rules.catchUp||rules.ships))throw new Error('Classic optional rules are not available in Harbor Co-op.');
   if(mode==='harbor-coop'&&(ids.length!==2||(options?.boardLayout??'standard')!=='standard'))throw new Error('Harbor Co-op requires two players on the standard board.');
   const boardLayout=options?.boardLayout??'standard';
   const validCount = boardLayout==='expanded-5-6' ? ids.length>=5&&ids.length<=6 : ids.length>=2&&ids.length<=4;
@@ -62,7 +66,7 @@ export function createGame(seed: number, ids: readonly string[], secureRandom?: 
     [deck[i], deck[draw.index]] = [deck[draw.index], deck[i]];
   }
   const start = secureRandom ? secureIndex(secureRandom, ids.length) : drawIndex(randomState, ids.length); randomState = start.state ?? randomState;
-  const game:GameState = { version: 1, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, playedCards: [], startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
+  const game:GameState = { version: 1, rules, board, players: ids.map((id, seat) => ({ id, seat, hand: emptyHand(), cards: [], roads: 15, settlements: 5, cities: 4, knights: 0 })), bank: { lumber: 19, brick: 19, wool: 19, grain: 19, ore: 19 }, deck, randomState, playedCards: [], startingSeat: start.index, currentSeat: start.index, turn: 0, phase: 'setup-settlement', setupStep: 0, longestHolder: null, armyHolder: null, playedDevelopment: false, resumePhase: null, freeRoads: 0, winner: null, offer: null, dice: null, discards: {}, victims: [], pendingSettlement: null, buildings: {}, roads: {} };
   if(mode==='harbor-coop'){game.mode=mode;game.harbor=createHarborState();for(const p of game.players)for(const r of ['lumber','brick','wool','grain'] as const){p.hand[r]++;game.bank[r]--;}game.setupRoadEdges=[];game.phase=game.currentSeat===1?'setup-city':'setup-settlement';beginHarbor(game);}
   return game;
 }

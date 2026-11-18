@@ -142,7 +142,7 @@ test('local test bot selector supports one through five bots and expands the boa
  assert.ok(local.includes("botCount>0?['Player 1',...Array.from"));
  assert.ok(local.includes("totalPlayers>=5?'expanded-5-6':'standard'"));
  assert.ok(ui.includes("localBotIds=new Set(settings.botCount?settings.ids.slice(1):[])"));
- assert.ok(ui.includes("state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout})"));
+ assert.ok(ui.includes('state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules})'));
  assert.ok(html.includes('id="local-room-create"'));
  assert.ok(html.includes('id="local-room-lobby"'));
  assert.ok(html.includes('id="local-map-preview"'));

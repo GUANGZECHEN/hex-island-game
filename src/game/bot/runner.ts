@@ -7,7 +7,7 @@ import type { BotCommand } from './policy.ts';
 
 const setup=new Set(['place-settlement','place-city','place-road']);
 const turn=new Set(['roll','discard','move-robber','steal','end-turn']);
-const build=new Set(['build-road','build-settlement','build-city']);
+const build=new Set(['build-road','build-settlement','build-city','build-ship']);
 
 /** Apply a local bot command through the same reducers used by human actions. */
 export function applyBotCommand(state:GameState,command:BotCommand):GameState {

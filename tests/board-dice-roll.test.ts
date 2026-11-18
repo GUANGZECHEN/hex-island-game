@@ -28,7 +28,10 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
   const fx=new BoardDiceScene({dice:pair,hexIds:[],gains:[]},()=>undefined,()=> '#2965a6');
   const initial=fx.inspect();
   assert.deepEqual(initial.dice,pair);
-  assert.equal(fx.root.getObjectByName('roll-die')?.children.length,22,'one rounded box plus 21 pip meshes');
+  assert.equal(fx.root.getObjectByName('roll-die')?.children.length,7,'rounded cube with six recessed face panels');
+  assert.equal(fx.root.getObjectByName('raised-dice-tray')?.position.y,.88);
+  const pips=(fx.root.getObjectByName('roll-die')?.children.flatMap(group=>group.children.filter(mesh=>mesh.name.startsWith('recessed-pip-')))??[]);
+  assert.equal(pips.length,21,'all dice pips are actual recessed wells');
   assert.equal(fx.advance(DICE_LANDING_MS-1),false);
   assert.equal(fx.advance(DICE_LANDING_MS),true);
   assert.equal(fx.advance(DICE_LANDING_MS+40),false);
@@ -38,7 +41,7 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
    const orientation=dieRestQuaternion(value,value*.15);
    assert.equal(visibleTopFace(orientation),value);
    const pos=diceFlight(DICE_LANDING_MS,index,value);
-   assert.ok(Math.abs(pos.y-.43)<1e-8);
+   assert.ok(Math.abs(pos.y-1.20)<1e-8,'dice rest above the board tiles');
    const p=new THREE.Vector3(0,1,0);
    assert.ok(Math.abs(p.clone().applyQuaternion(pos.rotation).length()-1)<1e-8);
   }

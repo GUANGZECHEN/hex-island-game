@@ -5,6 +5,8 @@ import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type Ga
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
+import { DiceSound } from './game/ui/dice-sound.ts';
+import { SHIP_COST } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
@@ -29,13 +31,14 @@ import { chooseBotCommand } from './game/bot/policy';
 import { applyBotCommand } from './game/bot/runner';
 
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
+const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
-const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','bank-trade','free-road']);
+const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
 let localUndoState:GameState|null=null,localUndoPlayerId='',pendingLocalUndo:{state:GameState;playerId:string}|null=null;
 function applyWithLocalUndo<C extends {type:string;playerId:string}>(s:GameState,c:C,apply:(s:GameState,c:C)=>GameState):GameState|null{
  if(remote){remote.submit(c,networkRevision);return null;}
@@ -49,13 +52,15 @@ const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => a
 const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => applyWithLocalUndo(s,c,localEconomy);
 const applyHarborCommand=(s:GameState,c:HarborCommand)=>applyWithLocalUndo(s,c,localHarbor);
 const localMode=()=>el<HTMLSelectElement>('local-game-mode').value as GameMode;
+const localOptionalRules=()=>({catchUp:localMode()==='classic'&&el<HTMLInputElement>('local-rule-catch-up').checked,
+ ships:localMode()==='classic'&&el<HTMLInputElement>('local-rule-ships').checked});
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
  return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
-function centralActivity(message:string){return /built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
+function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
 function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
@@ -190,6 +195,7 @@ function renderPieceSupply(player:GameState['players'][number]){
   playerStat(ACTION_PATHS.road,player.roads,'Roads remaining','supply-road','R'),
   playerStat(ACTION_PATHS.settlement,player.settlements,'Settlements remaining','supply-settlement','S'),
   playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','supply-city','C'));
+ if(state?.rules?.ships)supply.append(playerStat(ACTION_PATHS.ship,Object.values(state.buildings).filter(b=>b.playerId===player.id&&b.kind==='ship').length,'Ships built','supply-ship','Ship'));
 }
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
@@ -243,7 +249,7 @@ function renderNetworkLobby(view:RoomTableLobby){
  el('board-ledger').hidden=true;el('harbor-panel').hidden=true;
  el('game').querySelector<HTMLElement>('.board-view-toolbar')!.hidden=true;
  el('turn-banner').textContent=view.recovering?'Recovering saved room':view.started?'Resuming game':view.mode==='harbor-coop'?'Harbor Co-op · room setup':'Classic · room setup';
- el('public-action').textContent=view.recovering?'Waiting for original players to reconnect.':`${view.seats.length} seated · ${view.spectators} spectating · Host chooses mode and map`;
+ el('public-action').textContent=view.recovering?'Waiting for original players to reconnect.':`${view.seats.length} seated · ${view.spectators} spectating · Host chooses mode and map · Catch-up ${view.rules.catchUp?'ON':'OFF'} · Ships ${view.rules.ships?'ON':'OFF'}`;
  renderRoomMapPreview();
  scheduleDesktopBoardFit();
 }
@@ -253,6 +259,7 @@ function moveTarget(id:string){if(!state)return;const current=state.players[stat
  else if(targetMode==='city')commit(state.phase==='setup-city'?applySetupCommand(state,{type:'place-city',playerId:viewer,vertexId:id}):applyBuildCommand(state,{type:'build-city',playerId:viewer,vertexId:id}),`${viewer} upgraded a city.`);
  else if(targetMode==='road')commit(state.phase==='setup-road'?applySetupCommand(state,{type:'place-road',playerId:viewer,edgeId:id}):state.phase==='free-road'?applyEconomyCommand(state,{type:'free-road',playerId:viewer,edgeId:id}):applyBuildCommand(state,{type:'build-road',playerId:viewer,edgeId:id}),`${viewer} placed a road.`);
  else if(targetMode==='station')commit(applyHarborCommand(state,{type:'harbor-build-station',playerId:viewer,vertexId:id}),`${viewer} built a trade station.`);
+  else if(targetMode==='ship')commit(applyBuildCommand(state,{type:'build-ship',playerId:viewer,vertexId:id}),`${playerName(viewer)} built a ship.`);
  else if(targetMode==='robber')commit(applyTurnCommand(state,{type:'move-robber',playerId:viewer,hexId:id}),`${viewer} moved the robber.`);
 }
 function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase==='finished')return;const key=`${s.turn}:${s.currentSeat}`;if(key===lastTurnCue)return;lastTurnCue=key;const banner=el('turn-banner'),card=el('player-strip').querySelector<HTMLElement>('.active-player');for(const target of [banner,card]){if(!target)continue;target.classList.remove('turn-cue-flash');void target.offsetWidth;target.classList.add('turn-cue-flash');target.addEventListener('animationend',()=>target.classList.remove('turn-cue-flash'),{once:true});}
@@ -359,6 +366,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
    playerStat(ACTION_PATHS.road,routeLength,'Longest road length','player-longest-road','LR')
   );
   if(s.longestHolder===player.id)pieces.lastElementChild?.classList.add('award-holder');
+  if(s.rules?.ships)pieces.append(playerStat(ACTION_PATHS.ship,Object.values(s.buildings).filter(b=>b.playerId===player.id&&b.kind==='ship').length,'Ships built','player-ship-count','Ship'));
   const awards=document.createElement('div');awards.className='player-awards';
   if(s.longestHolder===player.id)awards.append(playerAward('Longest Road',ACTION_PATHS.road,'award-road'));
   if(s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
@@ -398,7 +406,7 @@ function drawSvgBoard(){
    piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}${fresh?' game-piece-enter':''}`);
    piece.setAttribute('data-building-kind',owner.kind);piece.setAttribute('data-vertex-id',vertex.id);piece.setAttribute('data-board-x',String(x));piece.setAttribute('data-board-y',String(y));
    const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner.playerId)} ${owner.kind}, ${vertex.id}`;piece.append(title);
-   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx',String(x));shadow.setAttribute('cy',String(y+.22));shadow.setAttribute('rx',owner.kind==='city'?'.31':'.23');shadow.setAttribute('ry','.065');shadow.setAttribute('class','game-building-shadow');piece.append(shadow);
+   const shadow=document.createElementNS(NS,'ellipse');shadow.setAttribute('cx',String(x));shadow.setAttribute('cy',String(y+.22));shadow.setAttribute('rx',owner.kind==='city'?'.31':owner.kind==='ship'?'.26':'.23');shadow.setAttribute('ry','.065');shadow.setAttribute('class','game-building-shadow');piece.append(shadow);
    const shell=document.createElementNS(NS,'path');shell.setAttribute('class','game-building-shell');shell.setAttribute('fill',palette.body);shell.setAttribute('stroke',palette.edge);shell.setAttribute('stroke-width','.045');shell.setAttribute('stroke-linejoin','round');
    const accent=document.createElementNS(NS,'path');accent.setAttribute('class','game-building-accent');accent.setAttribute('fill','none');accent.setAttribute('stroke','#ffffff');accent.setAttribute('stroke-width','.035');accent.setAttribute('stroke-linecap','round');accent.setAttribute('stroke-linejoin','round');accent.setAttribute('opacity','.68');
    const detail=document.createElementNS(NS,'path');detail.setAttribute('class','game-building-detail');detail.setAttribute('fill','none');detail.setAttribute('stroke','#173027');detail.setAttribute('stroke-width','.03');detail.setAttribute('stroke-linecap','round');detail.setAttribute('stroke-linejoin','round');detail.setAttribute('opacity','.9');
@@ -406,6 +414,10 @@ function drawSvgBoard(){
     shell.setAttribute('d',`M${x-.24} ${y+.19}V${y-.03}L${x} ${y-.25}L${x+.24} ${y-.03}V${y+.19}Z`);
     accent.setAttribute('d',`M${x-.27} ${y-.02}L${x} ${y-.28}L${x+.27} ${y-.02}`);
     detail.setAttribute('d',`M${x-.055} ${y+.19}V${y+.02}H${x+.055}V${y+.19}M${x-.16} ${y+.02}h.07v.07h-.07zM${x+.09} ${y+.02}h.07v.07h-.07z`);
+   }else if(owner.kind==='ship'){
+    shell.setAttribute('d',`M${x-.31} ${y+.06}Q${x} ${y+.26} ${x+.31} ${y+.06}L${x+.23} ${y+.24}H${x-.23}Z`);
+    accent.setAttribute('d',`M${x} ${y+.06}V${y-.34}L${x+.24} ${y+.04}Z`);
+    detail.setAttribute('d',`M${x} ${y+.06}V${y-.34}M${x-.18} ${y+.10}h.36`);
    }else{
     shell.setAttribute('d',`M${x-.33} ${y+.2}V${y-.07}H${x-.14}V${y-.19}H${x-.055}V${y-.31}H${x+.09}V${y-.19}H${x+.19}V${y-.07}H${x+.33}V${y+.2}Z`);
     accent.setAttribute('d',`M${x-.35} ${y-.07}H${x-.14}M${x-.14} ${y-.07}V${y-.2}H${x-.055}M${x+.09} ${y-.2}H${x+.19}V${y-.07}H${x+.35}`);
@@ -415,8 +427,8 @@ function drawSvgBoard(){
    if(cityTarget){piece.setAttribute('data-legal-target','city');piece.setAttribute('data-target-id',vertex.id);piece.setAttribute('tabindex','0');piece.setAttribute('role','button');piece.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);piece.onclick=()=>attempt(()=>moveTarget(vertex.id));piece.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
    svg.append(piece);continue;
   }
-  if((targetMode!=='settlement'&&!(targetMode==='city'&&s.phase==='setup-city'))||!legal.has(vertex.id))continue;
-  const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target',targetMode!);node.setAttribute('data-target-id',vertex.id);node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal settlement target ${vertex.id}`);
+  if((targetMode!=='settlement'&&targetMode!=='ship'&&!(targetMode==='city'&&s.phase==='setup-city'))||!legal.has(vertex.id))continue;
+  const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target',targetMode!);node.setAttribute('data-target-id',vertex.id);node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal ${targetMode==='ship'?'ship':'settlement'} target ${vertex.id}`);
   node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};svg.append(node);
  }
  for(const station of Object.values(s.harbor?.stations??{})){
@@ -452,7 +464,13 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
- drawBoard();if(pendingRollPresentation&&!el('game').hidden){boardRenderer?.playRoll(pendingRollPresentation);pendingRollPresentation=null;}if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
+ drawBoard();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
+ if(pendingRollPresentation&&!el('game').hidden){
+  if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
+  el('board').querySelector('.turn-alert')?.remove();
+  boardRenderer?.playRoll(pendingRollPresentation);diceSound.playRoll();pendingRollPresentation=null;
+ }
+ showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
  if(spectating||!actor)return;
@@ -497,6 +515,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
   if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
+   if(s.rules?.ships&&affordable(actor.hand,SHIP_COST)&&legalTargetIds(s,viewer,'ship').length)
+     action(grid,'Build ship · 1 VP','ship',()=>mode('ship'),SHIP_COST,actor.hand);
   action(grid,'End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`));
   if(affordable(actor.hand,{lumber:1,brick:1})&&legalTargetIds(s,viewer,'road').length)action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
   if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
@@ -531,7 +551,7 @@ function refreshLocalMapPreview(){
  el('local-board-layout').textContent=`${count} players · ${layout==='standard'?'standard 19-hex board':'expanded 24-hex board'}`;
  if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  try{
-  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots,localMode());
+  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots,localMode(),localOptionalRules());
   renderIslandBoard(preview,generateBoardSetup(settings.seed,settings.boardLayout));
   const svg=preview.querySelector('svg');
   if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Local map preview, seed ${settings.seed}, ${count} players`);}
@@ -543,8 +563,7 @@ function startLocalRound(settings:LocalRoomSettings){
  renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';
  localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
  botTurnKey='';botActionCount=0;viewer='';
- state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout});
- if(settings.mode==='harbor-coop')state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode});
+ state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
  log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
@@ -564,7 +583,7 @@ el('start').onclick=()=>attempt(()=>{
  if(!localRoomOpen)throw new Error('Create a local room first.');
  const seed=el<HTMLInputElement>('seed');
  if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid map seed.');
- const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value),localMode());
+ const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value),localMode(),localOptionalRules());
  activeLocalRoom=settings;startLocalRound(settings);
 });
 const restartLocal=()=>{
@@ -587,9 +606,13 @@ const updateLocalMode=()=>{
  const coop=localMode()==='harbor-coop';
  for(const option of Array.from(localBotCount.options))option.disabled=coop&&Number(option.value)>1;
  if(coop){localSeats.value='2';if(Number(localBotCount.value)>1)localBotCount.value='1';}
- localSeats.disabled=coop||Number(localBotCount.value)>0;refreshLocalMapPreview();
+ localSeats.disabled=coop||Number(localBotCount.value)>0;
+ for(const id of ['local-rule-catch-up','local-rule-ships'])el<HTMLInputElement>(id).disabled=coop;
+ el('local-optional-rules').classList.toggle('optional-rules-disabled',coop);
+ refreshLocalMapPreview();
 };
 el('local-game-mode').addEventListener('change',updateLocalMode);localBotCount.addEventListener('change',updateLocalMode);
+for(const id of ['local-rule-catch-up','local-rule-ships'])el<HTMLInputElement>(id).addEventListener('change',refreshLocalMapPreview);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();roomSeed.dispatchEvent(new Event('change',{bubbles:true}));};renderRoomMapPreview();
 
@@ -612,6 +635,6 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;
   const privateView=value.private;
-  state={mode:pub.mode,harbor:pub.harbor??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
+  state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
 }});

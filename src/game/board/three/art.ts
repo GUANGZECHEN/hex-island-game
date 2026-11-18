@@ -142,8 +142,30 @@ export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPl
 }
 /** Distinct tabletop silhouettes: a cottage settlement and a fortified, two-level city.
  * Geometry/materials are cached by ArtAssets; all details remain part of one board piece. */
-export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city', color: string): THREE.Group {
+export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city' | 'ship', color: string): THREE.Group {
   const g = new THREE.Group(); g.userData.kind = kind;
+  if(kind==='ship'){
+    // Player-built harbor ship: compact colored hull and one ivory sail.
+    // Stays at its owned vertex (separate from the ambient trade-port boats).
+    const hull=assets.geometry('player-ship-hull',()=>{
+      const shape=new THREE.Shape();shape.moveTo(-.34,-.13);
+      shape.quadraticCurveTo(-.42,0,-.29,.13);shape.lineTo(.27,.13);
+      shape.quadraticCurveTo(.43,0,.27,-.13);shape.closePath();
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:.14,bevelEnabled:true,bevelSize:.02,bevelThickness:.018,bevelSegments:1});
+      geo.rotateX(-Math.PI/2);return geo;
+    });
+    assets.mesh(g,hull,assets.material('#8c6343'),0,.32,0).name='player-ship-hull';
+    assets.box(g,color,[.55,.075,.20],0,.34,0).name='player-ship-stripe';
+    assets.box(g,'#6c513a',[.032,.55,.035],0,.57,0).name='player-ship-mast';
+    const sail=assets.geometry('player-ship-sail',()=>{
+      const shape=new THREE.Shape();shape.moveTo(0,0);shape.lineTo(0,.47);shape.lineTo(.29,.075);shape.closePath();
+      return new THREE.ShapeGeometry(shape);
+    });
+    const cloth=assets.extra(new THREE.MeshStandardMaterial({color:'#fff1d8',roughness:.92,side:THREE.DoubleSide}));
+    assets.mesh(g,sail,cloth,-.01,.41,.02).name='player-ship-sail';
+    g.scale.setScalar(.68);
+    return g;
+  }
   if (kind === 'settlement') {
     assets.box(g, color, [.27, .25, .29], 0, .265, 0).name = 'settlement-walls';
     const roof = assets.geometry('house-roof', () => { const geo = new THREE.ConeGeometry(.245, .20, 4); geo.rotateY(Math.PI / 4); return geo; });
@@ -174,13 +196,10 @@ export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city', col
   }
   assets.box(g, '#655145', [.125, .19, .029], -.12, .36, .214).name = 'city-door';
   assets.box(g, stone, [.17, .035, .04], -.12, .464, .215).name = 'city-door-lintel';
-  for (const x of [-.265, .035]) {
-    assets.box(g, trim, [.084, .13, .023], x, .535, .208).name = 'city-window-frame';
-    assets.box(g, lit, [.052, .095, .026], x, .54, .225).name = 'city-window';
-    assets.box(g, accent, [.014, .10, .028], x, .54, .24).name = 'city-window-mullion';
-  }
-  assets.box(g, trim, [.075, .145, .022], .205, .67, .126).name = 'city-keep-window-frame';
-  assets.box(g, lit, [.042, .105, .026], .205, .67, .145).name = 'city-keep-window';
+  // One compact horizontal hall window replaces the two tall vertical slits.
+  assets.box(g,trim,[.17,.075,.018],-.12,.535,.208).name='city-window-frame';
+  assets.box(g,lit,[.12,.043,.020],-.12,.535,.222).name='city-window';
   assets.box(g, '#b1ada0', [.26, .04, .13], -.12, .18, .31).name = 'city-stairs';
+  g.scale.setScalar(.78);
   return g;
 }

@@ -1,4 +1,5 @@
 import { validateHarborState } from '../rules/harbor.ts';
+import { validateOptionalRules } from '../rules/optional-rules.ts';
 import type { GameState, Hand } from '../rules/state.ts';
 import type { BoardLayout } from '../board/geometry.ts';
 
@@ -38,6 +39,11 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   const authority=x.authority as Partial<AuthorityRecovery>;
   if(authority.version!==1||typeof authority.gameId!=='string'||!idPattern.test(authority.gameId)||!Number.isSafeInteger(authority.revision)||Number(authority.revision)<0||!authority.state||authority.state.version!==1)throw new Error('Invalid saved game.');
   const state=authority.state as GameState;validateHarborState(state);
+  const rules=validateOptionalRules(state.rules);
+  if(state.mode==='harbor-coop'&&(rules.catchUp||rules.ships))throw new Error('Optional Classic rules conflict with Harbor mode.');
+  if(Object.values(state.buildings).some(b=>b.kind==='ship')&&!rules.ships)throw new Error('Saved ships rule is disabled.');
+  if(state.catchUpReward && (!rules.catchUp||!Number.isSafeInteger(state.catchUpReward.turn)||state.catchUpReward.turn!==state.turn||
+     !state.players.some(p=>p.id===state.catchUpReward?.playerId)))throw new Error('Invalid saved catch-up award.');
   const boardLayout=(x.boardLayout??state.board?.layout??'standard') as BoardLayout;
   if(boardLayout!=='standard'&&boardLayout!=='expanded-5-6')throw new Error('Saved game board layout is invalid.');
   const validCount=boardLayout==='expanded-5-6'?state.players.length>=5&&state.players.length<=6:state.players.length>=2&&state.players.length<=4;

@@ -3,6 +3,8 @@ import type { HarborCommand } from '../rules/harbor.ts';
 import { publicVictoryPoints, type GameState, type SetupCommand } from '../rules/state.ts';
 import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
+import { SHIP_COST } from '../rules/build.ts';
+import { legalTargetIds } from '../rules/legal.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 import {
  affordable,affordableAction,bestCity,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
@@ -65,6 +67,12 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  }
  if(playable.includes('road-building')&&player.roads>0&&shouldPlayRoadBuilding(state,botId))return {type:'play-card',playerId:botId,card:'road-building'};
 
+ // With no settlement supply left, the optional harbor ship can be an
+ // alternative route to 1 VP without becoming a road-building anchor.
+ if(state.rules?.ships&&!player.settlements&&affordable(player.hand,SHIP_COST)){
+  const ships=legalTargetIds(state,botId,'ship');
+  if(ships.length)return {type:'build-ship',playerId:botId,vertexId:ships[0]};
+ }
  const reserve=savingGoal(state,botId);
  // Once a settlement target is connected and legal, stop extending roads and save for that house.
  if(reserve?.kind==='settlement'){

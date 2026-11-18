@@ -14,7 +14,7 @@ export interface PublicActivityState {
   victims: readonly string[];
   board: { robberHexId: string };
   roads: Readonly<Record<string,string>>;
-  buildings: Readonly<Record<string,{playerId:string;kind:'settlement'|'city'}>>;
+  buildings: Readonly<Record<string,{playerId:string;kind:'settlement'|'city'|'ship'}>>;
   playedCards: readonly string[];
   bank: Readonly<Record<string,number>>;
   deckCount: number;
@@ -55,7 +55,7 @@ export function derivePublicActivity(previous:PublicActivityState|null,next:Publ
 
   for(const [vertexId,building] of Object.entries(next.buildings)){
     const before=previous.buildings[vertexId];
-    if(!before && building.playerId===actorId)return `${actor} built a settlement.`;
+    if(!before && building.playerId===actorId)return `${actor} built a ${building.kind==='ship'?'ship':'settlement'}.`;
     if(before?.playerId===actorId&&before.kind==='settlement'&&building.playerId===actorId&&building.kind==='city')return `${actor} upgraded a settlement to a city.`;
   }
 

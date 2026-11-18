@@ -5,10 +5,12 @@ import { usesTradeStations } from './trade-stations.ts';
 export type BuildCommand =
   | { type: 'build-road'; playerId: string; edgeId: string; free?: boolean }
   | { type: 'build-settlement'; playerId: string; vertexId: string }
-  | { type: 'build-city'; playerId: string; vertexId: string };
+  | { type: 'build-city'; playerId: string; vertexId: string }
+  | { type: 'build-ship'; playerId: string; vertexId: string };
 const ROAD: Hand = {lumber:1,brick:1,wool:0,grain:0,ore:0};
 const SETTLEMENT: Hand = {lumber:1,brick:1,wool:1,grain:1,ore:0};
 const CITY: Hand = {lumber:0,brick:0,wool:0,grain:2,ore:3};
+export const SHIP_COST: Readonly<Hand> = Object.freeze({lumber:3,brick:3,wool:0,grain:0,ore:3});
 function pay(state: GameState, id: string, cost: Hand) {
   const player = state.players.find(player => player.id === id)!;
   if (RESOURCES.some(resource => player.hand[resource] < cost[resource])) throw new Error('Insufficient resources.');
@@ -21,7 +23,7 @@ export function longestRoute(state: GameState, playerId: string): number {
   for (const edge of edges) for (const vertex of edge.vertexIds) incident.set(vertex, [...(incident.get(vertex) ?? []), edge]);
   const walk = (vertex: string, used: Set<string>): number => {
     const owner = state.buildings[vertex]?.playerId;
-    if (used.size && owner && owner !== playerId) return 0;
+    if (used.size && ((owner && owner !== playerId)||state.buildings[vertex]?.kind==='ship')) return 0;
     let best = 0;
     for (const edge of incident.get(vertex) ?? []) {
       if (used.has(edge.id)) continue;
@@ -54,7 +56,7 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     // building blocks continuation through that endpoint; a station is no anchor.
     const connects = edge.vertexIds.some(vertex => {
       const occupant = state.buildings[vertex];
-      if (occupant) return occupant.playerId === player.id || legacyTeamSupport;
+      if (occupant) return occupant.kind!=='ship'&&(occupant.playerId === player.id || legacyTeamSupport);
       return board.edges.some(other => other.vertexIds.includes(vertex) && (state.roads[other.id] === player.id || (legacyTeamSupport && !!state.roads[other.id])));
     });
     if (!connects) throw new Error('Road must connect to your own road or building.');
@@ -69,6 +71,21 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     // Only archived Harbor v1 games retain their original shared-road support.
     if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id || (legacyTeamSupport && !!state.roads[edge.id]))) throw new Error('Settlement is not connected or violates distance rule.');
     pay(state, player.id, SETTLEMENT); state.buildings[vertex.id] = {playerId:player.id,kind:'settlement'}; player.settlements--;
+  } else if (command.type === 'build-ship') {
+    if(state.mode==='harbor-coop'||!state.rules?.ships)throw new Error('Optional ships rule is disabled.');
+    const vertex=board.vertices.find(v=>v.id===command.vertexId);
+    if(!vertex||state.buildings[vertex.id])throw new Error('Ship requires a vacant harbor vertex.');
+    if(!state.board.ports.some(port=>port.vertexIds.includes(vertex.id)))throw new Error('Ships may only be placed at ports.');
+    // Owning a port means holding any port vertex with your own settlement, city or ship.
+    if(!state.board.ports.some(port=>port.vertexIds.some(id=>state.buildings[id]?.playerId===player.id)))
+      throw new Error('Own a port before you can build a ship.');
+    const connected=board.edges.filter(edge=>edge.vertexIds.includes(vertex.id));
+    if(connected.some(edge=>edge.vertexIds.some(id=>id!==vertex.id && state.buildings[id])))
+      throw new Error('Ship violates the settlement spacing rule.');
+    if(!connected.some(edge=>state.roads[edge.id]===player.id))
+      throw new Error('Ship must connect to one of your existing roads.');
+    pay(state,player.id,SHIP_COST as Hand);
+    state.buildings[vertex.id]={playerId:player.id,kind:'ship'};
   } else if (command.type === 'build-city') {
     if (state.buildings[command.vertexId]?.playerId !== player.id || state.buildings[command.vertexId]?.kind !== 'settlement' || !player.cities) throw new Error('City requires an owned settlement and available city.');
     pay(state, player.id, CITY); state.buildings[command.vertexId].kind = 'city'; player.cities--; player.settlements++;

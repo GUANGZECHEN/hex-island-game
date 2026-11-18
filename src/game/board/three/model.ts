@@ -10,7 +10,7 @@ export interface BoardSceneView {
   board: BoardSetup;
   players: readonly { id: string; name: string; color: string }[];
   roads: Readonly<Record<string, string>>;
-  buildings: Readonly<Record<string, { playerId: string; kind: 'settlement' | 'city' }>>;
+  buildings: Readonly<Record<string, { playerId: string; kind: 'settlement' | 'city' | 'ship' }>>;
   targetMode: TargetMode | null;
   legalTargets: readonly string[];
 }

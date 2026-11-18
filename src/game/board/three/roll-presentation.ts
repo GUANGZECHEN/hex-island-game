@@ -8,7 +8,7 @@ export interface BuildingRollGain {
   playerId: string;
   resource: Resource;
   count: number;
-  kind: 'settlement' | 'city';
+  kind: 'settlement' | 'city' | 'ship';
 }
 export interface RollPresentation {
   dice: readonly [number, number];
@@ -21,10 +21,23 @@ type PublicBoard = Pick<GameState, 'board' | 'buildings' | 'bank'> & { players: 
 /** Mirror the authoritative resource rules, including robber and bank shortages,
  * then distribute the publicly known award over buildings for display only. */
 export function describeRoll(before: PublicBoard, dice: readonly [number, number],
-  after?: {turn:number;mode?:GameState['mode']|null;harbor?:GameState['harbor']|null}): RollPresentation {
+  after?: {turn:number;mode?:GameState['mode']|null;harbor?:GameState['harbor']|null;catchUpReward?:GameState['catchUpReward']|null}): RollPresentation {
   const [first, second] = dice;
   if (![first, second].every(n => Number.isInteger(n) && n >= 1 && n <= 6)) throw new Error('Invalid public dice result.');
   const total = first + second;
+  const catchUp=after?.catchUpReward?.turn===after?.turn ? after?.catchUpReward:null;
+  const appendCatchUp=(gains:BuildingRollGain[])=>{
+    if(!catchUp)return;
+    const home=Object.entries(before.buildings).find(([,building])=>building.playerId===catchUp.playerId);
+    if(!home)return;
+    for(const resource of RESOURCES){
+      const count=catchUp.gains[resource]??0;if(!count)continue;
+      const [vertexId,building]=home;
+      const existing=gains.find(g=>g.vertexId===vertexId&&g.playerId===catchUp.playerId&&g.resource===resource);
+      if(existing)existing.count+=count;
+      else gains.push({vertexId,playerId:catchUp.playerId,kind:building.kind,resource,count});
+    }
+  };
   if (total === 7) {
     // Harbor v2 gives each teammate one public random bank resource on a seven,
     // without hex production. Display the actual awarded resource above their
@@ -41,6 +54,7 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
         if(count>0)gains.push({vertexId,playerId:player.id,kind:building.kind,resource,count});
       }
     }
+    appendCatchUp(gains);
     return {dice:[first,second],hexIds:[],gains};
   }
 
@@ -69,7 +83,9 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
       else awards.set(key, { vertexId, playerId: building.playerId, kind: building.kind, resource, count });
     }
   }
-  return { dice: [first, second], hexIds: hexes.map(hex => hex.id), gains: [...awards.values()] };
+  const gains=[...awards.values()];
+  appendCatchUp(gains);
+  return { dice: [first, second], hexIds: hexes.map(hex => hex.id), gains };
 }
 
 export function isNewRoll(before: { dice: readonly [number, number] | null; turn: number } | null,

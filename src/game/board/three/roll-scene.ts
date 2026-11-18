@@ -52,7 +52,7 @@ export function diceFlight(elapsed:number,index:number,face:number) {
   const x=finishX+(startX-finishX)*(1-t)**2;
   const z=endZ+(1-t)*.30*Math.sin(index+1.5);
   // Two decreasing bounces, then a stable tabletop rest height.
-  const y=.43+1.62*(1-t)**3 + .23*Math.abs(Math.sin(t*3.2*Math.PI))*(1-t);
+  const y=1.20+1.62*(1-t)**3 + .23*Math.abs(Math.sin(t*3.2*Math.PI))*(1-t);
   const yaw=(face*.29+index*.64);
   const rest=dieRestQuaternion(face,yaw);
   const rollAt=(p:number)=>new THREE.Quaternion().setFromEuler(new THREE.Euler(
@@ -72,10 +72,18 @@ type TextureSprite = {sprite:THREE.Sprite; baseY:number; material:THREE.SpriteMa
 export class BoardDiceScene {
   readonly root=new THREE.Group();
   private dice: [THREE.Group,THREE.Group];
-  private cubeGeometry=new RoundedBoxGeometry(.49,.49,.49,4,.055);
-  private pipGeometry=new THREE.SphereGeometry(.025,10,8);
-  private bodyMaterial=new THREE.MeshStandardMaterial({color:'#fff5de',roughness:.39,metalness:.03});
-  private pipMaterial=new THREE.MeshStandardMaterial({color:'#24312d',roughness:.72});
+  private cubeGeometry=new RoundedBoxGeometry(.5,.5,.5,4,.06);
+  private pipGeometry=new THREE.CircleGeometry(.028,22);
+  private insetGeometry=new THREE.RingGeometry(.028,.036,22);
+  private panelGeometries=new Map<number,THREE.ShapeGeometry>();
+  private bodyMaterial=new THREE.MeshStandardMaterial({color:'#fdf4df',roughness:.42,metalness:.02});
+  private panelMaterial=new THREE.MeshStandardMaterial({color:'#fff7e7',roughness:.38,side:THREE.DoubleSide});
+  private insetMaterial=new THREE.MeshBasicMaterial({color:'#886f62',side:THREE.DoubleSide});
+  private redPips=new THREE.MeshStandardMaterial({color:'#d73541',roughness:.67,side:THREE.DoubleSide});
+  private bluePips=new THREE.MeshStandardMaterial({color:'#2879c8',roughness:.67,side:THREE.DoubleSide});
+  private trayGeometry=new THREE.CylinderGeometry(1.42,1.46,.08,48);
+  private trayMaterial=new THREE.MeshStandardMaterial({color:'#e4d5ae',roughness:.82,metalness:.02});
+  private trayRimMaterial=new THREE.MeshStandardMaterial({color:'#b78e52',roughness:.76});
   private labels:TextureSprite[]=[];
   private landed=false;
   private lastElapsed=0;
@@ -88,24 +96,53 @@ export class BoardDiceScene {
               playerColor:(id:string)=>string){
     this.event=event;this.vertexAt=vertexAt;this.playerColor=playerColor;
     this.root.name='dice-roll-scene';
+    // A raised tabletop dice tray keeps the cubes physically above all tiles,
+    // token sprites and decorative props. It is local and non-pickable.
+    const tray=new THREE.Mesh(this.trayGeometry,this.trayMaterial);
+    tray.name='raised-dice-tray';tray.position.y=.88;tray.renderOrder=12;tray.receiveShadow=false;
+    this.root.add(tray);
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(1.415,.035,7,48),this.trayRimMaterial);
+    rim.name='dice-tray-rim';rim.rotation.x=Math.PI/2;rim.position.y=.935;rim.renderOrder=13;this.root.add(rim);
     this.dice=[this.makeDie(event.dice[0]),this.makeDie(event.dice[1])];
     this.dice.forEach((die,i)=>this.root.add(die));
     this.advance(0,false);
   }
 
+  /** Six actual perforated ivory face panels: colored pip wells sit below
+   * the surface, with inset shadow rings. 1/4 red, 2/3/5/6 blue. */
+  private faceGeometry(value:number):THREE.ShapeGeometry {
+    const existing=this.panelGeometries.get(value);if(existing)return existing;
+    const size=.217,shape=new THREE.Shape();
+    shape.moveTo(-size,-size);shape.lineTo(size,-size);shape.lineTo(size,size);
+    shape.lineTo(-size,size);shape.closePath();
+    for(const [px,py] of PIPS[value]){
+      const hole=new THREE.Path();
+      hole.absarc(px*.107,py*.107,.036,0,Math.PI*2,true);
+      shape.holes.push(hole);
+    }
+    const geometry=new THREE.ShapeGeometry(shape,12);
+    this.panelGeometries.set(value,geometry);return geometry;
+  }
   private makeDie(value:number):THREE.Group {
     const group=new THREE.Group();group.name='roll-die';group.userData.value=value;
     const body=new THREE.Mesh(this.cubeGeometry,this.bodyMaterial);
-    body.castShadow=true;group.add(body);
+    body.renderOrder=20;body.castShadow=false;group.add(body);
     for(const [v,normal] of Object.entries(FACE_NORMALS)){
-      const value=Number(v);
-      const u=Math.abs(normal.x)>.5?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0);
-      const w=new THREE.Vector3().crossVectors(normal,u);
-      for(const [a,b] of PIPS[value]){
-        const dot=new THREE.Mesh(this.pipGeometry,this.pipMaterial);
-        dot.position.copy(normal).multiplyScalar(.243).addScaledVector(u,a*.105).addScaledVector(w,b*.105);
-        dot.castShadow=false;group.add(dot);
+      const face=Number(v);
+      const panel=new THREE.Group();panel.position.copy(normal).multiplyScalar(.264);
+      panel.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),normal);
+      const plate=new THREE.Mesh(this.faceGeometry(face),this.panelMaterial);
+      plate.name='die-face-'+face;plate.renderOrder=21;panel.add(plate);
+      for(const [px,py] of PIPS[face]){
+        const center=new THREE.Vector3(px*.107,py*.107,0);
+        const pit=new THREE.Mesh(this.pipGeometry,face===1||face===4?this.redPips:this.bluePips);
+        pit.name='recessed-pip-'+face;pit.position.copy(center);pit.position.z=-.011;
+        pit.renderOrder=22;panel.add(pit);
+        const shadow=new THREE.Mesh(this.insetGeometry,this.insetMaterial);
+        shadow.name='pip-well-rim';shadow.position.copy(center);shadow.position.z=.001;
+        shadow.renderOrder=23;panel.add(shadow);
       }
+      group.add(panel);
     }
     return group;
   }
@@ -118,7 +155,7 @@ export class BoardDiceScene {
       if(!point)continue;
       // Size grows with distinct resource types. Same-type gains already
       // aggregate to +2/+4, while mixed adjacent tiles stay individually legible.
-      const width=44+gains.length*160;
+      const width=58+gains.length*186;
       const canvas=document.createElement('canvas');canvas.width=width;canvas.height=112;
       const ctx=canvas.getContext('2d');
       if(!ctx)continue;
@@ -126,18 +163,18 @@ export class BoardDiceScene {
       ctx.fillStyle='#fffdf0';ctx.strokeStyle=playerColor;ctx.lineWidth=8;
       ctx.beginPath();ctx.roundRect(7,8,width-14,96,20);ctx.fill();ctx.stroke();
       for(const [index,gain] of gains.entries()){
-        const offset=18+160*index;
+        const offset=24+186*index;
         ctx.save();ctx.translate(offset,32);ctx.scale(2.15,2.15);
         ctx.strokeStyle=RESOURCE_COLORS[gain.resource];ctx.lineWidth=2.8;ctx.lineCap='round';ctx.lineJoin='round';
         ctx.stroke(new Path2D(RESOURCE_PATHS[gain.resource]));ctx.restore();
         ctx.fillStyle=playerColor;ctx.font='bold 39px system-ui,sans-serif';ctx.textBaseline='middle';
-        ctx.fillText('+'+gain.count,offset+61,59,90);
+        ctx.fillText('+'+gain.count,offset+68,59,105);
       }
       const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
       const material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,opacity:0});
       const sprite=new THREE.Sprite(material);sprite.name='building-resource-gain';sprite.renderOrder=30;
       const baseY=gains[0].kind==='city'?1.14:.88;
-      sprite.position.set(point.x,baseY,point.z);sprite.scale.set(width*.0038,.40,1);
+      sprite.position.set(point.x,baseY+.10,point.z);sprite.scale.set(width*.0047,.54,1);
       sprite.userData={vertexId,playerId:gains[0].playerId,gains:gains.map(g=>({resource:g.resource,count:g.count})),color:playerColor};
       this.root.add(sprite);this.labels.push({sprite,baseY,material,texture});
     }
@@ -175,7 +212,13 @@ export class BoardDiceScene {
   dispose():void {
     this.root.removeFromParent();
     for(const {material,texture} of this.labels){material.dispose();texture.dispose();}
+    this.root.traverse(object=>{
+      if(object instanceof THREE.Mesh&&object.name==='dice-tray-rim')object.geometry.dispose();
+    });
     this.labels=[];this.root.clear();
-    this.cubeGeometry.dispose();this.pipGeometry.dispose();this.bodyMaterial.dispose();this.pipMaterial.dispose();
+    this.cubeGeometry.dispose();this.pipGeometry.dispose();this.insetGeometry.dispose();
+    this.panelGeometries.forEach(geometry=>geometry.dispose());this.panelGeometries.clear();
+    for(const material of [this.bodyMaterial,this.panelMaterial,this.insetMaterial,this.redPips,this.bluePips,this.trayMaterial,this.trayRimMaterial])material.dispose();
+    this.trayGeometry.dispose();
   }
 }

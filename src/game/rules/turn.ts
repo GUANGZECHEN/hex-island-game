@@ -1,5 +1,5 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { drawIndex, secureIndex, RESOURCES, type GameState, type Hand } from './state.ts';
+import { drawIndex, secureIndex, publicVictoryPoints, RESOURCES, type GameState, type Hand } from './state.ts';
 
 import { advanceHarbor, isHarbor } from './harbor.ts';
 import { usesTradeStations } from './trade-stations.ts';
@@ -57,6 +57,25 @@ export function diceProductionSummary(
  }
  return calculateDiceProduction(before,total);
 }
+/** Draw distinct stocked resources for a lagging player after their roll.
+ * Host RNG remains authoritative; the public reward metadata makes UI/recovery exact. */
+export function awardCatchUp(state: GameState, secureRandom?: () => number): void {
+  delete state.catchUpReward;
+  if(state.mode==='harbor-coop'||!state.rules?.catchUp)return;
+  const active=state.players[state.currentSeat];
+  const leader=Math.max(...state.players.map(player=>publicVictoryPoints(state,player.id)));
+  if(publicVictoryPoints(state,active.id)>3||leader<5)return;
+  const count=leader>=6?2:1;
+  const gains:Hand={lumber:0,brick:0,wool:0,grain:0,ore:0};
+  const remaining=RESOURCES.filter(resource=>state.bank[resource]>0);
+  for(let i=0;i<count&&remaining.length;i++){
+    const draw=secureRandom?secureIndex(secureRandom,remaining.length):drawIndex(state.randomState,remaining.length);
+    state.randomState=draw.state??state.randomState;
+    const [resource]=remaining.splice(draw.index,1);
+    state.bank[resource]--;active.hand[resource]++;gains[resource]++;
+  }
+  if(RESOURCES.some(resource=>gains[resource]))state.catchUpReward={turn:state.turn,playerId:active.id,gains};
+}
 /** Apply exactly the publicly computable awards, preserving single-recipient shortage behavior. */
 export function produce(state:GameState,total:number):void {
  const gains=calculateDiceProduction(state,total);
@@ -85,6 +104,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
         state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
       }
     } else { produce(state, state.dice[0] + state.dice[1]); state.phase = 'action'; }
+    awardCatchUp(state,secureRandom);
   } else if (command.type === 'discard' && state.phase === 'discard') {
     const required = state.discards[command.playerId], player = state.players.find(p => p.id === command.playerId);
     if (!required || !player || !command.cards || Object.keys(command.cards).sort().join(',') !== [...RESOURCES].sort().join(',') || RESOURCES.some(r => !Number.isInteger(command.cards[r]) || command.cards[r] < 0 || command.cards[r] > player.hand[r]) || size(command.cards) !== required) throw new Error('Invalid discard.');
@@ -106,6 +126,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
     state.victims = []; state.phase = state.resumePhase ?? 'action'; state.resumePhase = null;
   } else if (command.type === 'end-turn' && state.phase === 'action' && active.id === command.playerId) {
     if(state.harbor)delete state.harbor.sevenReward;
+    delete state.catchUpReward;
     state.currentSeat = (state.currentSeat + 1) % state.players.length; state.turn++; state.dice = null; state.playedDevelopment = false; state.offer = null; state.phase = 'roll'; advanceHarbor(state);
   } else throw new Error('Command is not allowed in this phase.');
   return state;

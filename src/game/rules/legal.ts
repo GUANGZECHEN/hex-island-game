@@ -5,7 +5,7 @@ import { applyBuildCommand } from './build.ts';
 import { applyHarborCommand } from './harbor.ts';
 import { applyEconomyCommand } from './economy.ts';
 
-export type TargetMode = 'settlement'|'road'|'city'|'robber'|'station';
+export type TargetMode = 'settlement'|'road'|'city'|'robber'|'station'|'ship';
 
 /** Compute legal board targets with the same deterministic reducers used by gameplay. */
 export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):string[]{
@@ -19,6 +19,8 @@ export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):
         else applyBuildCommand(state,{type:'build-settlement',playerId,vertexId:id});
       }else if(mode==='station'){
         applyHarborCommand(state,{type:'harbor-build-station',playerId,vertexId:id});
+      }else if(mode==='ship'){
+        applyBuildCommand(state,{type:'build-ship',playerId,vertexId:id});
       }else if(mode==='city'){
         if(state.phase==='setup-city')applySetupCommand(state,{type:'place-city',playerId,vertexId:id});
         else applyBuildCommand(state,{type:'build-city',playerId,vertexId:id});

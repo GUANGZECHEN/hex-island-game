@@ -187,3 +187,12 @@ The sea must read as one gently rippling **3D modeled surface**, with highlights
 DICE ROLL must appear **on the board itself**, never in the large center action notification. Two real warm ivory rounded dice with dark inset pips are thrown, roll and bounce gently, and land showing the two exact host-generated values. The complete movement is short and nonblocking; the resting face values must never contradict the game result. Roll shadows must not cause the earlier dark ocean shadow bug.
 
 When a non-seven die sum is resolved, each unblocked hex carrying that number plays its existing small tree/sheep/wheat/stone/brick reaction. Resource receipt is announced where it matters: a modest upward-floating parchment gain badge above each earning house, colored with the corresponding **player's house color**, showing resource icon(s) and the actual +1/+2 amounts (subject to bank shortages). All recipients, including other players, use the same publicly computable data. The camera never moves, the effect never obscures valid build targets, and the 2D accessibility fallback shows the same information. Avoid noisy screen-wide alerts and decorative rewards for a robbed or nonpaying building.
+
+
+## 2026-11-18 tabletop/dice and city revision
+
+- Hide the turn announcement at the first instant dice land on their raised tabletop tray; no center dice alert. Ivory cubes have genuinely inset pip wells: **red on 1 and 4**, **blue on 2, 3, 5 and 6**. Each face retains its exact host-generated result.
+- Short synthesized click/clatter sound; per-browser mute/unmute button, persisted locally and respecting browser user activation.
+- Resource payout floats are larger, per-resource labeled and colored by owning player; several equal-number tiles touching one city show each type separately.
+- The city keeps a recognizable fort-like silhouette, reduced in size, with a single small horizontal hall window instead of two unattractive vertical ones.
+- Classic lobby includes independent host toggles for Catch-up and Harbor Ships; spectators/guests read the same selections. Rules and AI remain synchronized with the authorized match and recoveries.
