@@ -14,13 +14,26 @@ await mkdir(evidence,{recursive:true});
 const fixture=`
 import {drawIndex as fixtureDraw} from './game/rules/state.ts';
 (window as any).__diceFixture={
- load(variant:'normal'|'blocked'|'seven'='normal'){
+ load(variant:'normal'|'blocked'|'seven'|'multiple'='normal'){
   clearBotTimer();boardRenderer?.clearRoll();remote=null;projection=null;networkRevision=0;localBotIds=new Set();
   targetMode=null;localUndoState=null;pendingLocalUndo=null;pendingRollPresentation=null;
   const next=createGame(24680,['Player 1','Player 2'],()=>0);
-  const tile=next.board.hexes.find(h=>h.token===8&&h.resource!==null)!;
+  const tile=next.board.hexes.find(h=>h.token===(variant==='multiple'?9:8)&&h.resource!==null)!;
   const hex=createIslandBoard(next.board.layout).hexes.find(h=>h.id===tile.hexId)!;
-  const verts=[hex.vertexIds[0],hex.vertexIds[2]];
+  let verts=[hex.vertexIds[0],hex.vertexIds[2]];
+  let secondResource=null;
+  if(variant==='multiple'){
+   const neighbor=hex.neighborIds.map(id=>({
+    geometry:createIslandBoard(next.board.layout).hexes.find(h=>h.id===id),
+    tile:next.board.hexes.find(h=>h.hexId===id)
+   })).find(p=>p.tile?.resource&&p.tile.resource!==tile.resource);
+   if(!neighbor)throw new Error('No neighboring second resource type in fixture');
+   const shared=hex.vertexIds.find(v=>neighbor.geometry.vertexIds.includes(v));
+   if(!shared)throw new Error('Tiles are not adjacent');
+   verts=[shared,hex.vertexIds.find(v=>v!==shared&&!neighbor.geometry.vertexIds.includes(v))||hex.vertexIds[2]];
+   neighbor.tile.token=tile.token;
+   secondResource=neighbor.tile.resource;
+  }
   next.buildings[verts[0]]={playerId:'Player 1',kind:'city'};
   next.buildings[verts[1]]={playerId:'Player 2',kind:'settlement'};
   next.currentSeat=0;next.phase='roll';next.turn=9;next.dice=null;
@@ -35,7 +48,7 @@ import {drawIndex as fixtureDraw} from './game/rules/state.ts';
   state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0);
   log=[];publicActivity='Dice visual fixture';lastTurnCue='9:0';pendingActivityAlert='';pendingRollPresentation=null;
   el('pass').hidden=true;el('game').hidden=false;enterGame();render();
-  (window as any).__diceExpected={total,resource:tile.resource,hexId:tile.hexId,city:verts[0],settlement:verts[1]};
+  (window as any).__diceExpected={total,resource:tile.resource,secondResource,hexId:tile.hexId,city:verts[0],settlement:verts[1]};
  },
  expected(){return (window as any).__diceExpected;},
  getDice(){return state?.dice;},
@@ -83,6 +96,19 @@ try{
  sameCamera(before,await camera(active));
  await active.screenshot({path:`${evidence}/3d-dice-and-city-payout.png`});
  console.log('PASS 3D two real dice finish with authoritative faces, live props react, and +2/+1 float over color-matched buildings');
+
+ await active.evaluate(()=>window.__diceFixture.load('multiple'));
+ const multiExpected=await active.evaluate(()=>window.__diceFixture.expected());
+ await active.getByRole('button',{name:'Roll dice',exact:true}).click();
+ await active.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:8000});
+ const multi=await active.evaluate(()=>window.__hex3D.inspect());
+ const cityMulti=multi.rollEffect.gainLabels.find(x=>x.vertexId===multiExpected.city);
+ assert.ok(cityMulti);
+ assert.ok(multiExpected.secondResource);
+ assert.deepEqual(cityMulti.gains.map(x=>[x.resource,x.count]).sort(),
+  [[multiExpected.resource,2],[multiExpected.secondResource,2]].sort());
+ assert.equal(cityMulti.gains.reduce((sum,x)=>sum+x.count,0),4);
+ console.log('PASS neighboring equal dice tokens award distinct per-resource icons +2/+2 to the same city');
 
  await active.evaluate(()=>window.__diceFixture.load('blocked'));
  await active.getByRole('button',{name:'Roll dice',exact:true}).click();

@@ -124,20 +124,21 @@ try{
   await placeHumanSetupPair();
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: roll"),null,{timeout:30000});
   await host.getByRole('button',{name:'Roll dice'}).click();
-  const diceAlert=host.locator('#board .activity-alert.activity-dice');
-  await diceAlert.waitFor({state:'visible',timeout:3000});
-  const productionRows=diceAlert.locator('.activity-production-row');
-  if(await productionRows.count()!==3)throw new Error('Dice result did not show resource gain for all three local players.');
-  const productionLabels=await productionRows.evaluateAll(nodes=>nodes.map(row=>row.getAttribute('data-player-production')));
-  if(!['Player 1','Bot 1','Bot 2'].every(player=>productionLabels.includes(player)))throw new Error('Dice production did not identify all local players.');
-  const visibleProduction=await productionRows.locator('.activity-production-chip').count();
-  const blankPlayers=await productionRows.locator('.activity-production-none').count();
-  if(blankPlayers+await productionRows.evaluateAll(nodes=>nodes.filter(row=>row.querySelector('.activity-production-chip')).length)!==3)throw new Error('Dice production results contain empty player rows.');
-  if(visibleProduction>0&&await productionRows.locator('[data-resource-icon]').count()!==visibleProduction)throw new Error('Dice production resource icons are missing.');
-  const diceValues=await diceAlert.locator('.motion-die').evaluateAll(nodes=>nodes.map(node=>Number(node.getAttribute('data-value'))));
-  if(diceValues.length!==2||diceValues.some(value=>!Number.isInteger(value)||value<1||value>6))throw new Error(`ART-C01 dice motion does not show two authoritative faces: ${JSON.stringify(diceValues)}`);
-  const diceAnimation=await diceAlert.locator('.motion-die').first().evaluate(node=>getComputedStyle(node).animationName);
-  if(!diceAnimation.includes('dice-tumble'))throw new Error(`ART-C01 dice animation is not active: ${diceAnimation}`);
+  const diceOverlay=host.locator('#board .board-roll-overlay');
+  await diceOverlay.waitFor({state:'visible',timeout:7000});
+  const dice=await diceOverlay.locator('.board-rolled-die').evaluateAll(nodes=>nodes.map(node=>Number(node.getAttribute('data-value'))));
+  if(dice.length!==2||dice.some(value=>!Number.isInteger(value)||value<1||value>6))throw new Error('The board did not show two real dice values.');
+  const gameStatus=await host.locator('#game-status').textContent();
+  if(!gameStatus?.includes(`dice ${dice[0]} + ${dice[1]}`))throw new Error('Dice shown on the board do not match the real game state.');
+  const diceAnimation=await diceOverlay.locator('.board-rolled-die').first().evaluate(node=>getComputedStyle(node).animationName);
+  if(!diceAnimation.includes('roll-board-die-drop'))throw new Error('On-board dice do not tumble: '+diceAnimation);
+  if(await host.locator('#board .activity-alert.activity-dice').count())throw new Error('The old dice alert must not cover the board.');
+  await host.waitForFunction(()=>!document.querySelector('#board .board-roll-overlay')||
+    !!document.querySelector('#board .board-roll-overlay .board-roll-gain')||
+    (document.querySelector('#board .board-roll-overlay')?.getAttribute('aria-label')||'').includes('equals 7'),null,{timeout:3500}).catch(()=>{});
+  const gains=diceOverlay.locator('.board-roll-gain');
+  const gainCount=await gains.count();
+  if(gainCount&&await gains.locator('[data-resource-icon]').count()<gainCount)throw new Error('Building gains do not show resource icons.');
 
   await host.goto(qaUrl,{waitUntil:'networkidle'});
 

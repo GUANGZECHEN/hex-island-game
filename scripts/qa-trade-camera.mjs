@@ -26,7 +26,7 @@ const fixture=[
  "   next.harbor!.stations={[junction.id]:{vertexId:junction.id,builtBy:'Player 1',lastSentTurns:{}}};",
  "  }",
  "  state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,mode);",
- "  log=[];publicActivity='Trade camera test';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;",
+ "  log=[];publicActivity='Trade camera test';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;",
  "  el('pass').hidden=true;el('game').hidden=false;enterGame();render();",
  " },",
  " view(id:string){viewer=id;render();},",

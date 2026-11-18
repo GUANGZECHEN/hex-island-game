@@ -116,26 +116,28 @@ export class BoardDiceScene {
     for(const [vertexId,gains] of atVertex){
       const point=this.vertexAt(vertexId);
       if(!point)continue;
-      const canvas=document.createElement('canvas');canvas.width=448;canvas.height=112;
+      // Size grows with distinct resource types. Same-type gains already
+      // aggregate to +2/+4, while mixed adjacent tiles stay individually legible.
+      const width=44+gains.length*160;
+      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=112;
       const ctx=canvas.getContext('2d');
       if(!ctx)continue;
       const playerColor=this.playerColor(gains[0].playerId);
       ctx.fillStyle='#fffdf0';ctx.strokeStyle=playerColor;ctx.lineWidth=8;
-      ctx.beginPath();ctx.roundRect(7,8,434,96,20);ctx.fill();ctx.stroke();
-      const step=410/gains.length;
+      ctx.beginPath();ctx.roundRect(7,8,width-14,96,20);ctx.fill();ctx.stroke();
       for(const [index,gain] of gains.entries()){
-        const offset=18+step*index;
+        const offset=18+160*index;
         ctx.save();ctx.translate(offset,32);ctx.scale(2.15,2.15);
         ctx.strokeStyle=RESOURCE_COLORS[gain.resource];ctx.lineWidth=2.8;ctx.lineCap='round';ctx.lineJoin='round';
         ctx.stroke(new Path2D(RESOURCE_PATHS[gain.resource]));ctx.restore();
         ctx.fillStyle=playerColor;ctx.font='bold 39px system-ui,sans-serif';ctx.textBaseline='middle';
-        ctx.fillText('+'+gain.count,offset+62,59,step-62);
+        ctx.fillText('+'+gain.count,offset+61,59,90);
       }
       const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
       const material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,opacity:0});
       const sprite=new THREE.Sprite(material);sprite.name='building-resource-gain';sprite.renderOrder=30;
       const baseY=gains[0].kind==='city'?1.14:.88;
-      sprite.position.set(point.x,baseY,point.z);sprite.scale.set(1.32,.33,1);
+      sprite.position.set(point.x,baseY,point.z);sprite.scale.set(width*.0038,.40,1);
       sprite.userData={vertexId,playerId:gains[0].playerId,gains:gains.map(g=>({resource:g.resource,count:g.count})),color:playerColor};
       this.root.add(sprite);this.labels.push({sprite,baseY,material,texture});
     }

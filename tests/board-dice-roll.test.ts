@@ -115,3 +115,70 @@ test('view-only dice animation does not add new gameplay commands or camera muta
  assert.ok(!ui.includes("kind==='dice'?'DICE ROLL'"));
  assert.ok(!ui.includes("alert.append(productionSummary("));
 });
+
+test('one building adjacent to two identically numbered different resources shows separate icons and counts',()=>{
+ const s=createGame(13579,['Player 1','Player 2'],()=>0);
+ const topology=createIslandBoard(s.board.layout);
+ const tiles=new Map(s.board.hexes.map(tile=>[tile.hexId,tile]));
+ const candidate=topology.vertices.flatMap(vertex=>{
+  const hexes=topology.hexes.filter(hex=>hex.vertexIds.includes(vertex.id))
+    .filter(hex=>tiles.get(hex.id)?.resource);
+  return hexes.flatMap((a,i)=>hexes.slice(i+1).map(b=>({vertex,first:a,second:b})))
+    .filter(({first,second})=>tiles.get(first.id)!.resource!==tiles.get(second.id)!.resource);
+ })[0];
+ assert.ok(candidate,'seed should give a shared corner with two distinct resource types');
+ const {vertex,first,second}=candidate;
+ const resourceA=tiles.get(first.id)!.resource!,resourceB=tiles.get(second.id)!.resource!;
+ assert.notEqual(resourceA,resourceB);
+ const total=9;
+ tiles.get(first.id)!.token=total;
+ tiles.get(second.id)!.token=total;
+ s.buildings={[vertex.id]:{playerId:'Player 1',kind:'city'}};
+ s.board.robberHexId=s.board.hexes.find(hex=>hex.terrain==='desert')!.hexId;
+ const description=describeRoll(s,[4,5]);
+ assert.ok(description.hexIds.includes(first.id)&&description.hexIds.includes(second.id));
+ const items=description.gains.filter(g=>g.vertexId===vertex.id);
+ assert.deepEqual(items.map(g=>[g.resource,g.count]).sort(),[[resourceA,2],[resourceB,2]].sort());
+ assert.equal(items.reduce((sum,g)=>sum+g.count,0),4,'city receives both +2 separately');
+ // Node's unit runner lacks Canvas/Path2D; the real Chromium QA checks the
+ // actual multi-resource sprite above this same settlement/city case.
+
+ // If both adjacent tiles yield the SAME resource, merge them into one +4 icon.
+ tiles.get(second.id)!.resource=resourceA;
+ const merged=describeRoll(s,[4,5]).gains.filter(g=>g.vertexId===vertex.id);
+ assert.equal(merged.length,1);
+ assert.equal(merged[0].resource,resourceA);
+ assert.equal(merged[0].count,4);
+
+ // A settlement touching the same two numbered tiles receives two independent
+ // +1 resource icons, not one misleading "+2" with no item identification.
+ tiles.get(second.id)!.resource=resourceB;
+ s.buildings[vertex.id]={playerId:'Player 1',kind:'settlement'};
+ const settlement=describeRoll(s,[4,5]).gains.filter(g=>g.vertexId===vertex.id);
+ assert.deepEqual(settlement.map(g=>[g.resource,g.count]).sort(),[[resourceA,1],[resourceB,1]].sort());
+});
+
+test('Harbor Co-op special seven displays exact publicly awarded resource icons above partners',()=>{
+ const s=createGame(24680,['Player 1','Player 2'],()=>0,{mode:'harbor-coop'});
+ const vertices=createIslandBoard('standard').vertices;
+ s.buildings={
+  [vertices[0].id]:{playerId:'Player 1',kind:'settlement'},
+  [vertices.at(-1)!.id]:{playerId:'Player 2',kind:'city'},
+ };
+ const reward={
+  turn:4,
+  gains:{
+   'Player 1':{lumber:0,brick:1,wool:0,grain:0,ore:0},
+   'Player 2':{lumber:0,brick:0,wool:1,grain:0,ore:0},
+  },
+ };
+ const before=structuredClone(s);
+ const after=structuredClone(s);
+ after.turn=4;after.mode='harbor-coop';after.harbor!.sevenReward=reward;
+ const event=describeRoll(before,[3,4],after);
+ assert.deepEqual(event.hexIds,[]);
+ assert.deepEqual(event.gains.map(g=>[g.playerId,g.resource,g.count]).sort(),[
+  ['Player 1','brick',1],['Player 2','wool',1],
+ ]);
+ assert.deepEqual(describeRoll(before,[3,4]).gains,[],'without public reward metadata, show no invented gain');
+});

@@ -30,7 +30,7 @@ const fixture = `
   fixture.players[0].cards=[{type:card,boughtTurn:0}];
   for(const p of fixture.players)for(const r of RESOURCES){fixture.bank[r]+=p.hand[r]-3;p.hand[r]=3;}
   state=fixture;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,3,0);
-  log=[];publicActivity='Player 1 traded resources with Player 2. The table is waiting for the next action; the current player may build a settlement, upgrade a city, exchange resources at a port, or play a development card.';lastTurnCue='10:0';pendingActivityAlert='';pendingProductionSummary=null;
+  log=[];publicActivity='Player 1 traded resources with Player 2. The table is waiting for the next action; the current player may build a settlement, upgrade a city, exchange resources at a port, or play a development card.';lastTurnCue='10:0';pendingActivityAlert='';pendingRollPresentation=null;
   for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)clearTimeout(timer);
   turnAlertTimer=activityAlertTimer=victoryAlertTimer=null;
   for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();

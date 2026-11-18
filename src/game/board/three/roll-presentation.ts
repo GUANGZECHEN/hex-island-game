@@ -20,11 +20,29 @@ type PublicBoard = Pick<GameState, 'board' | 'buildings' | 'bank'> & { players: 
 
 /** Mirror the authoritative resource rules, including robber and bank shortages,
  * then distribute the publicly known award over buildings for display only. */
-export function describeRoll(before: PublicBoard, dice: readonly [number, number]): RollPresentation {
+export function describeRoll(before: PublicBoard, dice: readonly [number, number],
+  after?: {turn:number;mode?:GameState['mode']|null;harbor?:GameState['harbor']|null}): RollPresentation {
   const [first, second] = dice;
   if (![first, second].every(n => Number.isInteger(n) && n >= 1 && n <= 6)) throw new Error('Invalid public dice result.');
   const total = first + second;
-  if (total === 7) return { dice: [first, second], hexIds: [], gains: [] };
+  if (total === 7) {
+    // Harbor v2 gives each teammate one public random bank resource on a seven,
+    // without hex production. Display the actual awarded resource above their
+    // own home; do not infer it from private inventory.
+    const reward=after?.mode==='harbor-coop'&&after.harbor?.version===2&&after.harbor.sevenReward?.turn===after.turn
+      ? after.harbor.sevenReward : null;
+    const gains:BuildingRollGain[]=[];
+    if(reward) for(const player of before.players){
+      const home=Object.entries(before.buildings).find(([,building])=>building.playerId===player.id);
+      if(!home)continue;
+      const [vertexId,building]=home;
+      for(const resource of RESOURCES){
+        const count=reward.gains[player.id]?.[resource]??0;
+        if(count>0)gains.push({vertexId,playerId:player.id,kind:building.kind,resource,count});
+      }
+    }
+    return {dice:[first,second],hexIds:[],gains};
+  }
 
   const topology = createIslandBoard(before.board.layout);
   const setupById = new Map(before.board.hexes.map(hex => [hex.hexId, hex]));

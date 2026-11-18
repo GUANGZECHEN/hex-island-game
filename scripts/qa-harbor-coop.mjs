@@ -51,7 +51,7 @@ const fixture=`
   s.buildings={[ownEnd]:{playerId:'Player 1',kind:'settlement'},[otherEnd]:{playerId:'Player 2',kind:'city'}};
   (window as any).__harborRoadFixture={allowed:allowed.id,forbidden:forbidden.id};
  }
- state=s;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,'harbor-coop');lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;
+ state=s;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,'harbor-coop');lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;
  el('pass').hidden=true;el('game').hidden=false;enterGame();render();
 },snapshot(){return structuredClone(state);},redraw(){render();},completeOwnRoute(){
  const port=state!.board.ports.find(p=>p.edgeId===state!.harbor!.orders[0].portId)!;
@@ -152,12 +152,19 @@ try{
    assert.equal(seven.board.robberHexId,beforeSeven.board.robberHexId);
    for(let i=0;i<2;i++)assert.equal(Object.values(seven.players[i].hand).reduce((a,b)=>a+b,0),Object.values(beforeSeven.players[i].hand).reduce((a,b)=>a+b,0)+1);
    assert.equal(await page.getByRole('button',{name:'Move robber',exact:true}).count(),0);
-   assert.equal(await page.locator('.activity-production-row').count(),2);
-   assert.equal(await page.locator('.activity-production-chip').count(),2);
-   assert.equal(await page.locator('.activity-production-none').count(),0);
-   const labels=await page.locator('.activity-production-chip').evaluateAll(ns=>ns.map(n=>n.getAttribute('aria-label')));
-   const expectedLabels=Object.values(seven.harbor.sevenReward.gains).map(hand=>Object.entries(hand).find(([,n])=>n===1)[0]+': 1');
+   const expectedLabels=Object.values(seven.harbor.sevenReward.gains).map(hand=>Object.entries(hand).find(([,n])=>n===1)[0]+': 1').sort();
+   let labels;
+   if(renderer==='3d'){
+    await page.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:7000});
+    const effect=await page.evaluate(()=>window.__hex3D.inspect().rollEffect);
+    assert.equal(effect.dice[0]+effect.dice[1],7);
+    labels=effect.gainLabels.flatMap(label=>label.gains.map(g=>g.resource+': '+g.count)).sort();
+   }else{
+    await page.waitForFunction(()=>document.querySelectorAll('.board-roll-gain-resource').length===2,null,{timeout:7000});
+    labels=await page.locator('.board-roll-gain-resource').evaluateAll(ns=>ns.map(n=>n.getAttribute('data-resource')+': '+n.textContent.trim().slice(1))).then(ns=>ns.sort());
+   }
    assert.deepEqual(labels,expectedLabels);
+   assert.equal(await page.locator('.activity-production-summary').count(),0,'seven displays reward above each home');
    await page.evaluate(()=>{window.__harborFixture.redraw();window.__harborFixture.redraw();});
    assert.deepEqual((await page.evaluate(()=>window.__harborFixture.snapshot())).players,seven.players);
    await page.screenshot({path:`${evidence}/seven-${renderer}.png`,fullPage:true});
