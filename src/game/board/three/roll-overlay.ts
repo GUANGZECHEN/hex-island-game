@@ -13,7 +13,12 @@ export class BoardRollOverlay {
   private timers:number[]=[];
   private landed=false;
   private ended=false;
-  constructor(private host:HTMLElement,private event:RollPresentation,private view:BoardSceneView){
+  private host:HTMLElement;
+  private event:RollPresentation;
+  private view:BoardSceneView;
+
+  constructor(host:HTMLElement,event:RollPresentation,view:BoardSceneView){
+    this.host=host;this.event=event;this.view=view;
     const root=document.createElement('div');root.className='board-roll-overlay';
     root.setAttribute('role','status');root.setAttribute('aria-live','polite');
     root.setAttribute('aria-label',`Dice ${event.dice[0]} plus ${event.dice[1]} equals ${event.dice[0]+event.dice[1]}`);

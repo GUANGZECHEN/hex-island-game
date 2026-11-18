@@ -80,8 +80,13 @@ export class BoardDiceScene {
   private landed=false;
   private lastElapsed=0;
 
-  constructor(readonly event:RollPresentation, private vertexAt:(id:string)=>{x:number;z:number}|undefined,
-              private playerColor:(id:string)=>string){
+  readonly event:RollPresentation;
+  private vertexAt:(id:string)=>{x:number;z:number}|undefined;
+  private playerColor:(id:string)=>string;
+
+  constructor(event:RollPresentation,vertexAt:(id:string)=>{x:number;z:number}|undefined,
+              playerColor:(id:string)=>string){
+    this.event=event;this.vertexAt=vertexAt;this.playerColor=playerColor;
     this.root.name='dice-roll-scene';
     this.dice=[this.makeDie(event.dice[0]),this.makeDie(event.dice[1])];
     this.dice.forEach((die,i)=>this.root.add(die));
