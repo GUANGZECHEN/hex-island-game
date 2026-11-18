@@ -5,6 +5,7 @@ import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type Ga
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
+import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
@@ -20,7 +21,7 @@ import { createBoardView } from './game/board/presentation';
 import { renderIslandBoard } from './game/board/render';
 import { createGame, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
-import { applyTurnCommand as localTurn, diceProductionSummary } from './game/rules/turn';
+import { applyTurnCommand as localTurn } from './game/rules/turn';
 import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
 import { derivePublicActivity, turnAnnouncement, type PublicActivityState } from './game/ui/activity';
 import { applyEconomyCommand as localEconomy } from './game/rules/economy';
@@ -30,7 +31,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingProductionSummary:Record<string,Hand>|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
@@ -54,29 +55,8 @@ function activityState(s:GameState):PublicActivityState {
  return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
-function centralActivity(message:string){return /rolled dice|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
-function productionSummary(gains:Readonly<Record<string,Hand>>,players:readonly {id:string}[]):HTMLElement {
- const summary=document.createElement('div');summary.className='activity-production-summary';
- summary.setAttribute('aria-label','Resources produced by this dice roll');
- for(const player of players){
-  const row=document.createElement('div');row.className='activity-production-row';row.dataset.playerProduction=player.id;
-  const label=document.createElement('span');label.className='activity-production-player';label.textContent=playerName(player.id);
-  row.append(label);
-  const hand=gains[player.id];
-  const produced=hand?RESOURCES.filter(resource=>hand[resource]>0):[];
-  if(!produced.length){
-   const none=document.createElement('span');none.className='activity-production-none';none.textContent='No resources';row.append(none);
-  }else for(const resource of produced){
-   const chip=document.createElement('span');chip.className=`activity-production-chip resource-${resource}`;
-   chip.setAttribute('aria-label',`${resource}: ${hand[resource]}`);
-   const amount=document.createElement('span');amount.textContent=`+${hand[resource]}`;
-   chip.append(resourceIcon(resource),amount);row.append(chip);
-  }
-  summary.append(row);
- }
- return summary;
-}
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(old.phase==='roll'&&next.dice)pendingProductionSummary=diceProductionSummary(old,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function centralActivity(message:string){return /built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -282,21 +262,14 @@ function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase
  const name=document.createElement('strong');name.className='turn-alert-name';name.textContent=playerName(active.id);alert.append(lead,name);board.append(alert);
  turnAlertTimer=window.setTimeout(()=>{alert.classList.add('turn-alert-out');turnAlertTimer=window.setTimeout(()=>{alert.remove();turnAlertTimer=null;},260);},2200);
 }
-type ActivityMotionKind='dice'|'development'|'card-buy'|'build'|'robber'|'trade'|'generic';
+type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'trade'|'generic';
 function activityMotionKind(message:string):ActivityMotionKind {
- if(/rolled dice/i.test(message))return 'dice';
  if(/played (Knight|Road Building|Year of Plenty|Monopoly)/i.test(message))return 'development';
  if(/bought a development card/i.test(message))return 'card-buy';
  if(/built a road|built a settlement|upgraded a settlement/i.test(message))return 'build';
  if(/moved the robber|stole 1 card/i.test(message))return 'robber';
  if(/traded /i.test(message))return 'trade';
  return 'generic';
-}
-function diceFace(value:number){
- const die=document.createElement('span');die.className='motion-die';die.dataset.value=String(value);die.setAttribute('role','img');die.setAttribute('aria-label',`Die shows ${value}`);
- const patterns:Record<number,number[]>={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
- for(let cell=1;cell<=9;cell++){const pip=document.createElement('i');pip.className='motion-die-cell';if(patterns[value]?.includes(cell))pip.classList.add('motion-die-pip');pip.setAttribute('aria-hidden','true');die.append(pip);}
- return die;
 }
 function playedDevelopment(message:string):Development|null {
  for(const [card,label] of Object.entries(DEVELOPMENT_LABELS) as [Development,string][])if(card!=='victory-point'&&message.toLowerCase().includes(`played ${label.toLowerCase()}`))return card;
@@ -312,14 +285,13 @@ function showActivityAlert(s:GameState){
  const activity=pendingActivityAlert;pendingActivityAlert='';
  const board=el('board');board.querySelector('.activity-alert')?.remove();if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}
  const active=s.players[s.currentSeat],kind=activityMotionKind(activity),alert=document.createElement('div');alert.className=`activity-alert activity-${kind} player-${active.seat+1}`;alert.dataset.motionKind=kind;alert.setAttribute('role','status');alert.setAttribute('aria-live','polite');
- const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent=kind==='dice'?'DICE ROLL':kind==='development'?'CARD PLAY':kind==='card-buy'?'NEW CARD':kind==='build'?'BUILD':kind==='robber'?'ROBBER':kind==='trade'?'TRADE':'TABLE ACTION';
+ const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent=kind==='development'?'CARD PLAY':kind==='card-buy'?'NEW CARD':kind==='build'?'BUILD':kind==='robber'?'ROBBER':kind==='trade'?'TRADE':'TABLE ACTION';
  const message=document.createElement('strong');message.className='activity-alert-message';message.textContent=activity;
- if(kind==='dice'&&s.dice){const dice=document.createElement('span');dice.className='motion-dice';dice.append(diceFace(s.dice[0]),diceFace(s.dice[1]));alert.append(lead,dice,message);if(pendingProductionSummary){alert.append(productionSummary(pendingProductionSummary,s.players));pendingProductionSummary=null;}}
- else if(kind==='development'){const card=playedDevelopment(activity);alert.append(lead,motionCard(card,card?DEVELOPMENT_LABELS[card]:'Development card'),message);}
+ if(kind==='development'){const card=playedDevelopment(activity);alert.append(lead,motionCard(card,card?DEVELOPMENT_LABELS[card]:'Development card'),message);}
  else if(kind==='card-buy')alert.append(lead,motionCard(null,'Development card'),message);
  else alert.append(lead,message);
  board.append(alert);
- const hold=kind==='dice'?Math.max(2400,1000+s.players.length*400):kind==='development'||kind==='card-buy'?1900:1700;
+ const hold=kind==='development'||kind==='card-buy'?1900:1700;
  activityAlertTimer=window.setTimeout(()=>{alert.classList.add('activity-alert-out');activityAlertTimer=window.setTimeout(()=>{alert.remove();activityAlertTimer=null;},240);},hold);
 }
 function showVictoryAlert(s:GameState){
@@ -480,7 +452,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
- drawBoard();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
+ drawBoard();if(pendingRollPresentation&&!el('game').hidden){boardRenderer?.playRoll(pendingRollPresentation);pendingRollPresentation=null;}if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
  if(spectating||!actor)return;
@@ -573,7 +545,7 @@ function startLocalRound(settings:LocalRoomSettings){
  botTurnKey='';botActionCount=0;viewer='';
  state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout});
  if(settings.mode==='harbor-coop')state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode});
- log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;lastWinnerAlert='';
+ log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
  for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
@@ -625,7 +597,7 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
  discardSubmitted=true;
  if(state?.phase==='discard')render();
 },reset:()=>{
-  discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingProductionSummary=null;lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
+  discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
@@ -635,7 +607,7 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   const nextPublic=value.public as unknown as PublicActivityState;
   if(value.public.phase!=='discard'||!value.public.discards[playerId])discardSubmitted=false;
   const activity=(value.public.harbor&&value.public.harbor.event!==projection?.public.harbor?.event?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic);
-  if(projection?.public.phase==='roll'&&value.public.dice)pendingProductionSummary=diceProductionSummary(projection.public,value.public);
+  if(projection?.gameId===value.gameId&&isNewRoll(projection.public,value.public)&&value.public.dice)pendingRollPresentation=describeRoll(projection.public,value.public.dice);
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
   const pub=value.public;

@@ -7,6 +7,8 @@ import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 import { AMBIENT_FRAME_MS, OceanMotion, boatPose, decorationReaction, type DecorationKind } from './motion.ts';
+import { BoardDiceScene } from './roll-scene.ts';
+import type { RollPresentation } from './roll-presentation.ts';
 
 /** Local rendering preference; never sent to the host or put into game snapshots. */
 export interface BoardCameraView {
@@ -54,6 +56,11 @@ export class ThreeBoardRenderer {
   private decorations: THREE.Group[] = [];
   private reactions = new Map<THREE.Group, { started: number; kind: DecorationKind }>();
   private lastReactionKind: DecorationKind | null = null;
+  private rollScene: BoardDiceScene | null = null;
+  private rollStarted = 0;
+  private rollTimeout: number | null = null;
+  private lastDice: readonly [number,number] | null = null;
+  private productionHexes: string[] = [];
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private withinViewport = true;
   private visibilityObserver: IntersectionObserver | null = null;
@@ -121,6 +128,7 @@ export class ThreeBoardRenderer {
     this.update(view); this.touchPolicy(); this.resize(); this.scheduleMotion();
   }
   private rebuildMap(): void {
+    this.cancelRoll();
     this.mapBuilds++;this.harborLabels.clear();
     this.oceanMotion = null; this.boats = []; this.decorations = [];
     this.reactions.clear(); this.lastReactionKind = null;
@@ -308,6 +316,41 @@ export class ThreeBoardRenderer {
     this.lastReactionKind = kind;
     this.scheduleMotion();
   }
+  /** Accepts only the public, already-resolved outcome. Never rolls RNG. */
+  playRoll(event: RollPresentation): void {
+    if (this.disposed) return;
+    this.cancelRoll();
+    this.lastDice=[event.dice[0],event.dice[1]];
+    this.productionHexes=[];
+    this.rollScene=new BoardDiceScene(event,id=>this.geometry.vertices.get(id),
+      id=>this.view.players.find(p=>p.id===id)?.color??'#537668');
+    this.scene.add(this.rollScene.root);
+    this.rollStarted=performance.now();
+    if (this.reducedMotion.matches || document.hidden || !this.withinViewport) {
+      const landed=this.rollScene.advance(1150,true);
+      if(landed)this.productionHexes=[...event.hexIds];
+      this.rollTimeout=window.setTimeout(()=>this.cancelRoll(),1200);
+      this.invalidate();
+    } else {
+      this.scheduleMotion();
+      this.invalidate();
+    }
+  }
+  private producePulse(hexIds:readonly string[]):void {
+    this.productionHexes=[...hexIds];
+    for(const hexId of hexIds){
+      const root=this.tiles.get(hexId)?.root;
+      root?.traverse(object=>{
+        if(object instanceof THREE.Group && object.userData.decorative) this.touchDecoration(object);
+      });
+    }
+  }
+  stopRoll():void { this.cancelRoll();this.lastDice=null;this.productionHexes=[]; }
+  private cancelRoll():void {
+    if(this.rollTimeout!==null){window.clearTimeout(this.rollTimeout);this.rollTimeout=null;}
+    this.rollScene?.dispose();this.rollScene=null;
+    this.invalidate();
+  }
   private motionEnabled(): boolean {
     return !this.disposed && !this.reducedMotion.matches && !document.hidden && this.withinViewport && this.width > 0 && this.height > 0;
   }
@@ -326,6 +369,13 @@ export class ThreeBoardRenderer {
   private motionTick = (now: number): void => {
     this.motionFrame = null;
     if (!this.motionEnabled()) return;
+    if (this.rollScene) {
+      const roll=this.rollScene;
+      const landed=roll.advance(now-this.rollStarted);
+      if(landed)this.producePulse(roll.event.hexIds);
+      if(roll.complete)this.cancelRoll();
+      this.invalidate(); // Smooth dice rotation; ambient waves stay capped at 20 FPS.
+    }
     if (now - this.motionLastTick >= AMBIENT_FRAME_MS) {
       this.motionLastTick = now;
       const seconds = now * .001;
@@ -436,6 +486,7 @@ export class ThreeBoardRenderer {
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => ({ id: o.userData.id, color: (o.material as THREE.MeshBasicMaterial).color.getHexString(), active: o.userData.highlighted })), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
       oceanLayers: this.map.getObjectByName('layered-ocean')?.children.map(child => child.name).filter(Boolean) ?? [],
+      rollEffect: this.rollScene?.inspect() ?? null, lastDice: this.lastDice, productionHexes:this.productionHexes,
       ambientMotion: { enabled: this.motionEnabled(), waveSamples: this.oceanMotion?.sample() ?? [],
         waterNormalVersion: ((this.map.getObjectByName('depth-gradient-water') as THREE.Mesh | undefined)?.geometry.getAttribute('normal') as THREE.BufferAttribute | undefined)?.version ?? 0,
         waterReceivesShadow: (this.map.getObjectByName('depth-gradient-water') as THREE.Mesh | undefined)?.receiveShadow ?? null,
@@ -465,6 +516,7 @@ export class ThreeBoardRenderer {
   simulateContextLoss(): void { this.renderer.getContext().getExtension('WEBGL_lose_context')?.loseContext(); }
   dispose(): void {
     if (this.disposed) return; this.disposed = true;
+    this.cancelRoll();
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
     this.motionFrame = null; this.visibilityObserver?.disconnect(); this.reactions.clear();

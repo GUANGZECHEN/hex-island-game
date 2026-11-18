@@ -117,13 +117,13 @@ test('public gameplay actions surface as centered board alerts without replacing
  const css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes('function centralActivity'));
  assert.ok(ui.includes('function showActivityAlert'));
- assert.ok(ui.includes("kind==='dice'?'DICE ROLL'"));
+ assert.ok(!ui.includes("kind==='dice'?'DICE ROLL'"),'no dice popup');
  assert.ok(ui.includes("kind==='development'?'CARD PLAY'"));
  assert.ok(ui.includes("kind==='build'?'BUILD'"));
  assert.ok(ui.includes("kind==='robber'?'ROBBER'"));
  assert.ok(ui.includes("kind==='trade'?'TRADE'"));
  assert.ok(ui.includes('drawBoard();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);showActivityAlert(s);'));
- assert.ok(ui.includes('rolled dice|built a road|built a settlement'));
+ assert.ok(!ui.includes('rolled dice|built a road|built a settlement'));
  assert.ok(css.includes('.activity-alert{'));
  assert.ok(css.includes('.activity-alert-message{'));
 });
@@ -272,16 +272,16 @@ test('ART-B01 keeps player, hand and trade art in the integrated board',()=>{
 });
 
 
-test('ART-C01 adds non-blocking dice, development-card and shared motion with reduced-motion support',()=>{
+test('ART-C01 keeps card animation but renders dice on the board',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(ui.includes("type ActivityMotionKind='dice'|'development'|'card-buy'|'build'|'robber'|'trade'|'generic'"));
- assert.ok(ui.includes('function diceFace'));
- assert.ok(ui.includes("die.className='motion-die'"));
+ assert.ok(ui.includes("type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'trade'|'generic'"));
+ assert.ok(ui.includes('pendingRollPresentation=describeRoll('));
+ assert.ok(readFileSync('src/game/board/three/roll-scene.ts','utf8').includes('RoundedBoxGeometry'));
  assert.ok(ui.includes('function playedDevelopment'));
  assert.ok(ui.includes('function motionCard'));
  assert.ok(ui.includes('activity-alert activity-${kind}'));
- assert.ok(ui.includes("kind==='dice'&&s.dice"));
+ assert.ok(ui.includes('boardRenderer?.playRoll(pendingRollPresentation)'));
  assert.ok(ui.includes("kind==='development'"));
  assert.ok(ui.includes("kind==='card-buy'"));
  assert.ok(css.includes('/* ART-C01 · motion polish */'));
@@ -360,17 +360,20 @@ test('brick and ore terrain backgrounds read as clay quarry and exposed rock sou
  assert.ok(!render.includes("L${cx+.08} ${cy-.48}"));
 });
 
-test('dice alerts display every player and each publicly-produced resource with its quantity',()=>{
+test('board-integrated dice, production pulses and player-colored building gains',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(ui.includes('function productionSummary(gains:Readonly<Record<string,Hand>>'));
- assert.ok(ui.includes('diceProductionSummary(old,next)'));
- assert.ok(ui.includes('diceProductionSummary(projection.public,value.public)'));
- assert.ok(ui.includes("row.dataset.playerProduction=player.id"));
- assert.ok(ui.includes("chip.append(resourceIcon(resource),amount)"));
- assert.ok(ui.includes("none.textContent='No resources'"));
- assert.ok(ui.includes("alert.append(productionSummary(pendingProductionSummary,s.players))"));
- assert.ok(css.includes('.activity-production-chip'));
+ const roll=readFileSync('src/game/board/three/roll-presentation.ts','utf8');
+  const scene=readFileSync('src/game/board/three/roll-scene.ts','utf8');
+  const fallback=readFileSync('src/game/board/three/roll-overlay.ts','utf8');
+  const css3d=readFileSync('src/three-board.css','utf8');
+  assert.ok(roll.includes('calculateDiceProduction(before, total)'));
+  assert.ok(scene.includes("sprite.name='building-resource-gain'"));
+  assert.ok(scene.includes('this.playerColor(gains[0].playerId)'));
+  assert.ok(fallback.includes('tag.dataset.rollBuilding=vertexId'));
+  assert.ok(css3d.includes('.board-roll-gain'));
+  assert.ok(!ui.includes('alert.append(productionSummary('));
+  assert.ok(css.includes('.activity-production-chip'));
 });
 
 test('safe Undo action is appended last in Actions for active and non-active players',()=>{

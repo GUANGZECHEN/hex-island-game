@@ -1,5 +1,7 @@
 import { ThreeBoardRenderer, type BoardCameraView } from './renderer.ts';
 import { staticBoardKey, type BoardSceneView } from './model.ts';
+import { BoardRollOverlay } from './roll-overlay.ts';
+import type { RollPresentation } from './roll-presentation.ts';
 import { TargetFeedback } from '../target-feedback.ts';
 import '../../../three-board.css';
 import '../../../target-feedback.css';
@@ -7,6 +9,7 @@ import '../../../target-feedback.css';
 /** Rendering strategy only. All state and target validation belong to the caller. */
 export class BoardRendererController {
   private instance: ThreeBoardRenderer | null = null;
+  private rollOverlay: BoardRollOverlay | null = null;
   private rememberedCamera: BoardCameraView | null;
   private fallback = false;
   private explicit2D = new URLSearchParams(location.search).get('renderer') === '2d';
@@ -20,7 +23,7 @@ export class BoardRendererController {
     const reset = document.getElementById('board-view-reset') as HTMLButtonElement;
     const top = document.getElementById('board-view-top') as HTMLButtonElement;
     const touch = document.getElementById('board-adjust-view') as HTMLInputElement;
-    toggle.addEventListener('click', () => { if (this.instance) this.rememberedCamera = this.instance.captureView(); this.explicit2D = !!this.instance; this.fallback = false; this.reason = ''; if (this.last) this.update(this.last); }, { signal: this.abort.signal });
+    toggle.addEventListener('click', () => { this.rollOverlay?.dispose();this.rollOverlay=null; if (this.instance) this.rememberedCamera = this.instance.captureView(); this.explicit2D = !!this.instance; this.fallback = false; this.reason = ''; if (this.last) this.update(this.last); }, { signal: this.abort.signal });
     reset.addEventListener('click', () => this.instance?.resetView(), { signal: this.abort.signal });
     top.addEventListener('click', () => this.instance?.topView(), { signal: this.abort.signal });
     touch.addEventListener('change', () => this.instance?.setTouchAdjustment(touch.checked), { signal: this.abort.signal });
@@ -40,7 +43,7 @@ export class BoardRendererController {
     window.addEventListener('pagehide', () => this.dispose(), { once: true, signal: this.abort.signal });
     if (new URLSearchParams(location.search).has('qa3d')) {
       (window as unknown as Record<string, unknown>).__hex3D = {
-        inspect: () => this.instance?.inspect() ?? { mode: '2d', reason: this.reason, highlightedTarget: this.preview.active },
+        inspect: () => this.instance?.inspect() ?? { mode: '2d', reason: this.reason, highlightedTarget: this.preview.active, rollEffect: this.rollOverlay?.inspect()??null },
         point: (id: string) => this.instance?.targetPoint(id) ?? null,
         decorativePoint: (kind: string) => this.instance?.decorationPoint(kind) ?? null,
         loseContext: () => this.instance?.simulateContextLoss(),
@@ -74,6 +77,7 @@ export class BoardRendererController {
     if (this.explicit2D || this.fallback) {
       if (this.instance) this.rememberedCamera = this.instance.captureView();
       this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG(); this.paintSVG();
+      this.rollOverlay?.update(view);
     }
     const active = !!this.instance;
     (document.getElementById('board-render-toggle') as HTMLButtonElement).textContent = active ? '2D view' : '3D view';
@@ -83,7 +87,13 @@ export class BoardRendererController {
     const label = document.getElementById('board-render-mode')!; label.textContent = active ? '3D · Middle drag to orbit' : this.reason || '2D compatibility view';
     this.host.dispatchEvent(new Event('board-layout-ready'));
   }
+  /** Gameplay state is already committed before this local display event arrives. */
+  playRoll(event: RollPresentation):void {
+    if(this.instance){this.rollOverlay?.dispose();this.rollOverlay=null;this.instance.playRoll(event);}
+    else if(this.last){this.rollOverlay?.dispose();this.rollOverlay=new BoardRollOverlay(this.host,event,this.last);}
+  }
+  clearRoll():void {this.rollOverlay?.dispose();this.rollOverlay=null;this.instance?.stopRoll();}
   resetCamera(): void { this.instance?.resetView(); }
   cameraView(): BoardCameraView | null { return this.instance?.captureView() ?? this.rememberedCamera; }
-  dispose(): void { this.rememberedCamera = this.cameraView(); this.instance?.dispose(); this.instance = null; this.abort.abort(); }
+  dispose(): void { this.rememberedCamera = this.cameraView(); this.rollOverlay?.dispose();this.rollOverlay=null;this.instance?.dispose(); this.instance = null; this.abort.abort(); }
 }

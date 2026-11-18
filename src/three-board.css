@@ -15,3 +15,29 @@
  #board[data-renderer="3d"] .three-island-board{position:absolute;inset:0}
  .board-workspace .board-view-toolbar button{font-size:.7rem;min-height:34px}
 }
+
+
+/* Board-integrated fallback for public dice results. The default 3D renderer uses
+   genuine rounded cube meshes; SVG mode keeps dice and gains inside the board. */
+#board{position:relative}
+#board .board-roll-overlay{position:absolute;inset:0;pointer-events:none;z-index:22;overflow:hidden;border-radius:inherit}
+#board .board-roll-dice-row{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:1.05rem;filter:drop-shadow(0 .35rem .27rem #273c3766)}
+#board .board-rolled-die{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:3.1rem;height:3.1rem;gap:.12rem;padding:.40rem;box-sizing:border-box;background:#fff8e6;border:.12rem solid #d4c7aa;border-radius:.64rem;box-shadow:inset .12rem .12rem .2rem #ffffffaa,inset -.11rem -.13rem .22rem #aa9d8580;animation:roll-board-die-drop 1.15s cubic-bezier(.23,.7,.22,1) both}
+#board .board-rolled-die:nth-child(2){animation-delay:.05s}
+#board .board-roll-pip{width:.37rem;height:.37rem;border-radius:50%;background:#25342e;align-self:center;justify-self:center;box-shadow:inset .08rem .09rem .04rem #09130d88}
+#board .board-roll-empty{width:.37rem;height:.37rem}
+@keyframes roll-board-die-drop{
+  0%{transform:translate3d(-2rem,-6rem,0) rotate(-340deg) scale(.7);opacity:.7}
+  52%{transform:translate3d(.35rem,.40rem,0) rotate(40deg) scale(1.08);opacity:1}
+  76%{transform:translate3d(-.12rem,-.75rem,0) rotate(-10deg) scale(.98)}
+  100%{transform:translate3d(0,0,0) rotate(0deg) scale(1);opacity:1}
+}
+#board .roll-producing-hex .terrain-art{transform-box:fill-box;transform-origin:center;animation:roll-board-resource-bounce .88s ease-in-out 1}
+@keyframes roll-board-resource-bounce{0%,100%{transform:translateY(0)}33%{transform:translateY(-.17px) rotate(-3deg)}66%{transform:translateY(.03px) rotate(2deg)}}
+#board .board-roll-gain{position:absolute;display:inline-flex;gap:.2rem;align-items:center;transform:translate(-50%,-100%);padding:.26rem .4rem;background:#fffdf4;color:var(--roll-player-color,#2c6254);border:2px solid var(--roll-player-color,#2c6254);border-radius:.52rem;box-shadow:0 .20rem .35rem #102b2952;font-size:.83rem;font-weight:800;white-space:nowrap;animation:roll-board-gain-float 1.1s ease-out both}
+#board .board-roll-gain-resource{display:inline-flex;gap:.08rem;align-items:center}
+#board .board-roll-gain-resource .resource-icon{height:1.05em;width:1.05em;color:var(--roll-player-color,#2c6254)}
+@keyframes roll-board-gain-float{0%{opacity:0;translate:0 .22rem;scale:.86}20%,70%{opacity:1;scale:1}100%{opacity:0;translate:0 -1.2rem}}
+@media(prefers-reduced-motion:reduce){
+  #board .board-rolled-die,#board .board-roll-gain,#board .roll-producing-hex .terrain-art{animation:none!important;transition:none!important}
+}

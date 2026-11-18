@@ -129,7 +129,13 @@ try {
   await page.getByRole('button', { name: 'Roll dice', exact: true }).click(); await settle(page);
   assertCameraUnchanged(beforeDice,await inspect(page),'Dice roll');
   assert.ok((await page.locator('#game-status').textContent()).includes('dice '));
-  assert.equal(await page.locator('.activity-production-row').count(), 3);
+  await page.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:7000});
+  const result=await inspect(page);
+  assert.deepEqual(result.rollEffect.top,result.rollEffect.dice,'3D die faces match authoritative dice');
+  assert.equal(result.rollEffect.top.reduce((sum,n)=>sum+n,0),result.rollEffect.dice[0]+result.rollEffect.dice[1]);
+  assert.equal(await page.locator('.activity-alert.activity-dice').count(),0,'old dice popup is gone');
+  assert.equal(await page.locator('.activity-production-summary').count(),0,'gains belong above buildings');
+  await page.screenshot({path:`${evidence}/three-live-dice-production.png`,fullPage:true});
   if (await page.getByRole('button', { name: 'Move robber', exact: true }).count()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
   check('Complete local setup, roads and dice use existing reducers and resource announcements');
   for (const [width, height] of [[1280, 720], [1920, 720], [2560, 900], [1101, 700], [375, 812], [320, 700]]) {

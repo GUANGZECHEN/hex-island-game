@@ -180,3 +180,10 @@ The 3D city has an upgraded fortified town-hall silhouette, clearly taller/wider
 ## 2026-11-17 ocean corrections: physical water and original ships
 
 The sea must read as one gently rippling **3D modeled surface**, with highlights from changing vertex normals—not animated lines, fake shadow overlays, or a dark solid disk penetrating its waves. Use broad low-height swell deformations of the water mesh and a seamless open side skirt. Disable shadow reception on the water to avoid dark moving blotches. Retain the subtle color gradient and quiet shoreline. Restore the original more visible harbor-boat rocking; do not change docks, resource props, gameplay or the camera.
+
+
+## 2026-11-18: physical dice and localized production
+
+DICE ROLL must appear **on the board itself**, never in the large center action notification. Two real warm ivory rounded dice with dark inset pips are thrown, roll and bounce gently, and land showing the two exact host-generated values. The complete movement is short and nonblocking; the resting face values must never contradict the game result. Roll shadows must not cause the earlier dark ocean shadow bug.
+
+When a non-seven die sum is resolved, each unblocked hex carrying that number plays its existing small tree/sheep/wheat/stone/brick reaction. Resource receipt is announced where it matters: a modest upward-floating parchment gain badge above each earning house, colored with the corresponding **player's house color**, showing resource icon(s) and the actual +1/+2 amounts (subject to bank shortages). All recipients, including other players, use the same publicly computable data. The camera never moves, the effect never obscures valid build targets, and the 2D accessibility fallback shows the same information. Avoid noisy screen-wide alerts and decorative rewards for a robbed or nonpaying building.

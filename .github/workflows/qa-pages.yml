@@ -165,7 +165,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
-          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs "$RUNNER_TEMP/qa-e2e/"
+          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs "$RUNNER_TEMP/qa-e2e/"
           cd "$RUNNER_TEMP/qa-e2e"
           npm init -y >/dev/null 2>&1
           npm install --silent playwright@1.58.0 pngjs@7.0.0
@@ -175,6 +175,7 @@ jobs:
           node qa-compact-actions.mjs
           node qa-target-feedback.mjs
           GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-trade-camera.mjs
+          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-dice-visual.mjs
           node qa-harbor-coop.mjs
 
       - name: Upload integrated 3D evidence
