@@ -4,7 +4,7 @@ import { resourceIcon } from '../../ui/icons.ts';
 import type { Resource } from '../../rules/state.ts';
 import type { RollPresentation } from './roll-presentation.ts';
 import type { BoardSceneView } from './model.ts';
-import { DICE_LANDING_MS, DICE_END_MS, DICE_REDUCED_END_MS } from './roll-scene.ts';
+import { DICE_LANDING_MS, DICE_END_MS, DICE_GAIN_END_MS, DICE_REDUCED_END_MS } from './roll-scene.ts';
 
 /** 2D/WebGL-fallback rendering uses the very same public dice and production event. */
 export class BoardRollOverlay {
@@ -37,10 +37,12 @@ export class BoardRollOverlay {
       dice.append(die);
     }
     root.append(dice);host.append(root);
+    // Dice end quickly, while production badges remain long enough to read.
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if(reduced){root.classList.add('board-roll-reduced');this.land();}
     else this.timers.push(window.setTimeout(()=>this.land(),DICE_LANDING_MS));
-    this.timers.push(window.setTimeout(()=>this.dispose(),reduced?DICE_REDUCED_END_MS:DICE_END_MS));
+    if(!reduced)this.timers.push(window.setTimeout(()=>dice.remove(),DICE_END_MS));
+    this.timers.push(window.setTimeout(()=>this.dispose(),reduced?DICE_REDUCED_END_MS:DICE_GAIN_END_MS));
   }
   update(view:BoardSceneView):void {
     this.view=view;

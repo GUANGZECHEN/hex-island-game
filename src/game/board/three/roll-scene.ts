@@ -6,6 +6,7 @@ import type { RollPresentation } from './roll-presentation.ts';
 
 export const DICE_LANDING_MS = 800;
 export const DICE_END_MS = 1800;
+export const DICE_GAIN_END_MS = 2600;
 export const DICE_REDUCED_END_MS = 1000;
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -252,13 +253,13 @@ export class BoardDiceScene {
     }
     for(const {sprite,material,baseY} of this.labels){
       const age=reducedMotion?450:Math.max(0,elapsedMs-DICE_LANDING_MS);
-      material.opacity=reducedMotion?1:Math.min(1,age/200,Math.max(0,(DICE_END_MS-elapsedMs)/450));
+      material.opacity=reducedMotion?1:Math.min(1,age/200,Math.max(0,(DICE_GAIN_END_MS-elapsedMs)/450));
       sprite.position.y=baseY+(reducedMotion?0:Math.min(age/1100,.32));
     }
     return !previous&&this.landed;
   }
 
-  get complete():boolean {return this.lastElapsed>=DICE_END_MS;}
+  get complete():boolean {return this.lastElapsed>=DICE_GAIN_END_MS;}
   inspect(){
     return {dice:this.event.dice,top:this.dice.map(d=>visibleTopFace(d.quaternion)),
       visibleFaces:this.dice.map(d=>visibleDieFaces(d.quaternion,this.viewDirection)),

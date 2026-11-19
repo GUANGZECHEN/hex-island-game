@@ -6,7 +6,7 @@ import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { createGame, RESOURCES, type GameState } from '../src/game/rules/state.ts';
 import { applyTurnCommand, calculateDiceProduction } from '../src/game/rules/turn.ts';
 import { describeRoll, isNewRoll } from '../src/game/board/three/roll-presentation.ts';
-import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace, isometricDieQuaternion, visibleDieFaces, diceRestHeight, DICE_REDUCED_END_MS } from '../src/game/board/three/roll-scene.ts';
+import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace, isometricDieQuaternion, visibleDieFaces, diceRestHeight, DICE_GAIN_END_MS, DICE_REDUCED_END_MS } from '../src/game/board/three/roll-scene.ts';
 import { DICE_CLATTER_CUES } from '../src/game/ui/dice-sound.ts';
 
 function setup():{s:GameState;total:number;hexId:string;vertexIds:readonly string[];resource:Exclude<typeof RESOURCES[number],never>} {
@@ -26,6 +26,7 @@ function pair(total:number):[number,number] {
 test('dice roll settles quickly with exactly three short, correctly timed clacks',()=>{
   assert.equal(DICE_LANDING_MS,800);
   assert.equal(DICE_END_MS,1800);
+  assert.equal(DICE_GAIN_END_MS,2600,'resource badges should outlast the dice');
   assert.equal(DICE_REDUCED_END_MS,1000);
   assert.equal(DICE_CLATTER_CUES.length,3);
   assert.deepEqual(DICE_CLATTER_CUES.map(([time])=>time),[.07,.30,.63]);
@@ -62,6 +63,9 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
    assert.ok(Math.abs(p.clone().applyQuaternion(pos.rotation).length()-1)<1e-8);
   }
   assert.equal(fx.advance(DICE_END_MS+1),false);
+  assert.deepEqual(fx.inspect().shown,[false,false],'dice disappear promptly without hiding rewards');
+  assert.equal(fx.complete,false,'reward labels must have additional reading time');
+  assert.equal(fx.advance(DICE_GAIN_END_MS+1),false);
   assert.equal(fx.complete,true);fx.dispose();
  }
 });
