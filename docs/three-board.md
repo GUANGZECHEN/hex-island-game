@@ -76,3 +76,7 @@ Dice have polished ivory rounded bevels with light-catching clearcoat, a warm an
 ## Floating dice, no support tray (2026-11-19)
 
 The Product Owner has superseded the earlier raised dice-platform presentation: **the tray, circular rim and all board-obscuring supports are removed**. During each roll, only the two polished 3D dice appear suspended above the existing board, and their landing heights still clear the terrain and resource props. No new pedestal, plate, shadow-catching surface or decorative object is added. Face values and three-face viewing angles, recessed colored pips, animation, sound, resource payouts, camera behavior and 2D fallback are unchanged. 3D unit tests assert the dice layer contains no support or tray meshes.
+
+## Shorter dice animation and three impacts (2026-11-19)
+
+The owner requested a quicker throw and only three audible collisions. The on-board 3D dice now settle after **800 ms** (previously 1150 ms) and the entire roll effect ends after **1800 ms** (previously 2450 ms); reduced-motion mode displays the already-settled result for 1000 ms. Exactly three short synthesized impacts play at 70, 300 and 630 ms, with the existing per-browser mute switch unchanged. The SVG fallback dice drop has been shortened to match, while resource reward labels stay readable. The two dice remain **floating with no tray or support**, and all values, production, turn rules, camera behavior and networking remain unchanged.

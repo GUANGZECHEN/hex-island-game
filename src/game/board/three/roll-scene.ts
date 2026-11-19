@@ -4,8 +4,9 @@ import { RESOURCE_PATHS } from '../../ui/icons.ts';
 import type { Resource } from '../../rules/state.ts';
 import type { RollPresentation } from './roll-presentation.ts';
 
-export const DICE_LANDING_MS = 1150;
-export const DICE_END_MS = 2450;
+export const DICE_LANDING_MS = 800;
+export const DICE_END_MS = 1800;
+export const DICE_REDUCED_END_MS = 1000;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const SIDE = new THREE.Vector3(1, 0, 0);

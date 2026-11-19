@@ -7,7 +7,7 @@ import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 import { AMBIENT_FRAME_MS, OceanMotion, boatPose, decorationReaction, type DecorationKind } from './motion.ts';
-import { BoardDiceScene } from './roll-scene.ts';
+import { BoardDiceScene, DICE_LANDING_MS, DICE_REDUCED_END_MS } from './roll-scene.ts';
 import type { RollPresentation } from './roll-presentation.ts';
 
 /** Local rendering preference; never sent to the host or put into game snapshots. */
@@ -328,9 +328,9 @@ export class ThreeBoardRenderer {
     this.scene.add(this.rollScene.root);
     this.rollStarted=performance.now();
     if (this.reducedMotion.matches || document.hidden || !this.withinViewport) {
-      const landed=this.rollScene.advance(1150,true);
+      const landed=this.rollScene.advance(DICE_LANDING_MS,true);
       if(landed)this.productionHexes=[...event.hexIds];
-      this.rollTimeout=window.setTimeout(()=>this.cancelRoll(),1200);
+      this.rollTimeout=window.setTimeout(()=>this.cancelRoll(),DICE_REDUCED_END_MS);
       this.invalidate();
     } else {
       this.scheduleMotion();

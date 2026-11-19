@@ -1,3 +1,10 @@
+/** Exactly three short impacts per throw; all finish before the dice settle. */
+export const DICE_CLATTER_CUES = [
+  [.07,.30,850],
+  [.30,.27,720],
+  [.63,.38,610],
+] as const;
+
 /** Locally synthesized dice clatter: no audio download and no game RNG. */
 export class DiceSound {
   private context: AudioContext | null = null;
@@ -47,8 +54,8 @@ export class DiceSound {
     this.unlock();
     const ctx=this.context,output=this.master,noise=this.noise;
     if(!ctx||!output||!noise||ctx.state!=='running')return;
-    // Several progressively shorter wooden-table collisions.
-    for(const [delay,loudness,frequency] of [[.06,.28,850],[.21,.25,730],[.40,.32,670],[.61,.19,940],[.82,.36,590],[.99,.25,810]]){
+    // One impact, one bounce, one final settle; no overlapping six-hit rattle.
+    for(const [delay,loudness,frequency] of DICE_CLATTER_CUES){
       const start=ctx.currentTime+delay;
       const source=ctx.createBufferSource();source.buffer=noise;
       const filter=ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=frequency;filter.Q.value=.72;

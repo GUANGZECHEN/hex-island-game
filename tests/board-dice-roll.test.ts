@@ -6,7 +6,8 @@ import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { createGame, RESOURCES, type GameState } from '../src/game/rules/state.ts';
 import { applyTurnCommand, calculateDiceProduction } from '../src/game/rules/turn.ts';
 import { describeRoll, isNewRoll } from '../src/game/board/three/roll-presentation.ts';
-import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace, isometricDieQuaternion, visibleDieFaces, diceRestHeight } from '../src/game/board/three/roll-scene.ts';
+import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace, isometricDieQuaternion, visibleDieFaces, diceRestHeight, DICE_REDUCED_END_MS } from '../src/game/board/three/roll-scene.ts';
+import { DICE_CLATTER_CUES } from '../src/game/ui/dice-sound.ts';
 
 function setup():{s:GameState;total:number;hexId:string;vertexIds:readonly string[];resource:Exclude<typeof RESOURCES[number],never>} {
  const s=createGame(24680,['Player 1','Player 2','Player 3'],()=>0);
@@ -22,6 +23,19 @@ function pair(total:number):[number,number] {
  for(let first=1;first<=6;first++)if(total-first>=1&&total-first<=6)return [first,total-first];
  throw Error('Impossible dice total');
 }
+test('dice roll settles quickly with exactly three short, correctly timed clacks',()=>{
+  assert.equal(DICE_LANDING_MS,800);
+  assert.equal(DICE_END_MS,1800);
+  assert.equal(DICE_REDUCED_END_MS,1000);
+  assert.equal(DICE_CLATTER_CUES.length,3);
+  assert.deepEqual(DICE_CLATTER_CUES.map(([time])=>time),[.07,.30,.63]);
+  assert.ok(DICE_CLATTER_CUES.every(([time])=>time*1000<DICE_LANDING_MS),'three impacts must finish before dice land');
+  const audio=readFileSync('src/game/ui/dice-sound.ts','utf8');
+  assert.ok(audio.includes('for(const [delay,loudness,frequency] of DICE_CLATTER_CUES)'));
+  const fallback=readFileSync('src/three-board.css','utf8');
+  assert.ok(fallback.includes('roll-board-die-drop .76s'),'2D dice must not run past the faster 800ms landing');
+});
+
 test('all six real 3D pip faces settle with the exact authoritative upward values',()=>{
  for(let first=1;first<=6;first++)for(let second=1;second<=6;second++){
   const pair=[first,second] as const;
