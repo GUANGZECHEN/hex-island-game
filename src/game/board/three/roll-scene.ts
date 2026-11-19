@@ -72,7 +72,7 @@ export function visibleDieFaces(quaternion:THREE.Quaternion,viewDirection:THREE.
     normal.clone().applyQuaternion(quaternion).dot(view)>.10).map(([value])=>Number(value));
 }
 
-/** The tilted 3D cube touches its raised tabletop without ever sinking into it. */
+/** Keep each tilted die suspended high enough that no corner clips the board props. */
 export function diceRestHeight(rotation:THREE.Quaternion):number {
   const extents=[new THREE.Vector3(1,0,0),new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1)]
     .reduce((sum,axis)=>sum+Math.abs(axis.applyQuaternion(rotation).y),0);
@@ -86,7 +86,7 @@ export function diceFlight(elapsed:number,index:number,face:number,viewDirection
   const endZ=index===0?-.14:.24;
   const x=finishX+(startX-finishX)*(1-t)**2;
   const z=endZ+(1-t)*.30*Math.sin(index+1.5);
-  // Two decreasing bounces, then a stable tabletop rest height.
+  // Two decreasing bounces, then a stable floating height above the board.
   const rest=isometricDieQuaternion(face,index,viewDirection);
   const y=diceRestHeight(rest)+1.62*(1-t)**3 + .23*Math.abs(Math.sin(t*3.2*Math.PI))*(1-t);
   const rollAt=(p:number)=>new THREE.Quaternion().setFromEuler(new THREE.Euler(
@@ -128,9 +128,6 @@ export class BoardDiceScene {
   private faceContourMaterial=new THREE.LineBasicMaterial({color:'#e2cdb2',transparent:true,opacity:.42});
   private redPips=new THREE.MeshStandardMaterial({color:'#d73541',roughness:.59,side:THREE.DoubleSide});
   private bluePips=new THREE.MeshStandardMaterial({color:'#2879c8',roughness:.59,side:THREE.DoubleSide});
-  private trayGeometry=new THREE.CylinderGeometry(1.42,1.46,.08,48);
-  private trayMaterial=new THREE.MeshStandardMaterial({color:'#e4d5ae',roughness:.82,metalness:.02});
-  private trayRimMaterial=new THREE.MeshStandardMaterial({color:'#b78e52',roughness:.76});
   private labels:TextureSprite[]=[];
   private landed=false;
   private lastElapsed=0;
@@ -151,13 +148,6 @@ export class BoardDiceScene {
     const fill=new THREE.PointLight('#d5e8ff',.6,3.5,2);
     fill.name='dice-cool-edge-fill';fill.position.set(1.1,2.35,-.65);
     this.root.add(key,fill);
-    // A raised tabletop dice tray keeps the cubes physically above all tiles,
-    // token sprites and decorative props. It is local and non-pickable.
-    const tray=new THREE.Mesh(this.trayGeometry,this.trayMaterial);
-    tray.name='raised-dice-tray';tray.position.y=.88;tray.renderOrder=12;tray.receiveShadow=false;
-    this.root.add(tray);
-    const rim=new THREE.Mesh(new THREE.TorusGeometry(1.415,.035,7,48),this.trayRimMaterial);
-    rim.name='dice-tray-rim';rim.rotation.x=Math.PI/2;rim.position.y=.935;rim.renderOrder=13;this.root.add(rim);
     this.dice=[this.makeDie(event.dice[0]),this.makeDie(event.dice[1])];
     this.dice.forEach((die,i)=>this.root.add(die));
     this.advance(0,false);
@@ -278,15 +268,11 @@ export class BoardDiceScene {
   dispose():void {
     this.root.removeFromParent();
     for(const {material,texture} of this.labels){material.dispose();texture.dispose();}
-    this.root.traverse(object=>{
-      if(object instanceof THREE.Mesh&&object.name==='dice-tray-rim')object.geometry.dispose();
-    });
     this.labels=[];this.root.clear();
     this.cubeGeometry.dispose();this.pipGeometry.dispose();this.insetGeometry.dispose();
     this.wellGlintGeometry.dispose();this.faceContourGeometry.dispose();
     this.panelGeometries.forEach(geometry=>geometry.dispose());this.panelGeometries.clear();
     for(const material of [this.bodyMaterial,this.panelMaterial,this.insetMaterial,this.wellGlintMaterial,this.faceContourMaterial,
-      this.redPips,this.bluePips,this.trayMaterial,this.trayRimMaterial])material.dispose();
-    this.trayGeometry.dispose();
+      this.redPips,this.bluePips])material.dispose();
   }
 }
