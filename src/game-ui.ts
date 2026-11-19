@@ -516,8 +516,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
   if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
-  // A lack of port ownership, road connection, or supply must never make
-  // a paid-for ship action mysteriously disappear from the Actions panel.
+  // A lack of port ownership, legal harbor space, or supply must not make
+  // a ship action mysteriously disappear from the Actions panel.
   if(!isHarbor(s)&&(s.rules?.ships||affordable(actor.hand,SHIP_COST))){
    const ship=shipActionAvailability(s,viewer);
    const shipButton=action(grid,`Build ship · ${ship.remaining}/2 left · 1 VP`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);

@@ -74,8 +74,9 @@ function shipGame():{s:GameState;target:string;home:string;edgeId:string} {
  s.bank={lumber:15,brick:15,wool:19,grain:19,ore:15};
  return {s,target,home,edgeId:edge.id};
 }
-test('3-wood 3-brick 3-ore ship is legal only at owned-road-accessible free port vertex and gives 1 VP',()=>{
+test('ship claims a remote harbor without any roads for 3 wood, 3 brick, 3 ore and 1 VP',()=>{
  const {s,target,home}=shipGame();
+ s.roads={}; // A ship can establish an independent remote port.
  assert.deepEqual(SHIP_COST,{lumber:3,brick:3,wool:0,grain:0,ore:3});
  assert.ok(legalTargetIds(s,'a','ship').includes(target));
  const before=publicVictoryPoints(s,'a');
@@ -135,14 +136,8 @@ test('every Classic player receives two ship pieces and a third build is prohibi
   assert.equal(MAX_SHIPS_PER_PLAYER,2);
   assert.equal(shipsRemaining(s,'a'),2);
   assert.equal(shipsRemaining(s,'b'),2);
-  // Keep the normal port prerequisite, costs, and separation checks; create
-  // enough independent road-supported port locations to exercise both pieces.
-  const topology=createIslandBoard('standard');
-  const choices=[...new Set(s.board.ports.flatMap(port=>port.vertexIds))];
-  for(const vertexId of choices){
-    const road=topology.edges.find(edge=>edge.vertexIds.includes(vertexId));
-    if(road)s.roads[road.id]='a';
-  }
+  // Two pieces can be placed at legal port vertices with no roads at all.
+  s.roads={};
   s.players[0].hand={lumber:10,brick:10,wool:0,grain:0,ore:10};
   s.bank={lumber:9,brick:9,wool:19,grain:19,ore:9};
   let valid=legalTargetIds(s,'a','ship');
@@ -167,7 +162,7 @@ test('every Classic player receives two ship pieces and a third build is prohibi
 });
 
 test('Classic ship action stays discoverable when resources are present but a harbor prerequisite is missing',()=>{
-  const {s,home,edgeId}=shipGame();
+  const {s,home,target}=shipGame();
   const ready=shipActionAvailability(s,'a');
   assert.deepEqual(ready,{remaining:2,enabled:true,reason:null});
   const withoutPort=structuredClone(s);delete withoutPort.buildings[home];
@@ -175,9 +170,9 @@ test('Classic ship action stays discoverable when resources are present but a ha
   assert.equal(portStatus.enabled,false);
   assert.match(portStatus.reason!,/port first/);
   assert.equal(portStatus.remaining,2);
-  const withoutRoad=structuredClone(s);delete withoutRoad.roads[edgeId];
-  assert.equal(shipActionAvailability(withoutRoad,'a').enabled,false);
-  assert.match(shipActionAvailability(withoutRoad,'a').reason!,/own road/);
+  const withoutRoad=structuredClone(s);withoutRoad.roads={};
+  assert.deepEqual(shipActionAvailability(withoutRoad,'a'),{remaining:2,enabled:true,reason:null});
+  assert.ok(legalTargetIds(withoutRoad,'a','ship').includes(target),'remote legal ship targets need no road');
   const withoutResources=structuredClone(s);withoutResources.players[0].hand.ore=2;
   assert.equal(shipActionAvailability(withoutResources,'a').enabled,false);
   assert.match(shipActionAvailability(withoutResources,'a').reason!,/3 ore/);

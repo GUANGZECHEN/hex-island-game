@@ -86,11 +86,10 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     // Owning a port means holding any port vertex with your own settlement, city or ship.
     if(!state.board.ports.some(port=>port.vertexIds.some(id=>state.buildings[id]?.playerId===player.id)))
       throw new Error('Own a port before you can build a ship.');
+    // Ships can claim remote legal harbor vertices without connecting roads.
     const connected=board.edges.filter(edge=>edge.vertexIds.includes(vertex.id));
     if(connected.some(edge=>edge.vertexIds.some(id=>id!==vertex.id && state.buildings[id])))
       throw new Error('Ship violates the settlement spacing rule.');
-    if(!connected.some(edge=>state.roads[edge.id]===player.id))
-      throw new Error('Ship must connect to one of your existing roads.');
     pay(state,player.id,SHIP_COST as Hand);
     state.buildings[vertex.id]={playerId:player.id,kind:'ship'};
   } else if (command.type === 'build-city') {

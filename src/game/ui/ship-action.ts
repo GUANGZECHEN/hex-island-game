@@ -27,6 +27,6 @@ export function shipActionAvailability(state: GameState, playerId: string): Ship
   if(!state.board.ports.some(port=>port.vertexIds.some(vertex=>state.buildings[vertex]?.playerId===playerId)))
     return blocked('Build a settlement or city on a port first.');
   if(!legalTargetIds(state,playerId,'ship').length)
-    return blocked('Connect your own road to a free port vertex, with settlement spacing.');
+    return blocked('No free harbor vertex satisfies the building spacing rule.');
   return {remaining,enabled:true,reason:null};
 }
