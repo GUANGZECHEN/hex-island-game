@@ -163,6 +163,7 @@ test('every Classic player receives two ship pieces and a third build is prohibi
 
 test('Classic ship action stays discoverable when resources are present but a harbor prerequisite is missing',()=>{
   const {s,home,target}=shipGame();
+  assert.equal(s.mode,undefined,'Classic uses an implicit default mode in saved game state');
   const ready=shipActionAvailability(s,'a');
   assert.deepEqual(ready,{remaining:2,enabled:true,reason:null});
   const withoutPort=structuredClone(s);delete withoutPort.buildings[home];

@@ -16,7 +16,7 @@ export interface ShipActionAvailability {
 export function shipActionAvailability(state: GameState, playerId: string): ShipActionAvailability {
   const remaining=shipsRemaining(state,playerId);
   const blocked=(reason:string):ShipActionAvailability=>({remaining,enabled:false,reason});
-  if(state.mode!=='classic'||!state.rules?.ships)
+  if(state.mode==='harbor-coop'||!state.rules?.ships)
     return blocked('Harbor ships must be enabled by the host in the lobby before the game.');
   if(state.phase!=='action'||state.players[state.currentSeat]?.id!==playerId)
     return blocked('Build ships during your action phase.');
