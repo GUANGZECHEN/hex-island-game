@@ -11,7 +11,9 @@ export class DiceSound {
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private muted = false;
-  constructor(private button: HTMLButtonElement) {
+  private button: HTMLButtonElement;
+  constructor(button: HTMLButtonElement) {
+    this.button = button;
     try { this.muted = localStorage.getItem('hex-dice-muted-v1') === 'true'; } catch { /* private mode */ }
     this.paint();
     button.addEventListener('click', () => {
