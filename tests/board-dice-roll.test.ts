@@ -6,7 +6,7 @@ import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { createGame, RESOURCES, type GameState } from '../src/game/rules/state.ts';
 import { applyTurnCommand, calculateDiceProduction } from '../src/game/rules/turn.ts';
 import { describeRoll, isNewRoll } from '../src/game/board/three/roll-presentation.ts';
-import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace } from '../src/game/board/three/roll-scene.ts';
+import { BoardDiceScene, DICE_END_MS, DICE_LANDING_MS, diceFlight, dieRestQuaternion, visibleTopFace, isometricDieQuaternion, visibleDieFaces, diceRestHeight } from '../src/game/board/three/roll-scene.ts';
 
 function setup():{s:GameState;total:number;hexId:string;vertexIds:readonly string[];resource:Exclude<typeof RESOURCES[number],never>} {
  const s=createGame(24680,['Player 1','Player 2','Player 3'],()=>0);
@@ -41,7 +41,7 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
    const orientation=dieRestQuaternion(value,value*.15);
    assert.equal(visibleTopFace(orientation),value);
    const pos=diceFlight(DICE_LANDING_MS,index,value);
-   assert.ok(Math.abs(pos.y-1.20)<1e-8,'dice rest above the board tiles');
+   assert.ok(Math.abs(pos.y-diceRestHeight(pos.rotation))<1e-8,'tilted die rests above the tray without intersecting it');
    const p=new THREE.Vector3(0,1,0);
    assert.ok(Math.abs(p.clone().applyQuaternion(pos.rotation).length()-1)<1e-8);
   }
@@ -184,4 +184,55 @@ test('Harbor Co-op special seven displays exact publicly awarded resource icons 
   ['Player 1','brick',1],['Player 2','wool',1],
  ]);
  assert.deepEqual(describeRoll(before,[3,4]).gains,[],'without public reward metadata, show no invented gain');
+});
+
+
+test('each die is presented with its true top face and two visible side faces, including top camera mode',()=>{
+  const directions=[
+    new THREE.Vector3(0,13,10), // default board view
+    new THREE.Vector3(0,24,2.5), // nearly top-down board view
+    new THREE.Vector3(-9,13,7), // orbit left
+    new THREE.Vector3(8,16,-11), // orbit right / behind
+  ];
+  for(const view of directions)for(let value=1;value<=6;value++)for(const dieIndex of [0,1]){
+    const q=isometricDieQuaternion(value,dieIndex,view);
+    assert.equal(visibleTopFace(q),value,'the real upward pip face never changes');
+    const faces=visibleDieFaces(q,view);
+    assert.equal(faces.length,3,`dice should show three faces for ${value} at ${view.toArray()}: ${faces}`);
+    assert.ok(faces.includes(value),'upper face must remain visible');
+    assert.ok(diceRestHeight(q)>.92+.265,'tilted die support rests above the tabletop');
+    const landing=diceFlight(DICE_LANDING_MS,dieIndex,value,view);
+    assert.equal(visibleTopFace(landing.rotation),value);
+    assert.deepEqual(visibleDieFaces(landing.rotation,view),faces);
+  }
+});
+
+test('polished dice retain recessed red 1/4 and blue other pips with beveled light-catching edges',()=>{
+  const effect=new BoardDiceScene({dice:[1,4],hexIds:[],gains:[]},()=>undefined,()=> '#2671aa');
+  const dice=effect.root.children.filter(o=>o.name==='roll-die') as THREE.Group[];
+  assert.equal(dice.length,2);
+  for(const die of dice){
+    const body=die.getObjectByName('rounded-ivory-beveled-body') as THREE.Mesh;
+    assert.ok(body);
+    assert.ok(body.material instanceof THREE.MeshPhysicalMaterial);
+    assert.ok(body.material.clearcoat>.6,'round edges need a visible glossy reflection');
+    assert.ok(body.material.roughness<.3);
+    const faceNames=die.children.filter(o=>o.name==='die-face-1');
+    assert.equal(faceNames.length,0,'face geometry must be nested on real local cube surfaces');
+    for(let value=1;value<=6;value++){
+      const panel=die.getObjectByName('die-face-'+value) as THREE.Mesh;
+      assert.ok(panel, 'face geometry '+value);
+      assert.ok(panel.geometry instanceof THREE.ShapeGeometry);
+      assert.ok(die.getObjectByName('recessed-pip-'+value));
+      assert.ok(die.getObjectByName('die-face-ivory-contour'));
+    }
+  }
+  const first=dice[0].getObjectByName('recessed-pip-1') as THREE.Mesh;
+  const fourth=dice[0].getObjectByName('recessed-pip-4') as THREE.Mesh;
+  const blue=dice[0].getObjectByName('recessed-pip-3') as THREE.Mesh;
+  assert.equal(first.material,fourth.material,'1 and 4 share red inset dot material');
+  assert.notEqual(first.material,blue.material,'other die faces are blue');
+  assert.ok(effect.root.getObjectByName('dice-warm-edge-key'));
+  assert.ok(effect.root.getObjectByName('dice-cool-edge-fill'));
+  effect.dispose();
 });

@@ -6,7 +6,7 @@ import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
-import { SHIP_COST } from './game/rules/build.ts';
+import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
@@ -195,7 +195,7 @@ function renderPieceSupply(player:GameState['players'][number]){
   playerStat(ACTION_PATHS.road,player.roads,'Roads remaining','supply-road','R'),
   playerStat(ACTION_PATHS.settlement,player.settlements,'Settlements remaining','supply-settlement','S'),
   playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','supply-city','C'));
- if(state?.rules?.ships)supply.append(playerStat(ACTION_PATHS.ship,Object.values(state.buildings).filter(b=>b.playerId===player.id&&b.kind==='ship').length,'Ships built','supply-ship','Ship'));
+ if(state?.rules?.ships)supply.append(playerStat(ACTION_PATHS.ship,shipsRemaining(state,player.id),'Ships remaining (max 2)','supply-ship','Ship'));
 }
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
@@ -366,7 +366,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
    playerStat(ACTION_PATHS.road,routeLength,'Longest road length','player-longest-road','LR')
   );
   if(s.longestHolder===player.id)pieces.lastElementChild?.classList.add('award-holder');
-  if(s.rules?.ships)pieces.append(playerStat(ACTION_PATHS.ship,Object.values(s.buildings).filter(b=>b.playerId===player.id&&b.kind==='ship').length,'Ships built','player-ship-count','Ship'));
+  if(s.rules?.ships)pieces.append(playerStat(ACTION_PATHS.ship,shipsRemaining(s,player.id),'Ships remaining (max 2)','player-ship-count','Ship'));
   const awards=document.createElement('div');awards.className='player-awards';
   if(s.longestHolder===player.id)awards.append(playerAward('Longest Road',ACTION_PATHS.road,'award-road'));
   if(s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
@@ -515,8 +515,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
   if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
-   if(s.rules?.ships&&affordable(actor.hand,SHIP_COST)&&legalTargetIds(s,viewer,'ship').length)
-     action(grid,'Build ship · 1 VP','ship',()=>mode('ship'),SHIP_COST,actor.hand);
+   if(s.rules?.ships&&shipsRemaining(s,viewer)>0&&affordable(actor.hand,SHIP_COST)&&legalTargetIds(s,viewer,'ship').length)
+     action(grid,`Build ship · ${shipsRemaining(s,viewer)}/2 left · 1 VP`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
   action(grid,'End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`));
   if(affordable(actor.hand,{lumber:1,brick:1})&&legalTargetIds(s,viewer,'road').length)action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
   if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);

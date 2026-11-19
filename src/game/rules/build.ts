@@ -11,6 +11,12 @@ const ROAD: Hand = {lumber:1,brick:1,wool:0,grain:0,ore:0};
 const SETTLEMENT: Hand = {lumber:1,brick:1,wool:1,grain:1,ore:0};
 const CITY: Hand = {lumber:0,brick:0,wool:0,grain:2,ore:3};
 export const SHIP_COST: Readonly<Hand> = Object.freeze({lumber:3,brick:3,wool:0,grain:0,ore:3});
+/** Every Classic player has exactly two optional harbor ship pieces per match. */
+export const MAX_SHIPS_PER_PLAYER = 2;
+export function shipsRemaining(state:Pick<GameState,'buildings'>, playerId:string):number {
+  const built=Object.values(state.buildings).filter(building=>building.kind==='ship'&&building.playerId===playerId).length;
+  return Math.max(0, MAX_SHIPS_PER_PLAYER-built);
+}
 function pay(state: GameState, id: string, cost: Hand) {
   const player = state.players.find(player => player.id === id)!;
   if (RESOURCES.some(resource => player.hand[resource] < cost[resource])) throw new Error('Insufficient resources.');
@@ -73,6 +79,7 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     pay(state, player.id, SETTLEMENT); state.buildings[vertex.id] = {playerId:player.id,kind:'settlement'}; player.settlements--;
   } else if (command.type === 'build-ship') {
     if(state.mode==='harbor-coop'||!state.rules?.ships)throw new Error('Optional ships rule is disabled.');
+    if(!shipsRemaining(state,player.id))throw new Error('Only two ships per player may be built.');
     const vertex=board.vertices.find(v=>v.id===command.vertexId);
     if(!vertex||state.buildings[vertex.id])throw new Error('Ship requires a vacant harbor vertex.');
     if(!state.board.ports.some(port=>port.vertexIds.includes(vertex.id)))throw new Error('Ships may only be placed at ports.');

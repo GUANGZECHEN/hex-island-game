@@ -196,3 +196,7 @@ When a non-seven die sum is resolved, each unblocked hex carrying that number pl
 - Resource payout floats are larger, per-resource labeled and colored by owning player; several equal-number tiles touching one city show each type separately.
 - The city keeps a recognizable fort-like silhouette, reduced in size, with a single small horizontal hall window instead of two unattractive vertical ones.
 - Classic lobby includes independent host toggles for Catch-up and Harbor Ships; spectators/guests read the same selections. Rules and AI remain synchronized with the authorized match and recoveries.
+
+## 2026-11-19 refined dice: view and bevel quality
+
+The game dice use genuine polished, softly rounded ivory bodies with directional edge highlights and recessed colored pip wells. Every settled cube should read as **three-dimensional at a glance**: a correct upward numbered face and two neighboring side faces should be simultaneously visible in the actual rendered frame, even in the game's optional Top view. Use a modest camera-aligned local dice rotation and a lifted support height so the dice stay on the raised tray. Do not rotate the player's camera to achieve this effect. Dice material glints are restrained and warm, with a cool secondary highlight; 1/4 pips stay red and all remaining pips blue. Clean up the temporary lights and meshes after the animation. The optional Classic ship stock uses a maximum of two player-owned pieces and has a visible remaining count.

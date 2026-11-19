@@ -82,6 +82,8 @@ try{
  await active.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:8000});
  const result=await active.evaluate(()=>window.__hex3D.inspect());
  assert.deepEqual(result.rollEffect.top,result.rollEffect.dice);
+ assert.ok(result.rollEffect.visibleFaces.every((faces,index)=>
+   faces.length===3&&faces.includes(result.rollEffect.top[index])), 'dice must have two real visible side faces from the default oblique camera');
  assert.deepEqual(result.rollEffect.dice,await active.evaluate(()=>window.__diceFixture.getDice()));
  assert.equal(result.rollEffect.top[0]+result.rollEffect.top[1],expected.total);
  assert.ok(result.productionHexes.includes(expected.hexId));
@@ -98,10 +100,16 @@ try{
  console.log('PASS 3D two real dice finish with authoritative faces, live props react, and +2/+1 float over color-matched buildings');
 
  await active.evaluate(()=>window.__diceFixture.load('multiple'));
+ await active.locator('#board-view-top').click();
+ const cameraBeforeTopRoll=await camera(active);
  const multiExpected=await active.evaluate(()=>window.__diceFixture.expected());
  await active.getByRole('button',{name:'Roll dice',exact:true}).click();
  await active.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:8000});
  const multi=await active.evaluate(()=>window.__hex3D.inspect());
+ assert.ok(multi.rollEffect.visibleFaces.every((faces,index)=>
+   faces.length===3&&faces.includes(multi.rollEffect.top[index])),'even when the user selects Top view, dice must still show upper plus two side faces');
+ sameCamera(cameraBeforeTopRoll,await camera(active));
+ await active.screenshot({path:`${evidence}/3d-dice-isometric-from-top-view.png`});
  const cityMulti=multi.rollEffect.gainLabels.find(x=>x.vertexId===multiExpected.city);
  assert.ok(cityMulti);
  assert.ok(multiExpected.secondResource);

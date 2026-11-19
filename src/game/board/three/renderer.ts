@@ -324,6 +324,7 @@ export class ThreeBoardRenderer {
     this.productionHexes=[];
     this.rollScene=new BoardDiceScene(event,id=>this.geometry.vertices.get(id),
       id=>this.view.players.find(p=>p.id===id)?.color??'#537668');
+    this.rollScene.setViewDirection(this.camera.position.clone().sub(this.controls.target));
     this.scene.add(this.rollScene.root);
     this.rollStarted=performance.now();
     if (this.reducedMotion.matches || document.hidden || !this.withinViewport) {
@@ -374,6 +375,9 @@ export class ThreeBoardRenderer {
     if (!this.motionEnabled()) return;
     if (this.rollScene) {
       const roll=this.rollScene;
+      // Only the dice adjust their display orientation to reveal three faces;
+      // the board camera and all gameplay geometry remain untouched.
+      roll.setViewDirection(this.camera.position.clone().sub(this.controls.target));
       const landed=roll.advance(now-this.rollStarted);
       if(landed)this.producePulse(roll.event.hexIds);
       if(roll.complete)this.cancelRoll();

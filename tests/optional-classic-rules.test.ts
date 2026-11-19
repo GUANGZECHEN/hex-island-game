@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createGame, publicVictoryPoints, RESOURCES, type GameState } from '../src/game/rules/state.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { applyTurnCommand } from '../src/game/rules/turn.ts';
-import { applyBuildCommand, SHIP_COST, longestRoute } from '../src/game/rules/build.ts';
+import { applyBuildCommand, SHIP_COST, longestRoute, MAX_SHIPS_PER_PLAYER, shipsRemaining } from '../src/game/rules/build.ts';
 import { legalTargetIds, bankTradeRate } from '../src/game/rules/legal.ts';
 import { describeRoll } from '../src/game/board/three/roll-presentation.ts';
 import { HostSession } from '../src/game/network/session.ts';
@@ -126,4 +126,41 @@ test('host options are public before the room starts, require reready and surviv
  assert.throws(()=>createGame(41,['a','b'],undefined,{mode:'harbor-coop',rules:lobby.rules}),/Classic/);
  const noRules=createGame(41,['a','b']);
  assert.deepEqual(noRules.rules,{catchUp:false,ships:false});
+});
+
+
+test('every Classic player receives two ship pieces and a third build is prohibited by the reducer',()=>{
+  const {s,home}=shipGame();
+  assert.equal(MAX_SHIPS_PER_PLAYER,2);
+  assert.equal(shipsRemaining(s,'a'),2);
+  assert.equal(shipsRemaining(s,'b'),2);
+  // Keep the normal port prerequisite, costs, and separation checks; create
+  // enough independent road-supported port locations to exercise both pieces.
+  const topology=createIslandBoard('standard');
+  const choices=[...new Set(s.board.ports.flatMap(port=>port.vertexIds))];
+  for(const vertexId of choices){
+    const road=topology.edges.find(edge=>edge.vertexIds.includes(vertexId));
+    if(road)s.roads[road.id]='a';
+  }
+  s.players[0].hand={lumber:10,brick:10,wool:0,grain:0,ore:10};
+  s.bank={lumber:9,brick:9,wool:19,grain:19,ore:9};
+  let valid=legalTargetIds(s,'a','ship');
+  assert.ok(valid.length>=2,'at least two candidate port vertices should be accessible');
+  let first=applyBuildCommand(s,{type:'build-ship',playerId:'a',vertexId:valid[0]});
+  assert.equal(shipsRemaining(first,'a'),1);
+  assert.equal(shipsRemaining(first,'b'),2,'another player retains their own two pieces');
+  assert.equal(publicVictoryPoints(first,'a'),publicVictoryPoints(s,'a')+1);
+  valid=legalTargetIds(first,'a','ship');
+  assert.ok(valid.length>=1,'another suitably spaced port slot is available');
+  const saved=structuredClone(first);
+  const second=applyBuildCommand(first,{type:'build-ship',playerId:'a',vertexId:valid[0]});
+  assert.equal(shipsRemaining(second,'a'),0);
+  assert.equal(publicVictoryPoints(second,'a'),publicVictoryPoints(s,'a')+2);
+  assert.deepEqual(legalTargetIds(second,'a','ship'),[]);
+  const noMore=structuredClone(second);
+  assert.throws(()=>applyBuildCommand(second,{type:'build-ship',playerId:'a',vertexId:home}),/Only two ships per player/);
+  assert.deepEqual(second,noMore,'rejected attempts cannot change state or pay a third ship cost');
+  assert.equal(shipsRemaining(saved,'a'),1,'undo/recovery from before second build restores one available ship');
+  const restart=createGame(9001,['a','b'],undefined,{rules:{catchUp:false,ships:true}});
+  assert.equal(shipsRemaining(restart,'a'),2,'fresh game restores both ship pieces');
 });
