@@ -29,7 +29,9 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
   const initial=fx.inspect();
   assert.deepEqual(initial.dice,pair);
   assert.equal(fx.root.getObjectByName('roll-die')?.children.length,7,'rounded cube with six recessed face panels');
-  assert.equal(fx.root.getObjectByName('raised-dice-tray')?.position.y,.88);
+  assert.equal(fx.root.children.filter(child=>child instanceof THREE.Mesh).length,0,'no board-obscuring tray, rim, disk, or platform meshes beneath the dice');
+  assert.equal(fx.root.getObjectByName('raised-dice-tray'),undefined);
+  assert.equal(fx.root.getObjectByName('dice-tray-rim'),undefined);
   const pips=(fx.root.getObjectByName('roll-die')?.children.flatMap(group=>group.children.filter(mesh=>mesh.name.startsWith('recessed-pip-')))??[]);
   assert.equal(pips.length,21,'all dice pips are actual recessed wells');
   assert.equal(fx.advance(DICE_LANDING_MS-1),false);
@@ -41,7 +43,7 @@ test('all six real 3D pip faces settle with the exact authoritative upward value
    const orientation=dieRestQuaternion(value,value*.15);
    assert.equal(visibleTopFace(orientation),value);
    const pos=diceFlight(DICE_LANDING_MS,index,value);
-   assert.ok(Math.abs(pos.y-diceRestHeight(pos.rotation))<1e-8,'tilted die rests above the tray without intersecting it');
+   assert.ok(Math.abs(pos.y-diceRestHeight(pos.rotation))<1e-8,'tilted die hovers above the board with no supporting mesh');
    const p=new THREE.Vector3(0,1,0);
    assert.ok(Math.abs(p.clone().applyQuaternion(pos.rotation).length()-1)<1e-8);
   }
@@ -200,7 +202,7 @@ test('each die is presented with its true top face and two visible side faces, i
     const faces=visibleDieFaces(q,view);
     assert.equal(faces.length,3,`dice should show three faces for ${value} at ${view.toArray()}: ${faces}`);
     assert.ok(faces.includes(value),'upper face must remain visible');
-    assert.ok(diceRestHeight(q)>.92+.265,'tilted die support rests above the tabletop');
+    assert.ok(diceRestHeight(q)>.92+.265,'tilted die floats clear of the board at rest');
     const landing=diceFlight(DICE_LANDING_MS,dieIndex,value,view);
     assert.equal(visibleTopFace(landing.rotation),value);
     assert.deepEqual(visibleDieFaces(landing.rotation,view),faces);
