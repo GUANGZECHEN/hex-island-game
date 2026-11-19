@@ -7,6 +7,7 @@ import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
+import { shipActionAvailability } from './game/ui/ship-action.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
@@ -515,8 +516,20 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
   if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
-   if(s.rules?.ships&&shipsRemaining(s,viewer)>0&&affordable(actor.hand,SHIP_COST)&&legalTargetIds(s,viewer,'ship').length)
-     action(grid,`Build ship · ${shipsRemaining(s,viewer)}/2 left · 1 VP`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
+  // A lack of port ownership, road connection, or supply must never make
+  // a paid-for ship action mysteriously disappear from the Actions panel.
+  if(!isHarbor(s)&&(s.rules?.ships||affordable(actor.hand,SHIP_COST))){
+   const ship=shipActionAvailability(s,viewer);
+   const shipButton=action(grid,`Build ship · ${ship.remaining}/2 left · 1 VP`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
+   shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked';
+   if(!ship.enabled&&ship.reason){
+    shipButton.disabled=true;
+    shipButton.title=ship.reason;
+    shipButton.setAttribute('aria-label',`Build ship unavailable: ${ship.reason}`);
+    shipButton.setAttribute('aria-description',`${shipButton.getAttribute('aria-description')??'Cost: 3 wood, 3 brick, 3 ore.'} ${ship.reason}`);
+    const hint=document.createElement('small');hint.className='ship-action-reason';hint.textContent=ship.reason;shipButton.append(hint);
+   }
+  }
   action(grid,'End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`));
   if(affordable(actor.hand,{lumber:1,brick:1})&&legalTargetIds(s,viewer,'road').length)action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
   if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);

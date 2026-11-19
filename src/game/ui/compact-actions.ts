@@ -23,6 +23,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 export function compactActionLabel(fullLabel: string): string {
+  const ship=/^Build ship · (\d+)\/2 left · 1 VP$/.exec(fullLabel);
+  if(ship)return `Ship · ${ship[1]}/2 (+1 VP)`;
   return Object.hasOwn(LABELS, fullLabel) ? LABELS[fullLabel] : fullLabel;
 }
 

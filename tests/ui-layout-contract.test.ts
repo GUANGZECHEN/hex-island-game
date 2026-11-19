@@ -434,3 +434,16 @@ test('desktop map fits the viewport height while only side columns can scroll',(
  assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();'));
  assert.ok(qa.includes('for(const height of [720,900,1080])'));
 });
+
+test('ship action is visible with materials even when there is no legal harbor target',()=>{
+  const ui=readFileSync('src/game-ui.ts','utf8');
+  const status=readFileSync('src/game/ui/ship-action.ts','utf8');
+  const css=readFileSync('src/compact-actions.css','utf8');
+  assert.ok(ui.includes("if(!isHarbor(s)&&(s.rules?.ships||affordable(actor.hand,SHIP_COST)))"));
+  assert.ok(ui.includes('const ship=shipActionAvailability(s,viewer)'));
+  assert.ok(ui.includes("shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked'"));
+  assert.ok(ui.includes("shipButton.disabled=true"));
+  assert.ok(ui.includes("hint.className='ship-action-reason'"));
+  assert.ok(status.includes("legalTargetIds(state,playerId,'ship')"));
+  assert.ok(css.includes('> .ship-action-reason'));
+});

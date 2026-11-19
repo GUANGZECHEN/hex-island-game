@@ -17,6 +17,8 @@ test('other common action labels are short; Undo and unknown labels keep their e
   assert.equal(compactActionLabel('Undo last action'), 'Undo last action');
   assert.equal(compactActionLabel('End turn'), 'End turn');
   assert.equal(compactActionLabel('Future action'), 'Future action');
+  assert.equal(compactActionLabel('Build ship · 2/2 left · 1 VP'),'Ship · 2/2 (+1 VP)');
+  assert.equal(compactActionLabel('Build ship · 0/2 left · 1 VP'),'Ship · 0/2 (+1 VP)');
   assert.equal(compactActionLabel('toString'), 'toString');
 });
 test('visual labels retain full hover and accessible names without replacing the button', () => {

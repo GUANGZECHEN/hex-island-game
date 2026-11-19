@@ -59,3 +59,14 @@
   height: .77rem;
   flex: 0 0 .77rem;
 }
+
+/* A disabled ship action remains discoverable with its precise eligibility hint. */
+.board-workspace .board-command-pane button.action-button > .ship-action-reason {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  font-size: .65rem;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #746b5c;
+  overflow-wrap: anywhere;
+}

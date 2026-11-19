@@ -4,6 +4,7 @@ import { createGame, publicVictoryPoints, RESOURCES, type GameState } from '../s
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { applyTurnCommand } from '../src/game/rules/turn.ts';
 import { applyBuildCommand, SHIP_COST, longestRoute, MAX_SHIPS_PER_PLAYER, shipsRemaining } from '../src/game/rules/build.ts';
+import { shipActionAvailability } from '../src/game/ui/ship-action.ts';
 import { legalTargetIds, bankTradeRate } from '../src/game/rules/legal.ts';
 import { describeRoll } from '../src/game/board/three/roll-presentation.ts';
 import { HostSession } from '../src/game/network/session.ts';
@@ -163,4 +164,34 @@ test('every Classic player receives two ship pieces and a third build is prohibi
   assert.equal(shipsRemaining(saved,'a'),1,'undo/recovery from before second build restores one available ship');
   const restart=createGame(9001,['a','b'],undefined,{rules:{catchUp:false,ships:true}});
   assert.equal(shipsRemaining(restart,'a'),2,'fresh game restores both ship pieces');
+});
+
+test('Classic ship action stays discoverable when resources are present but a harbor prerequisite is missing',()=>{
+  const {s,home,edgeId}=shipGame();
+  const ready=shipActionAvailability(s,'a');
+  assert.deepEqual(ready,{remaining:2,enabled:true,reason:null});
+  const withoutPort=structuredClone(s);delete withoutPort.buildings[home];
+  const portStatus=shipActionAvailability(withoutPort,'a');
+  assert.equal(portStatus.enabled,false);
+  assert.match(portStatus.reason!,/port first/);
+  assert.equal(portStatus.remaining,2);
+  const withoutRoad=structuredClone(s);delete withoutRoad.roads[edgeId];
+  assert.equal(shipActionAvailability(withoutRoad,'a').enabled,false);
+  assert.match(shipActionAvailability(withoutRoad,'a').reason!,/own road/);
+  const withoutResources=structuredClone(s);withoutResources.players[0].hand.ore=2;
+  assert.equal(shipActionAvailability(withoutResources,'a').enabled,false);
+  assert.match(shipActionAvailability(withoutResources,'a').reason!,/3 ore/);
+  const disabledRule=structuredClone(s);disabledRule.rules!.ships=false;
+  assert.equal(shipActionAvailability(disabledRule,'a').enabled,false);
+  assert.match(shipActionAvailability(disabledRule,'a').reason!,/lobby/);
+  const unavailablePhase=structuredClone(s);unavailablePhase.phase='roll';
+  assert.equal(shipActionAvailability(unavailablePhase,'a').enabled,false);
+  const alreadyBuilt=structuredClone(s);
+  for(const vertex of alreadyBuilt.board.ports.flatMap(port=>port.vertexIds)){
+    if(alreadyBuilt.buildings[vertex])continue;
+    alreadyBuilt.buildings[vertex]={playerId:'a',kind:'ship'};
+    if(shipsRemaining(alreadyBuilt,'a')===0)break;
+  }
+  assert.equal(shipActionAvailability(alreadyBuilt,'a').remaining,0);
+  assert.match(shipActionAvailability(alreadyBuilt,'a').reason!,/Both of your ships/);
 });
