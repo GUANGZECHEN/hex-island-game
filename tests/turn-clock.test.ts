@@ -73,8 +73,12 @@ test('timeout commands progress setup, dice, robber, stealing and action phases'
  state.phase='setup-settlement';
  assert.equal(timeoutCommand(state,'Player 1')?.type,'place-settlement');
  assert.equal(timeoutCommand(state,'Player 2'),null);
- state.phase='setup-road';state.pendingSettlement='v:0,0';
- // A legal setup road depends on the real placed building; always use the same reducer validation.
+ const setup=timeoutCommand(state,'Player 1');
+ assert.ok(setup&&'vertexId' in setup);
+ state.phase='setup-road';
+ state.pendingSettlement=setup.vertexId;
+ state.buildings[setup.vertexId]={playerId:'Player 1',kind:'settlement'};
+ // The road must genuinely connect to the auto-placed starting building.
  assert.equal(timeoutCommand(state,'Player 1')?.type,'place-road');
  state.phase='roll';assert.equal(timeoutCommand(state,'Player 1')?.type,'roll');
  state.phase='robber';assert.equal(timeoutCommand(state,'Player 1')?.type,'move-robber');

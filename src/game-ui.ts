@@ -74,7 +74,7 @@ function localTimedAction():void {
  if(!command){localActionDeadlines.set(playerId,Date.now()+ACTION_WINDOW_MS);return;}
  try{
   const next=command.type==='place-settlement'||command.type==='place-city'||command.type==='place-road'
-   ?localSetup(state,command):command.type==='stop-free-roads'?localEconomy(state,command):localTurn(state,command);
+   ?localSetup(state,command):command.type==='stop-free-roads'?localEconomy(state,command):localTurn(state,command as Parameters<typeof localTurn>[1]);
   pendingLocalUndo=null;
   commit(next,`${playerName(playerId)} ran out of time; automatic ${command.type}.`);
  }catch(error){
