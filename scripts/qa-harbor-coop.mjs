@@ -61,6 +61,7 @@ const fixture=`
 }};
 `;
 let server,browser,page;
+let qaClockHeartbeat;let qaClockPages=[];
 const base=new URL(process.env.QA_URL||'http://127.0.0.1:4180/hex-island-game/');base.searchParams.set('qa3d','1');base.searchParams.set('qaPlayers','2');
 const ready=async p=>{await p.waitForFunction(allow=>window.__hex3D?.inspect().mode==='3d'||(allow&&document.querySelector('#board')?.dataset.renderer==='2d'),process.env.HARBOR_ALLOW_2D==='1');};
 const reveal=async p=>{if(await p.locator('#pass').isVisible())await p.locator('#reveal').click();};
@@ -175,6 +176,17 @@ try{
  }
  if(process.env.QA_SIGNALING_URL){
   const hc=await browser.newContext(),gc=await browser.newContext(),sc=await browser.newContext();const host=watch(await hc.newPage()),guest=watch(await gc.newPage()),spectator=watch(await sc.newPage());
+  // This integration scenario deliberately spends minutes testing reconnects and
+  // camera state. With a real 30-second activity rule, keep the automated host
+  // and guest engaged just like humans clicking the board. This does not bypass
+  // the host-owned timer or change the production game.
+  qaClockPages=[host,guest];
+  qaClockHeartbeat=setInterval(()=>{
+   for(const actor of qaClockPages)void actor.evaluate(()=>{
+    const game=document.querySelector('#game');
+    if(game&&!game.hidden)game.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
+   }).catch(()=>{});
+  },4500);
   for(const p of [host,guest,spectator])await p.setViewportSize({width:1280,height:900});
   await host.goto(base.href);await host.locator('#room-create').click();await host.locator('#room-map-lobby').waitFor({state:'visible'});await host.locator('#room-game-mode').selectOption('harbor-coop');
   await host.waitForFunction(()=>document.querySelector('#room-invite')?.value.includes('#join='));const invite=await host.locator('#room-invite').inputValue();
@@ -189,6 +201,7 @@ try{
   const orders=await host.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId]));assert.deepEqual(await guest.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId])),orders);assert.equal(orders.length,1);check('Live host, guest and spectator share the same cooperative orders; private hands stay private');
   await guest.evaluate(()=>window.__hexQaDropRoomConnection());await guest.waitForFunction(()=>!document.body.classList.contains('network-resyncing')&&(window.__hexQaReconnectCount?.()||0)>0,null,{timeout:30000});assert.deepEqual(await guest.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId])),orders);check('Real guest disconnect and rejoin retains harbor orders');
   await spectator.close();await guest.close();await host.close();const rh=watch(await hc.newPage()),rg=watch(await gc.newPage());
+  qaClockPages=[rh,rg];
   await rh.goto(base.href);await rh.locator('#room-reconnect').click();await rh.locator('#room-recovery-panel').waitFor({state:'visible',timeout:20000});
   await rg.goto(base.href);await rg.locator('#room-reconnect').click();await rh.getByRole('button',{name:/Resume latest/}).waitFor({state:'visible',timeout:25000});await rh.waitForFunction(()=>Array.from(document.querySelectorAll('#room-recovery-options button')).some(b=>!b.disabled));await rh.getByRole('button',{name:/Resume latest/}).click();await ready(rh);await ready(rg);
   assert.deepEqual(await rg.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId])),orders);check('Host full-page shutdown and saved-game resume preserves cooperative mode and exact orders');
@@ -197,4 +210,4 @@ try{
  }
  assert.deepEqual(report.errors,[]);
 }catch(e){report.error=String(e.stack||e);console.error(report.error);process.exitCode=1;try{await page?.screenshot({path:`${evidence}/failure.png`,fullPage:true});}catch{}}
-finally{await writeFile(`${evidence}/report.json`,JSON.stringify(report,null,2));await browser?.close();server?.kill('SIGTERM');if(!process.env.QA_URL){await rm(html,{force:true});await rm(source,{force:true});}}
+finally{if(qaClockHeartbeat)clearInterval(qaClockHeartbeat);await writeFile(`${evidence}/report.json`,JSON.stringify(report,null,2));await browser?.close();server?.kill('SIGTERM');if(!process.env.QA_URL){await rm(html,{force:true});await rm(source,{force:true});}}
