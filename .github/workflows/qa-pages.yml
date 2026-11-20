@@ -13,7 +13,9 @@ permissions:
 concurrency:
   # Keep this restoration in the existing active deployment concurrency group
   # so in-progress permanent-web QA is cancelled before temporary mode publishes.
-  group: game-mvp-qa-permanent
+  # Preserve the existing five-hour temporary ingress session during this release.
+  # New timer QA runs supersede each other without terminating that session.
+  group: game-mvp-qa-clock
   cancel-in-progress: true
 
 jobs:

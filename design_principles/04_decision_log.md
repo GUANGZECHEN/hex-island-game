@@ -103,3 +103,7 @@ D025: The Product Owner explicitly removed the own-road-connection prerequisite 
 ## 2026-11-20: Harbor Ship cost reduction
 
 D026: The Product Owner changed the optional Classic Harbor Ships cost from 3 lumber + 3 brick + 3 ore to **2 lumber + 2 brick + 3 ore**. The port-ownership prerequisite, no-road remote placement, building distance, supply cap of two ships per player, 1 VP and other benefits are unchanged. This supersedes the ship-cost terms in D021 and D025 only. The authoritative reducer, Actions affordability, resource display and tests must apply the same cost.
+
+## 2026-11-20: mandatory 30-second player inactivity clock
+
+D027: The Product Owner requires a shared 30-second per-player inactivity timer, prominently visible at the upper-right of the game board. Any genuine click/touch/keyboard interaction or accepted game command resets that player's timer. To keep the game playable when a player is inactive, the host-authoritative rules advance phases with existing valid fallback commands; the action phase passes the turn, while forced setup/discard/roll/robber stages use deterministic legal choices. Everyone sees the same host-owned timer including spectators; simultaneous discards have independent timers. Local play follows the same behavior. Existing rooms, authority, private-hand boundaries and services are unchanged.
