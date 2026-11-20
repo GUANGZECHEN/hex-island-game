@@ -6,6 +6,7 @@ import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
+import { ACTION_WINDOW_MS, clockParticipants, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { shipActionAvailability } from './game/ui/ship-action.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
@@ -36,6 +37,61 @@ const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
+/** Both modes use the same 30-second rule; the host alone decides remote expiry. */
+let remoteActionClock:{playerId:string;deadlineAt:number}|null=null;
+const localActionDeadlines=new Map<string,number>();
+let lastActionTouch=0;
+
+function syncLocalActionClock():void {
+ if(!state||remote){localActionDeadlines.clear();return;}
+ const participants=clockParticipants(state);
+ for(const id of localActionDeadlines.keys())if(!participants.includes(id))localActionDeadlines.delete(id);
+ for(const id of participants)localActionDeadlines.set(id,Date.now()+ACTION_WINDOW_MS);
+}
+function actionClockDisplay():void {
+ const tag=el<HTMLElement>('turn-action-clock');
+ if(!state||state.phase==='finished'){tag.hidden=true;return;}
+ const now=Date.now();
+ const clock=remote
+  ?remoteActionClock
+  :[...localActionDeadlines].sort((a,b)=>a[1]-b[1]).map(([playerId,deadlineAt])=>({playerId,deadlineAt}))[0]??null;
+ if(!clock){tag.hidden=true;return;}
+ const seconds=remainingClockSeconds(clock.deadlineAt-now),player=state.players.find(p=>p.id===clock.playerId);
+ const name=playerName(clock.playerId);
+ tag.hidden=false;
+ el('turn-action-clock-player').textContent=name;
+ el('turn-action-clock-seconds').textContent='00:'+String(seconds).padStart(2,'0');
+ tag.classList.toggle('running-out',seconds<=10);
+ tag.setAttribute('aria-label',`${name} has ${seconds} seconds left to act`);
+ const seat=player?.seat??0;
+ tag.style.setProperty('--clock-seat-color',PLAYER_PIECE_PALETTE[seat]?.body??'#456d61');
+}
+function localTimedAction():void {
+ if(remote||!state||state.phase==='finished')return;
+ const closest=[...localActionDeadlines].sort((a,b)=>a[1]-b[1])[0];
+ if(!closest||closest[1]>Date.now())return;
+ const [playerId]=closest,command=timeoutCommand(state,playerId);
+ if(!command){localActionDeadlines.set(playerId,Date.now()+ACTION_WINDOW_MS);return;}
+ try{
+  const next=command.type==='place-settlement'||command.type==='place-city'||command.type==='place-road'
+   ?localSetup(state,command):command.type==='stop-free-roads'?localEconomy(state,command):localTurn(state,command);
+  pendingLocalUndo=null;
+  commit(next,`${playerName(playerId)} ran out of time; automatic ${command.type}.`);
+ }catch(error){
+  localActionDeadlines.set(playerId,Date.now()+ACTION_WINDOW_MS);
+  el('game-error').textContent=error instanceof Error?error.message:'Automatic action failed.';
+ }
+}
+function touchActionClock():void {
+ if(!state||state.phase==='finished')return;
+ const now=Date.now();
+ if(now-lastActionTouch<650)return;
+ lastActionTouch=now;
+ if(remote)remote.activity();
+ else if(localActionDeadlines.has(viewer))localActionDeadlines.set(viewer,now+ACTION_WINDOW_MS);
+ actionClockDisplay();
+}
+
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
@@ -62,7 +118,7 @@ function activityState(s:GameState):PublicActivityState {
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote)syncLocalActionClock();const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -465,7 +521,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
- drawBoard();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
+ drawBoard();actionClockDisplay();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
  if(pendingRollPresentation&&!el('game').hidden){
   if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
   el('board').querySelector('.turn-alert')?.remove();
@@ -577,6 +633,7 @@ function startLocalRound(settings:LocalRoomSettings){
  localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
  botTurnKey='';botActionCount=0;viewer='';
  state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
+ remoteActionClock=null;syncLocalActionClock();
  log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
@@ -629,11 +686,14 @@ for(const id of ['local-rule-catch-up','local-rule-ships'])el<HTMLInputElement>(
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();roomSeed.dispatchEvent(new Event('change',{bubbles:true}));};renderRoomMapPreview();
 
-const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkRoom,lobby:renderNetworkLobby,discardPending:()=>{
+const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkRoom,lobby:renderNetworkLobby,
+ clock:pulse=>{remoteActionClock=pulse?{playerId:pulse.playerId,deadlineAt:Date.now()+Math.max(0,Math.min(ACTION_WINDOW_MS,pulse.remainingMs))}:null;actionClockDisplay();},
+ timedOut:playerId=>{log.unshift(`${playerName(playerId)} was inactive for 30 seconds; automatic action.`);},
+ discardPending:()=>{
  discardSubmitted=true;
  if(state?.phase==='discard')render();
 },reset:()=>{
-  discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
+  remoteActionClock=null;localActionDeadlines.clear();discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
   const previousPublic=projection?.public as unknown as PublicActivityState|null;
@@ -651,3 +711,10 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
 }});
+
+// A click, touch or keyboard interaction in the game counts as player activity.
+// Cursor hovering alone never extends a player's turn.
+el('game').addEventListener('pointerdown',touchActionClock,{passive:true});
+el('game').addEventListener('keydown',event=>{if(!event.repeat)touchActionClock();});
+el('game').addEventListener('change',touchActionClock);
+window.setInterval(()=>{localTimedAction();actionClockDisplay();},200);
