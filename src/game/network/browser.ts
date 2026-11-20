@@ -365,6 +365,6 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  return {activity(){
   if(!gameId||!playerId||awaitingSnapshot||spectator)return;
   if(role==='host')host?.touchClock('Player 1');
-  else if(role==='guest'&&open)send('host',JSON.stringify({protocol:1,type:'activity'}));
+  else if(role==='guest'&&open){try{send('host',JSON.stringify({protocol:1,type:'activity'}));}catch{/* Lost peer can reconnect normally. */}}
  },submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

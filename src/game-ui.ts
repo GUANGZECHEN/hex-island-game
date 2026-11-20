@@ -87,7 +87,7 @@ function touchActionClock():void {
  const now=Date.now();
  if(now-lastActionTouch<650)return;
  lastActionTouch=now;
- if(remote)remote.activity();
+ if(remote){try{remote.activity();}catch{/* Optional activity ping must not interfere with gameplay. */}}
  else if(localActionDeadlines.has(viewer))localActionDeadlines.set(viewer,now+ACTION_WINDOW_MS);
  actionClockDisplay();
 }
@@ -717,4 +717,6 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
 el('game').addEventListener('pointerdown',touchActionClock,{passive:true});
 el('game').addEventListener('keydown',event=>{if(!event.repeat)touchActionClock();});
 el('game').addEventListener('change',touchActionClock);
+el('game').addEventListener('input',touchActionClock);
+el('game').addEventListener('wheel',touchActionClock,{passive:true});
 window.setInterval(()=>{localTimedAction();actionClockDisplay();},200);

@@ -103,6 +103,8 @@ test('the timer is on the upper-right board surface and game interactions reset 
  assert.ok(styles.includes('position:absolute;top:.42rem;right:.58rem'));
  assert.ok(styles.includes('pointer-events:none'));
  assert.ok(ui.includes("addEventListener('pointerdown',touchActionClock"));
+ assert.ok(ui.includes("addEventListener('wheel',touchActionClock"));
+ assert.ok(ui.includes("addEventListener('input',touchActionClock"));
  assert.ok(ui.includes('window.setInterval(()=>{localTimedAction();actionClockDisplay();},200)'));
  assert.ok(session.includes("if(msg.type==='activity'&&seat"));
  assert.ok(session.includes('advanceTimeout()'));
