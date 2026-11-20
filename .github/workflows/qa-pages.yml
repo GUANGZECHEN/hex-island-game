@@ -11,8 +11,8 @@ permissions:
   id-token: write
 
 concurrency:
-  # Permanent QA releases supersede each other without colliding with
-  # previous temporary tunnel keepalive runs.
+  # Keep this restoration in the existing active deployment concurrency group
+  # so in-progress permanent-web QA is cancelled before temporary mode publishes.
   group: game-mvp-qa-permanent
   cancel-in-progress: true
 
@@ -45,10 +45,8 @@ jobs:
         id: signaling_mode
         run: |
           set -euo pipefail
-          # The Product Owner approved permanent QA signaling. This is the
-          # separately named QA Worker, never the production Worker.
-          echo 'mode=permanent' >> "$GITHUB_OUTPUT"
-          echo 'Permanent Cloudflare QA Worker selected; no temporary tunnel or five-hour runner required.'
+          echo 'mode=temporary' >> "$GITHUB_OUTPUT"
+          echo 'Restored approved five-hour Cloudflare Quick Tunnel QA mode by Product Owner request; permanent QA Worker remains deployed but is not used by this build.'
 
       - name: Diagnose persistent Cloudflare access safely
         if: steps.signaling_mode.outputs.mode == 'permanent'
