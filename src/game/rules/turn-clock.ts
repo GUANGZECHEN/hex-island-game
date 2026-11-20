@@ -27,10 +27,13 @@ export function timeoutCommand(state:GameState,playerId:string):SetupCommand|Tur
   return left===0?{type:'discard',playerId,cards}:null;
  }
  if(state.players[state.currentSeat]?.id!==playerId)return null;
- if(state.phase==='setup-city'||state.phase==='setup-settlement'){
-  const mode=state.phase==='setup-city'?'city':'settlement';
-  const vertexId=legalTargetIds(state,playerId,mode)[0];
-  return vertexId?{type:mode==='city'?'place-city':'place-settlement',playerId,vertexId}:null;
+ if(state.phase==='setup-city'){
+  const vertexId=legalTargetIds(state,playerId,'city')[0];
+  return vertexId?{type:'place-city',playerId,vertexId}:null;
+ }
+ if(state.phase==='setup-settlement'){
+  const vertexId=legalTargetIds(state,playerId,'settlement')[0];
+  return vertexId?{type:'place-settlement',playerId,vertexId}:null;
  }
  if(state.phase==='setup-road'){
   const edgeId=legalTargetIds(state,playerId,'road')[0];
