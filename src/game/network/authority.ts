@@ -4,6 +4,7 @@ import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
 import { applyHarborCommand, validateHarborState, type HarborCommand } from '../rules/harbor.ts';
 import type { AuthorityRecovery } from './recovery.ts';
+import { ACTION_WINDOW_MS, clockParticipants, timeoutCommand, type TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
@@ -40,7 +41,9 @@ export function projectSpectatorState(state:GameState, revision:number, gameId:s
 export class HostAuthority {
  private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private pendingDiscards:Record<string,Hand>={}; private lastUndo:{playerId:string;previous:GameState}|null=null;
  private gameId:string; private state:GameState; private random:()=>number;
- constructor(gameId:string,state:GameState,random:()=>number,revision=0){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;}
+ private readonly clockNow:()=>number;
+ private clockDeadlines=new Map<string,number>();private timeoutSerial=0;
+ constructor(gameId:string,state:GameState,random:()=>number,revision=0,clockNow:()=>number=Date.now){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;this.clockNow=clockNow;this.refreshClock();}
  static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
   validateHarborState(value.state);
@@ -54,7 +57,37 @@ export class HostAuthority {
    try{applyTurnCommand(value.state,{type:'discard',playerId,cards});}catch{throw new Error('Invalid saved pending discards.');}
   }
   restored.pendingDiscards=structuredClone(pending);
+  restored.refreshClock();
   return restored;
+ }
+ /** Action deadlines live only in the host's authority, not in the deterministic game reducer. */
+ private refreshClock(actingPlayer?:string):void {
+  const participants=clockParticipants(this.state,this.pendingDiscards);
+  for(const id of this.clockDeadlines.keys())if(!participants.includes(id))this.clockDeadlines.delete(id);
+  for(const id of participants)if(!this.clockDeadlines.has(id)||id===actingPlayer)this.clockDeadlines.set(id,this.clockNow()+ACTION_WINDOW_MS);
+ }
+ clockStatus():TurnClockSnapshot|null {
+  this.refreshClock();
+  const [playerId,deadline]=[...this.clockDeadlines].sort((a,b)=>a[1]-b[1])[0]??[];
+  return playerId===undefined?null:{playerId,remainingMs:Math.max(0,deadline-this.clockNow())};
+ }
+ /** Any authenticated board/control interaction by a timed player restarts their deadline. */
+ touchClock(playerId:string):boolean {
+  this.refreshClock();
+  const until=this.clockDeadlines.get(playerId);
+  if(until===undefined||until<=this.clockNow())return false;
+  this.clockDeadlines.set(playerId,this.clockNow()+ACTION_WINDOW_MS);return true;
+ }
+ /** Only the host calls this: a timed-out player cannot indefinitely block the game. */
+ advanceTimeout():{handled:boolean;pending:boolean;playerId?:string}{
+  const pulse=this.clockStatus();
+  if(!pulse||pulse.remainingMs>0)return {handled:false,pending:false};
+  const command=timeoutCommand(this.state,pulse.playerId);
+  if(!command){this.clockDeadlines.set(pulse.playerId,this.clockNow()+ACTION_WINDOW_MS);return {handled:false,pending:false};}
+  const commandId=`clock-${this.revision}-${++this.timeoutSerial}`;
+  const result=this.receive(pulse.playerId,JSON.stringify({protocol:1,gameId:this.gameId,revision:this.revision,commandId,sender:pulse.playerId,command}));
+  if(!result.ok){this.clockDeadlines.set(pulse.playerId,this.clockNow()+ACTION_WINDOW_MS);return {handled:false,pending:false};}
+  return {handled:true,pending:!!result.pending,playerId:pulse.playerId};
  }
  checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state),pendingDiscards:structuredClone(this.pendingDiscards)};}
  hasPendingDiscard(playerId:string):boolean{return this.state.phase==='discard'&&Object.hasOwn(this.pendingDiscards,playerId);}
@@ -80,6 +113,7 @@ export class HostAuthority {
    const cards=(command as {cards:Hand}).cards;
    try{applyTurnCommand(this.state,command as TurnCommand);}catch{return reject('illegal');}
    this.pendingDiscards[boundPlayer]=structuredClone(cards);
+   this.refreshClock();
    this.seen.add(dedupe);
    if(Object.keys(this.pendingDiscards).length<Object.keys(this.state.discards).length)return {ok:true,revision:this.revision,pending:true};
    // Settle every valid discard as a single host-owned state transition.
@@ -89,14 +123,14 @@ export class HostAuthority {
     if(amount)resolved=applyTurnCommand(resolved,{type:'discard',playerId:player.id,cards:amount});
    }
    this.state=resolved;this.pendingDiscards={};this.lastUndo=null;this.lastTradeSummary=null;this.revision++;
-   return {ok:true,revision:this.revision};
+   this.refreshClock();return {ok:true,revision:this.revision};
   }
   if(command.type==='undo'){
    if(revision!==this.revision)return reject('stale');
    if(!this.lastUndo||this.lastUndo.playerId!==boundPlayer)return reject('illegal');
    this.state=structuredClone(this.lastUndo.previous);
    this.lastUndo=null;this.pendingDiscards={};this.lastTradeSummary=null;
-   this.seen.add(dedupe);this.revision++;return {ok:true,revision:this.revision};
+   this.seen.add(dedupe);this.revision++;this.refreshClock(boundPlayer);return {ok:true,revision:this.revision};
   }
   const reversible=reversibleTypes.has(command.type);
   const before=reversible?structuredClone(this.state):null;
@@ -116,6 +150,6 @@ export class HostAuthority {
   this.lastUndo=before?{playerId:boundPlayer,previous:before}:null;
   this.seen.add(dedupe);this.revision++;
   if(this.state.phase!=='discard')this.pendingDiscards={};
-  this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;return {ok:true,revision:this.revision};
+  this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;this.refreshClock(boundPlayer);return {ok:true,revision:this.revision};
  }
 }
