@@ -4,6 +4,7 @@ import type { BoardLayout } from '../board/geometry.ts';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
 import { HostAuthority } from './authority.ts';
 import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
+import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 export interface LobbySeat { id:string; name:string; connected:boolean; ready:boolean }
 interface Seat extends LobbySeat { peer:string | null; token:string }
@@ -59,6 +60,38 @@ export class HostSession {
   for(const peer of this.spectators)this.output(peer,'lobby',lobby);
  }
  private emitCheckpoint(replace=false){if(!this.authority)return;const data=this.recovery();this.publish({type:'checkpoint',data,revision:data.authority.revision,round:recoveryRound(data.authority.state),replace});}
+ private sendClock(peer:string){if(this.authority&&!this.recovering)this.output(peer,'clock',this.authority.clockStatus());}
+ private broadcastClock(){
+  if(!this.authority||this.recovering)return;
+  const data:TurnClockSnapshot|null=this.authority.clockStatus();
+  this.publish({type:'clock',data});
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'clock',data);
+  for(const peer of this.spectators)this.output(peer,'clock',data);
+ }
+ /** Called only by the host browser; observers have no authority to advance time. */
+ tick(){
+  if(!this.authority||this.recovering)return;
+  for(let attempts=0;attempts<12;attempts++){
+   const event=this.authority.advanceTimeout();
+   if(!event.handled)break;
+   this.publish({type:'clock-timeout',data:{playerId:event.playerId}});
+   if(event.pending){
+    this.emitCheckpoint(true);
+    const seat=this.seats.find(s=>s.id===event.playerId);
+    if(seat?.peer)this.output(seat.peer,'discard-pending',{revision:this.authority.currentRevision()});
+    if(event.playerId==='Player 1')this.publish({type:'discard-pending',data:{revision:this.authority.currentRevision()}});
+    this.broadcastClock();
+   }else{this.emitCheckpoint();this.broadcast();}
+  }
+ }
+ /** Accept authenticated interactions only from the player being timed. */
+ touchClock(playerId:string){
+  if(!this.authority||this.recovering)return false;
+  this.tick();
+  const accepted=this.authority.touchClock(playerId);
+  if(accepted)this.broadcastClock();
+  return accepted;
+ }
  private restoreRecovery(value:SessionRecovery,paused:boolean){
   const currentPeers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
   this.qaTwoPlayers=value.qaTwoPlayers;
@@ -86,7 +119,7 @@ export class HostSession {
    else if(msg.token===undefined||msg.token===''){
     if(this.authority||msg.role==='spectator'){
      this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});this.announce();
-     if(this.authority&&!this.recovering)this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));
+     if(this.authority&&!this.recovering){this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));this.sendClock(peer);}
      return;
     }
     seat=this.claimSeat(peer,msg.name)??undefined;
@@ -103,6 +136,7 @@ export class HostSession {
    if(this.authority&&!this.recovering){
     this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
     if(this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+    this.sendClock(peer);
    }
    return;
   }
@@ -127,16 +161,20 @@ export class HostSession {
   if(msg.type==='sync' && this.authority && !this.recovering){
    this.output(peer,'snapshot',seat?this.decorate(this.authority.snapshot(seat.id)):this.decorate(this.authority.spectatorSnapshot()));
    if(seat&&this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+   this.sendClock(peer);
    return;
   }
+  if(msg.type==='activity'&&seat&&this.authority&&!this.recovering){this.touchClock(seat.id);return;}
   if(msg.type==='command' && this.authority && typeof msg.command==='string'){
    if(!seat){this.output(peer,'rejection',{ok:false,code:'spectator',revision:this.authority.currentRevision()});return;}
    if(this.recovering){this.output(peer,'rejection',{ok:false,code:'recovery-pending',revision:this.authority.currentRevision()});return;}
+   this.tick();
    const result=this.authority.receive(seat.id,msg.command);
    if(!result.ok)this.output(peer,'rejection',result);
    else if(result.pending){
     this.emitCheckpoint(true);
     this.output(peer,'discard-pending',{revision:result.revision});
+    this.broadcastClock();
    }else{this.emitCheckpoint();this.broadcast();}
   }
  }
@@ -211,10 +249,12 @@ export class HostSession {
   if(!this.authority)throw new Error('Game not started.');
   if(this.recovering)throw new Error('Saved game is waiting to resume.');
   const message=JSON.stringify({protocol:1,gameId:this.gameId,revision,commandId,sender:'Player 1',command:{...command,playerId:'Player 1'}});
+  this.tick();
   const result=this.authority.receive('Player 1',message);
   if(result.pending){
    this.emitCheckpoint(true);
    this.publish({type:'discard-pending',data:{revision:result.revision}});
+   this.broadcastClock();
   }else if(result.ok){this.emitCheckpoint();this.broadcast();}
   return result;
  }
@@ -231,5 +271,6 @@ export class HostSession {
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
   const spectatorSnapshot=this.decorate(this.authority.spectatorSnapshot());
   for(const peer of this.spectators)this.output(peer,'snapshot',spectatorSnapshot);
+  this.broadcastClock();
  }
 }

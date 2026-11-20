@@ -6,6 +6,7 @@ import { isTwoPlayerQa } from './qa';
 import type { GameMode } from '../rules/harbor';
 import type { BoardLayout } from '../board/geometry';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
+import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
 export interface RoomTableLobby {
@@ -13,8 +14,8 @@ export interface RoomTableLobby {
  started:boolean; recovering:boolean; spectators:number;
  seats:Array<{id:string;name:string;connected:boolean;ready:boolean}>;
 }
-type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void };
-export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void }
+type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; clock?:(clock:TurnClockSnapshot|null)=>void; timedOut?:(playerId:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void };
+export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void; activity:()=>void }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
 const token=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
@@ -148,6 +149,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const publish=(event:unknown)=>{
   const x=event as {type:string;lobby?:unknown;data?:unknown;revision?:unknown;round?:unknown;replace?:unknown};
   if(x.type==='lobby')showLobby(x.lobby);
+  if(x.type==='clock')callbacks.clock?.(x.data as TurnClockSnapshot|null);
+  if(x.type==='clock-timeout'&&typeof (x.data as {playerId?:unknown}|null)?.playerId==='string')callbacks.timedOut?.((x.data as {playerId:string}).playerId);
   if(x.type==='abort'){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;gameId='';gameFinished=false;networkResetForResume();clearSafe(gameKey(room));status('Game ended. Choose the next map and mode in this room.');}
   if(x.type==='checkpoint-clear')client.clearCheckpoints();
   if(x.type==='snapshot'&&x.data){const snapshot=x.data as Snapshot;gameId=snapshot.gameId;gameFinished=snapshot.public.phase==='finished';callbacks.snapshot(snapshot,'Player 1');}
@@ -250,6 +253,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     }
    }
    else if(message.type==='lobby')showLobby(message.data);
+   else if(message.type==='clock')callbacks.clock?.(message.data as TurnClockSnapshot|null);
+   else if(message.type==='clock-timeout'&&typeof (message.data as {playerId?:unknown}|null)?.playerId==='string')callbacks.timedOut?.((message.data as {playerId:string}).playerId);
    else if(message.type==='discard-pending'&&playerId&&!spectator){callbacks.discardPending?.();status('Discard submitted. Waiting for the other players.');}
    else if(message.type==='snapshot'&&(playerId||spectator)){
     const snapshot=message.data as Snapshot;
@@ -354,5 +359,12 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const params=new URLSearchParams(location.hash.slice(1)),fragment=params.get('join');if(fragment){document.documentElement.classList.add('invite-entry');history.replaceState(null,'',location.pathname+location.search);const parts=fragment.split('.');if(parts.length===2&&parts.every(x=>/^[A-Za-z0-9_-]{43}$/.test(x)))void join(parts[0],parts[1]);else status('Invalid invitation.');}
  el('room-reconnect').onclick=()=>{const saved=loadRoom();if(!saved){status('No room to rejoin.');return;}if(saved.role==='host')void restoreHost(saved.room,saved.capability);else void join(saved.room,saved.capability,true);};
  if(!allowed)status('Automatic rooms unavailable: signaling endpoint is not configured.');
- return {submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
+ // The host's authority checks deadlines. Hidden tabs may throttle the callback,
+ // but the next tick catches up without trusting a guest's device clock.
+ window.setInterval(()=>{if(role==='host'&&host&&!recoveryMode)host.tick();},300);
+ return {activity(){
+  if(!gameId||!playerId||awaitingSnapshot||spectator)return;
+  if(role==='host')host?.touchClock('Player 1');
+  else if(role==='guest'&&open)send('host',JSON.stringify({protocol:1,type:'activity'}));
+ },submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }
