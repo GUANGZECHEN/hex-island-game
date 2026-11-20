@@ -339,6 +339,7 @@ test('all six player UI colors match the authoritative board-piece palette',()=>
   assert.ok(distance>100,`Seat 3 pink must be visually separate from seat ${index+1} (distance ${distance})`);
  }
  assert.equal(colors[5],'#2b9295','seat 6 retains its own teal hue');
+ assert.ok(css.includes('.player-summary.player-3 .player-marker,.player-summary.player-3 .player-hand-count{color:#55152f}'),'pink player text stays dark and legible');
  for(const [index,color] of colors.entries()){
   const seat=index+1;
   assert.ok(css.includes(`.player-summary.player-${seat}{--player-color:${color}}`));
