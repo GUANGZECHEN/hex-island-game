@@ -144,13 +144,32 @@ jobs:
               --header 'Access-Control-Request-Headers: content-type' \
               --max-time 8 "$origin/rooms" 2>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
             if [[ "$status" == "204" ]]; then printf '%s' "$status"; return; fi
-            status=$(curl --silent --show-error --doh-url https://1.1.1.1/dns-query \
-              --output /dev/null --write-out '%{http_code}' \
+            # Use DoH only as a recovery path for the runner's transient DNS
+            # failures. A DoH-only HTTP 204 must NOT be considered ready until
+            # Node/Chromium can resolve and reach the same tunnel hostname.
+            local result edge_ip hostname
+            result=$(curl --silent --show-error --doh-url https://1.1.1.1/dns-query \
+              --output /dev/null --write-out '%{http_code} %{remote_ip}' \
               --request OPTIONS \
               --header 'Origin: https://guangzechen.github.io' \
               --header 'Access-Control-Request-Method: POST' \
               --header 'Access-Control-Request-Headers: content-type' \
               --max-time 6 "$origin/rooms" 2>>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            status="${result%% *}"
+            edge_ip="${result#* }"
+            hostname="${origin#https://}"
+            if [[ "$status" == "204" && "$hostname" =~ ^[a-z0-9-]+\\.trycloudflare\\.com$ && "$edge_ip" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]]; then
+              # The edge was reachable through DoH; pin only this ephemeral
+              # QA hostname to its verified edge IP on this isolated runner.
+              # Browser/Node can now resolve it with the ordinary OS resolver.
+              printf '%s %s\\n' "$edge_ip" "$hostname" | sudo tee -a /etc/hosts >/dev/null
+              status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+                --request OPTIONS \
+                --header 'Origin: https://guangzechen.github.io' \
+                --header 'Access-Control-Request-Method: POST' \
+                --header 'Access-Control-Request-Headers: content-type' \
+                --max-time 8 "$origin/rooms" 2>>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            fi
             printf '%s' "${status:-000}"
           }
           # Keep the original bounded Quick Tunnel retries; no infrastructure switch.
@@ -175,9 +194,14 @@ jobs:
             for attempt in {1..20}; do
               status=$(probe_ingress "$QA_SIGNALING_URL")
               if [[ "$status" == "204" ]]; then
-                echo "QA_SIGNALING_URL=$QA_SIGNALING_URL" >> "$GITHUB_ENV"
-                echo "QA_INGRESS_VALID=true" >> "$GITHUB_ENV"
-                exit 0
+                # A successful curl probe alone is insufficient when only DoH
+                # resolves the hostname; confirm the Node client also connects.
+                if node --input-type=module -e 'const r=await fetch(process.argv[1]+"/rooms",{method:"OPTIONS",headers:{"Origin":"https://guangzechen.github.io","Access-Control-Request-Method":"POST","Access-Control-Request-Headers":"content-type"},signal:AbortSignal.timeout(6000)});if(r.status!==204)process.exit(1)' "$QA_SIGNALING_URL" >/dev/null 2>>"$RUNNER_TEMP/qa-ingress-curl.log"; then
+                  echo "QA_SIGNALING_URL=$QA_SIGNALING_URL" >> "$GITHUB_ENV"
+                  echo "QA_INGRESS_VALID=true" >> "$GITHUB_ENV"
+                  exit 0
+                fi
+                status=000
               fi
               if (( attempt % 10 == 0 )); then
                 registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
