@@ -23,7 +23,7 @@ test('gameplay commands propagate to every connected peer with a new revision',(
  const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>12345);
  const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
  for(const peer of ['two','three']){send(peer,{type:'hello'});send(peer,{type:'ready',ready:true});}host.setHostReady(true);host.start(1);
- const initial=(published.at(-1) as any).data,active=initial.public.players[initial.public.currentSeat].id;
+ const initial=(published.filter(x=>(x as any).type==='snapshot').at(-1) as any).data,active=initial.public.players[initial.public.currentSeat].id;
  const vertex=initial.public.board.hexes[0].hexId;
  // Invalid logical targets never advance revision or disclose private state.
  const bad={protocol:1,gameId:initial.gameId,revision:0,commandId:'bad',sender:active,command:{type:'place-settlement',playerId:active,vertexId:vertex}};
@@ -33,7 +33,7 @@ test('gameplay commands propagate to every connected peer with a new revision',(
  const target=createIslandBoard().vertices[0].id;
  if(active==='Player 1')assert.equal(host.submit({type:'place-settlement',vertexId:target},'valid',0).ok,true);
  else send(peer,{type:'command',command:JSON.stringify({...bad,commandId:'valid',command:{...bad.command,vertexId:target}})});
- const updated=(published.at(-1) as any).data;assert.equal(updated.revision,1);assert.equal(updated.public.phase,'setup-road');
+ const updated=(published.filter(x=>(x as any).type==='snapshot').at(-1) as any).data;assert.equal(updated.revision,1);assert.equal(updated.public.phase,'setup-road');
  for(const key of ['two','three']){const snapshots=(messages.get(key) as any[]).filter(x=>x.type==='snapshot');assert.equal(snapshots.at(-1).data.revision,1);}
 });
 
@@ -83,14 +83,14 @@ test('two-player QA uses normal authority, private projection, revision and cred
  const host=new HostSession((peer,text)=>messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]),x=>published.push(x),()=>String(++serial).padStart(43,'a'),()=>0,{qaTwoPlayers:true});
  const send=(peer:string,message:object)=>host.receive(peer,JSON.stringify({protocol:1,...message}));
  send('guest',{type:'hello'});const seat=messages.get('guest')!.find(x=>x.type==='seat').data;send('guest',{type:'ready',ready:true});host.setHostReady(true);host.start(9);
- let snapshot=published.at(-1).data;assert.equal(snapshot.public.players.length,2);assert.equal(snapshot.public.currentSeat,0);
+ let snapshot=published.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(snapshot.public.players.length,2);assert.equal(snapshot.public.currentSeat,0);
  assert.equal(host.submit({type:'place-settlement',vertexId:createIslandBoard().vertices[0].id},'host-place',0).ok,true);
- snapshot=published.at(-1).data;assert.equal(snapshot.revision,1);const edge=createIslandBoard().edges.find(e=>e.vertexIds.includes(snapshot.public.pendingSettlement))!;
+ snapshot=published.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(snapshot.revision,1);const edge=createIslandBoard().edges.find(e=>e.vertexIds.includes(snapshot.public.pendingSettlement))!;
  assert.equal(host.submit({type:'place-road',edgeId:edge.id},'host-road',1).ok,true);
  snapshot=messages.get('guest')!.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(snapshot.revision,2);assert.equal(snapshot.public.currentSeat,1);
  for(const player of snapshot.public.players){assert.equal('hand' in player,false);assert.equal('cards' in player,false);}assert.ok(snapshot.private.hand);
  const command={protocol:1,gameId:snapshot.gameId,revision:2,commandId:'guest-place',sender:seat.id,command:{type:'place-settlement',playerId:seat.id,vertexId:createIslandBoard().vertices.find(v=>!createIslandBoard().edges.some(e=>e.vertexIds.includes(v.id)&&e.vertexIds.includes(createIslandBoard().vertices[0].id))&&v.id!==createIslandBoard().vertices[0].id)!.id}};
- send('guest',{type:'command',command:JSON.stringify(command)});assert.equal(published.at(-1).data.revision,3);
+ send('guest',{type:'command',command:JSON.stringify(command)});assert.equal(published.filter(x=>x.type==='snapshot').at(-1).data.revision,3);
  host.disconnect('guest');send('stranger',{type:'hello'});assert.ok(messages.get('stranger')!.some(x=>x.type==='spectator'));assert.equal(messages.get('stranger')!.find(x=>x.type==='snapshot').data.private,null);
  send('resumed',{type:'hello',token:seat.token});const restored=messages.get('resumed')!.find(x=>x.type==='snapshot').data;assert.equal(restored.revision,3);assert.equal(messages.get('resumed')!.find(x=>x.type==='seat').data.id,seat.id);
  send('resumed',{type:'sync'});const synced=messages.get('resumed')!.filter(x=>x.type==='snapshot').at(-1).data;assert.equal(synced.revision,3);assert.equal(synced.public.currentSeat,restored.public.currentSeat);
@@ -360,12 +360,12 @@ test('seven discards do not broadcast a refreshed game until all players submit'
  sendDiscard('b-new','Player 2','submit-b',b);
  assert.equal(snapshots('b-new'),startB);assert.equal(snapshots('c-new'),startC);
  assert.equal(published.filter(m=>m.type==='snapshot').length,startPublic);
- assert.equal(messages.get('b-new')!.at(-1).type,'discard-pending');
+ assert.equal(messages.get('b-new')!.filter(m=>m.type==='discard-pending').at(-1).type,'discard-pending');
  assert.equal(room.recovery().authority.revision,revision);
  assert.equal(room.recovery().authority.pendingDiscards?.['Player 2'].lumber,4);
  assert.equal(room.recovery().authority.state.players[1].hand.lumber,8);
  send(room,'b-new',{type:'sync'});
- assert.equal(messages.get('b-new')!.at(-1).type,'discard-pending');
+ assert.equal(messages.get('b-new')!.filter(m=>m.type==='discard-pending').at(-1).type,'discard-pending');
  sendDiscard('c-new','Player 3','submit-c',c);
  assert.equal(snapshots('c-new'),startC+1);assert.equal(snapshots('b-new'),startB+2);
  assert.equal(published.filter(m=>m.type==='snapshot').length,startPublic+1);
