@@ -11,7 +11,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: game-mvp-qa-persistent
+  # Preserve the already-running five-hour QA session on the original group.
+  # New releases still cancel older runs within this updated group.
+  group: game-mvp-qa-v2
   cancel-in-progress: true
 
 jobs:

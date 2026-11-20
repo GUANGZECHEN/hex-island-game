@@ -10,7 +10,7 @@ export type BuildCommand =
 const ROAD: Hand = {lumber:1,brick:1,wool:0,grain:0,ore:0};
 const SETTLEMENT: Hand = {lumber:1,brick:1,wool:1,grain:1,ore:0};
 const CITY: Hand = {lumber:0,brick:0,wool:0,grain:2,ore:3};
-export const SHIP_COST: Readonly<Hand> = Object.freeze({lumber:3,brick:3,wool:0,grain:0,ore:3});
+export const SHIP_COST: Readonly<Hand> = Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:3});
 /** Every Classic player has exactly two optional harbor ship pieces per match. */
 export const MAX_SHIPS_PER_PLAYER = 2;
 export function shipsRemaining(state:Pick<GameState,'buildings'>, playerId:string):number {

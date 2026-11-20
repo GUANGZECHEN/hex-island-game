@@ -70,22 +70,22 @@ function shipGame():{s:GameState;target:string;home:string;edgeId:string} {
  const target=candidate!;
  const edge=topology.edges.find(e=>e.vertexIds.includes(target)&&!e.vertexIds.includes(home))!;
  s.roads[edge.id]='a';
- s.players[0].hand={lumber:4,brick:4,wool:0,grain:0,ore:4};
- s.bank={lumber:15,brick:15,wool:19,grain:19,ore:15};
+ s.players[0].hand={lumber:2,brick:2,wool:0,grain:0,ore:3};
+ s.bank={lumber:17,brick:17,wool:19,grain:19,ore:16};
  return {s,target,home,edgeId:edge.id};
 }
-test('ship claims a remote harbor without any roads for 3 wood, 3 brick, 3 ore and 1 VP',()=>{
+test('ship claims a remote harbor without any roads for exactly 2 wood, 2 brick, 3 ore and 1 VP',()=>{
  const {s,target,home}=shipGame();
  s.roads={}; // A ship can establish an independent remote port.
- assert.deepEqual(SHIP_COST,{lumber:3,brick:3,wool:0,grain:0,ore:3});
+ assert.deepEqual(SHIP_COST,{lumber:2,brick:2,wool:0,grain:0,ore:3});
  assert.ok(legalTargetIds(s,'a','ship').includes(target));
  const before=publicVictoryPoints(s,'a');
  const next=applyBuildCommand(s,{type:'build-ship',playerId:'a',vertexId:target});
  assert.equal(next.buildings[target]?.kind,'ship');
  assert.equal(publicVictoryPoints(next,'a'),before+1);
  for(const r of ['lumber','brick','ore'] as const){
-  assert.equal(next.players[0].hand[r],1);
-  assert.equal(next.bank[r],18);
+  assert.equal(next.players[0].hand[r],0,'paying the exact ship cost spends all materials');
+  assert.equal(next.bank[r],19,'ship materials return to the bank');
  }
  const port=next.board.ports.find(p=>p.vertexIds.includes(target))!;
  if(port.type==='generic')assert.ok(bankTradeRate(next,'a','wool')<=3);
@@ -174,9 +174,12 @@ test('Classic ship action stays discoverable when resources are present but a ha
   const withoutRoad=structuredClone(s);withoutRoad.roads={};
   assert.deepEqual(shipActionAvailability(withoutRoad,'a'),{remaining:2,enabled:true,reason:null});
   assert.ok(legalTargetIds(withoutRoad,'a','ship').includes(target),'remote legal ship targets need no road');
-  const withoutResources=structuredClone(s);withoutResources.players[0].hand.ore=2;
-  assert.equal(shipActionAvailability(withoutResources,'a').enabled,false);
-  assert.match(shipActionAvailability(withoutResources,'a').reason!,/3 ore/);
+  for(const [resource,count] of [['lumber',1],['brick',1],['ore',2]] as const){
+    const short=structuredClone(s);short.players[0].hand[resource]=count;
+    assert.equal(shipActionAvailability(short,'a').enabled,false);
+    assert.match(shipActionAvailability(short,'a').reason!,/2 wood, 2 brick and 3 ore/);
+    assert.throws(()=>applyBuildCommand(short,{type:'build-ship',playerId:'a',vertexId:target}),/Insufficient resources/);
+  }
   const disabledRule=structuredClone(s);disabledRule.rules!.ships=false;
   assert.equal(shipActionAvailability(disabledRule,'a').enabled,false);
   assert.match(shipActionAvailability(disabledRule,'a').reason!,/lobby/);

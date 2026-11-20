@@ -99,3 +99,7 @@ D024: Dice remain real 3D cubes with exactly the host-authoritative top faces, b
 ## 2026-11-19: Harbor ships are independent of roads
 
 D025: The Product Owner explicitly removed the own-road-connection prerequisite for optional Classic Harbor Ships. A player who already owns a port may build each of their two ships on any vacant, legally spaced port vertex, with no connecting road. Keep 3 lumber + 3 brick + 3 ore cost, settlement-distance spacing, two-ship cap, 1 VP, settlement-level production, port-trade benefit, and the rule that ships cannot anchor or extend roads. This supersedes only D021's road requirement; Harbor Co-op construction/Load rules remain unchanged.
+
+## 2026-11-20: Harbor Ship cost reduction
+
+D026: The Product Owner changed the optional Classic Harbor Ships cost from 3 lumber + 3 brick + 3 ore to **2 lumber + 2 brick + 3 ore**. The port-ownership prerequisite, no-road remote placement, building distance, supply cap of two ships per player, 1 VP and other benefits are unchanged. This supersedes the ship-cost terms in D021 and D025 only. The authoritative reducer, Actions affordability, resource display and tests must apply the same cost.

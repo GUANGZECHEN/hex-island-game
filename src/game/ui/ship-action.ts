@@ -23,7 +23,7 @@ export function shipActionAvailability(state: GameState, playerId: string): Ship
   const hand=state.players.find(player=>player.id===playerId)?.hand;
   if(!hand)return blocked('No active player hand.');
   if(remaining===0)return blocked('Both of your ships have already been built.');
-  if(!affordable(hand,SHIP_COST))return blocked('Need 3 wood, 3 brick and 3 ore.');
+  if(!affordable(hand,SHIP_COST))return blocked('Need 2 wood, 2 brick and 3 ore.');
   if(!state.board.ports.some(port=>port.vertexIds.some(vertex=>state.buildings[vertex]?.playerId===playerId)))
     return blocked('Build a settlement or city on a port first.');
   if(!legalTargetIds(state,playerId,'ship').length)

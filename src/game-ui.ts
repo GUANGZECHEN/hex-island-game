@@ -526,7 +526,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
     shipButton.disabled=true;
     shipButton.title=ship.reason;
     shipButton.setAttribute('aria-label',`Build ship unavailable: ${ship.reason}`);
-    shipButton.setAttribute('aria-description',`${shipButton.getAttribute('aria-description')??'Cost: 3 wood, 3 brick, 3 ore.'} ${ship.reason}`);
+    shipButton.setAttribute('aria-description',`${shipButton.getAttribute('aria-description')??'Cost: 2 wood, 2 brick, 3 ore.'} ${ship.reason}`);
     const hint=document.createElement('small');hint.className='ship-action-reason';hint.textContent=ship.reason;shipButton.append(hint);
    }
   }
