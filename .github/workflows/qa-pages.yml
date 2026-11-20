@@ -129,9 +129,29 @@ jobs:
         if: steps.signaling_mode.outputs.mode == 'temporary'
         run: |
           set -euo pipefail
-          # Quick Tunnel names can be allocated while their public route is
-          # still unreachable. Retry the same already-approved free transport
-          # with a fresh temporary tunnel, never switching infrastructure.
+          # Quick Tunnel hostnames sometimes lag in the runner's DNS even
+          # after cloudflared reports a registered edge connection. Probe both
+          # ordinary DNS and a DNS-over-HTTPS resolver before concluding failure.
+          probe_ingress() {
+            local origin="$1"
+            local status
+            status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --request OPTIONS \
+              --header 'Origin: https://guangzechen.github.io' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: content-type' \
+              --max-time 8 "$origin/rooms" 2>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            if [[ "$status" == "204" ]]; then printf '%s' "$status"; return; fi
+            status=$(curl --silent --show-error --doh-url https://1.1.1.1/dns-query \
+              --output /dev/null --write-out '%{http_code}' \
+              --request OPTIONS \
+              --header 'Origin: https://guangzechen.github.io' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: content-type' \
+              --max-time 6 "$origin/rooms" 2>>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            printf '%s' "${status:-000}"
+          }
+          # Keep the original bounded Quick Tunnel retries; no infrastructure switch.
           for tunnel_attempt in 1 2 3; do
             if (( tunnel_attempt > 1 )); then
               kill -- -"$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null || true
@@ -151,7 +171,7 @@ jobs:
               QA_SIGNALING_URL="$next_url"
             fi
             for attempt in {1..20}; do
-              status=$(curl --silent --output /dev/null --write-out '%{http_code}' --request OPTIONS --header 'Origin: https://guangzechen.github.io' --header 'Access-Control-Request-Method: POST' --header 'Access-Control-Request-Headers: content-type' --max-time 8 "$QA_SIGNALING_URL/rooms" || true)
+              status=$(probe_ingress "$QA_SIGNALING_URL")
               if [[ "$status" == "204" ]]; then
                 echo "QA_SIGNALING_URL=$QA_SIGNALING_URL" >> "$GITHUB_ENV"
                 echo "QA_INGRESS_VALID=true" >> "$GITHUB_ENV"
@@ -160,6 +180,9 @@ jobs:
               if (( attempt % 10 == 0 )); then
                 registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
                 echo "QA ingress attempt $tunnel_attempt check $attempt: HTTP $status; registered transport connections: $registered"
+                if [[ -s "$RUNNER_TEMP/qa-ingress-curl.log" ]]; then
+                  tail -n 2 "$RUNNER_TEMP/qa-ingress-curl.log" | sed -E 's@https://[a-z0-9-]+\\.trycloudflare\\.com@[temporary QA host]@g' || true
+                fi
               fi
               sleep 2
             done
@@ -192,6 +215,9 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
+          # GitHub keeps artifacts from previous attempts of the same run.
+          # A unique name prevents deploy-pages from finding two matches.
+          name: github-pages-attempt-${{ github.run_attempt }}
           path: dist
 
       - name: Wait for Pages artifact metadata
@@ -200,6 +226,8 @@ jobs:
       - name: Deploy QA Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-attempt-${{ github.run_attempt }}
 
       - name: Run real Chromium multiplayer, reconnect, rejoin and saved-game E2E
         if: env.QA_INGRESS_VALID != 'false'
