@@ -4,8 +4,8 @@
 @media(max-width:400px){#board{margin:0 -.5rem}}
 .port-badge{fill:#fff;stroke:#142237;stroke-width:.05}.port-label{font-size:.23px;font-weight:700;fill:#142237;pointer-events:none}
 .game-target{fill:#fff;stroke:#073a9e;stroke-width:.14;cursor:pointer;outline:none}.game-target:focus,.game-target:focus-visible{stroke:#ed9400;stroke-width:.22;outline:none}.game-road{stroke:#142237;stroke-width:.13;stroke-linecap:round}.game-building{fill:#142237;stroke:white;stroke-width:.05}fieldset{margin:.75rem 0}select{font:inherit;padding:.4rem}#game-error{color:#a02121}
-.game-road.player-1{stroke:#003f87}.game-road.player-2{stroke:#ae1717}.game-road.player-3{stroke:#27662a}.game-road.player-4{stroke:#72327c}.game-road.player-2{stroke-dasharray:.18 .05}.game-road.player-3{stroke-dasharray:.07 .04}.game-road.player-4{stroke-dasharray:.22 .05 .05 .05}
-.game-building-piece{cursor:default;outline:none}.game-building-piece.player-1{color:#003f87}.game-building-piece.player-2{color:#ae1717}.game-building-piece.player-3{color:#27662a}.game-building-piece.player-4{color:#72327c}.game-building-shell{stroke-linejoin:round}.game-building-accent,.game-building-detail{fill:none;stroke-linecap:round;stroke-linejoin:round}.game-building-piece.game-target-city{cursor:pointer}.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:.075}.game-building-piece.game-target-city:hover .game-building-shell,.game-building-piece.game-target-city:focus .game-building-shell,.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
+.game-road.player-1{stroke:#003f87}.game-road.player-2{stroke:#ae1717}.game-road.player-3{stroke:#993a70}.game-road.player-4{stroke:#72327c}.game-road.player-2{stroke-dasharray:.18 .05}.game-road.player-3{stroke-dasharray:.07 .04}.game-road.player-4{stroke-dasharray:.22 .05 .05 .05}
+.game-building-piece{cursor:default;outline:none}.game-building-piece.player-1{color:#003f87}.game-building-piece.player-2{color:#ae1717}.game-building-piece.player-3{color:#993a70}.game-building-piece.player-4{color:#72327c}.game-building-shell{stroke-linejoin:round}.game-building-accent,.game-building-detail{fill:none;stroke-linecap:round;stroke-linejoin:round}.game-building-piece.game-target-city{cursor:pointer}.game-building-piece.game-target-city .game-building-shell{stroke:#f0a000;stroke-width:.075}.game-building-piece.game-target-city:hover .game-building-shell,.game-building-piece.game-target-city:focus .game-building-shell,.game-building-piece.game-target-city:focus-visible .game-building-shell{stroke:#d45c00;stroke-width:3.2}
 
 select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-visible,select:focus-visible,#board:focus-visible{outline:3px solid #1555a0;outline-offset:2px}.island-token-high{stroke:#7e0000;stroke-width:.06;stroke-dasharray:.07 .04}.island-board{min-width:360px}#board{overflow-x:auto}fieldset{min-width:0}fieldset label{display:inline-block;width:min(8rem,100%);margin-right:.4rem}fieldset input{max-width:6rem}
 /* The game uses one shared board and control surface at every viewport. */
@@ -22,7 +22,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 
 /* Gameplay readability polish: player overview, legal targets and explicit port links. */
 .port-connector{stroke:#51615a;stroke-width:.045;stroke-linecap:round;pointer-events:none}.port-badge{fill:#fffef9;stroke:#142237;stroke-width:.055}.port-label{font-size:.22px;font-weight:800;fill:#142237;pointer-events:none}.port-resource-icon{pointer-events:none}
-.player-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.32rem;margin:.55rem 0}.player-summary{--player-color:#425466;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.35rem;min-width:0;padding:.38rem .45rem;border:1px solid #d6ded4;border-left:4px solid var(--player-color);border-radius:.55rem;background:#f8faf5;font-size:.72rem}.player-summary.player-1{--player-color:#2868b2}.player-summary.player-2{--player-color:#c74a42}.player-summary.player-3{--player-color:#4f8b51}.player-summary.player-4{--player-color:#8b55a1}.player-summary.player-5{--player-color:#d48826}.player-summary.player-6{--player-color:#2b9295}.player-summary.active-player{background:#fff1bf;box-shadow:inset 0 0 0 2px #d89b24}.player-summary.local-player .player-summary-name{font-weight:800}.player-marker{display:grid;place-items:center;width:1.45rem;height:1.45rem;border-radius:50%;background:var(--player-color);color:white;font-weight:850}.player-summary-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.player-hand-count{display:inline-flex;align-items:center;gap:.15rem;color:var(--player-color);font-weight:850}.player-hand-icon{width:.95rem;height:.95rem}.player-turn-badge{grid-column:2/4;justify-self:start;font-size:.6rem;line-height:1;background:#d89b24;color:#1f2c25;border-radius:999px;padding:.16rem .35rem;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.player-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.32rem;margin:.55rem 0}.player-summary{--player-color:#425466;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.35rem;min-width:0;padding:.38rem .45rem;border:1px solid #d6ded4;border-left:4px solid var(--player-color);border-radius:.55rem;background:#f8faf5;font-size:.72rem}.player-summary.player-1{--player-color:#2868b2}.player-summary.player-2{--player-color:#c74a42}.player-summary.player-3{--player-color:#f27ebd}.player-summary.player-4{--player-color:#8b55a1}.player-summary.player-5{--player-color:#d48826}.player-summary.player-6{--player-color:#2b9295}.player-summary.active-player{background:#fff1bf;box-shadow:inset 0 0 0 2px #d89b24}.player-summary.local-player .player-summary-name{font-weight:800}.player-marker{display:grid;place-items:center;width:1.45rem;height:1.45rem;border-radius:50%;background:var(--player-color);color:white;font-weight:850}.player-summary-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.player-hand-count{display:inline-flex;align-items:center;gap:.15rem;color:var(--player-color);font-weight:850}.player-hand-icon{width:.95rem;height:.95rem}.player-turn-badge{grid-column:2/4;justify-self:start;font-size:.6rem;line-height:1;background:#d89b24;color:#1f2c25;border-radius:999px;padding:.16rem .35rem;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
 .game-target-road{stroke:#f0a000;stroke-width:.19;stroke-dasharray:.14 .07;stroke-linecap:round;fill:none}.game-target-road:hover,.game-target-road:focus{stroke:#d45c00;stroke-width:.25}.game-target-vertex{fill:#fff6b8;stroke:#e27b00;stroke-width:.13}.game-target-vertex:hover,.game-target-vertex:focus{fill:#ffe171;stroke:#c94e00;stroke-width:.2}.game-target-city{stroke:#f0a000!important;stroke-width:.18!important;filter:drop-shadow(0 0 .08px #8f5200);cursor:pointer;outline:none}.game-target-city:hover,.game-target-city:focus,.game-target-city:focus-visible{stroke:#d45c00!important;stroke-width:.24!important;outline:none}.robber-target .island-cell{stroke:#f0a000;stroke-width:.13;filter:brightness(1.04);cursor:pointer}.robber-target:hover .island-cell,.robber-target:focus .island-cell{stroke:#d45c00;stroke-width:.2;filter:brightness(1.1)}.robber-target:focus{outline:none}
 @media(max-width:760px){.player-strip{margin:.35rem 0;gap:.25rem}.player-summary{padding:.28rem .35rem;font-size:.66rem}.player-marker{width:1.25rem;height:1.25rem}.player-turn-badge{font-size:.55rem}}
 
@@ -208,7 +208,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .turn-alert.player-1{--turn-alert-color:#2868b2}
 .turn-alert.player-2{--turn-alert-color:#c74a42}
-.turn-alert.player-3{--turn-alert-color:#4f8b51}
+.turn-alert.player-3{--turn-alert-color:#f27ebd}
 .turn-alert.player-4{--turn-alert-color:#8b55a1}
 .turn-alert.player-5{--turn-alert-color:#d48826}
 .turn-alert.player-6{--turn-alert-color:#2b9295}
@@ -293,7 +293,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .activity-alert.player-1{--turn-alert-color:#2868b2}
 .activity-alert.player-2{--turn-alert-color:#c74a42}
-.activity-alert.player-3{--turn-alert-color:#4f8b51}
+.activity-alert.player-3{--turn-alert-color:#f27ebd}
 .activity-alert.player-4{--turn-alert-color:#8b55a1}
 .activity-alert.player-5{--turn-alert-color:#d48826}
 .activity-alert.player-6{--turn-alert-color:#2b9295}
@@ -354,7 +354,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .victory-alert.player-1{--victory-color:#2868b2}
 .victory-alert.player-2{--victory-color:#c74a42}
-.victory-alert.player-3{--victory-color:#4f8b51}
+.victory-alert.player-3{--victory-color:#f27ebd}
 .victory-alert.player-4{--victory-color:#8b55a1}
 .victory-alert.player-5{--victory-color:#d48826}
 .victory-alert.player-6{--victory-color:#2b9295}
@@ -573,7 +573,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .game-road-piece.player-1{--road-color:#2868b2;--road-edge:#174679}
 .game-road-piece.player-2{--road-color:#c74a42;--road-edge:#8f2b27}
-.game-road-piece.player-3{--road-color:#4f8b51;--road-edge:#2f6334}
+.game-road-piece.player-3{--road-color:#f27ebd;--road-edge:#993a70}
 .game-road-piece.player-4{--road-color:#8b55a1;--road-edge:#633675}
 .game-road-piece.player-5{--road-color:#d48826;--road-edge:#9a5d12}
 .game-road-piece.player-6{--road-color:#2b9295;--road-edge:#176b70}
@@ -597,7 +597,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 }
 .game-building-piece.player-1{--piece-color:#2868b2;--piece-edge:#174679;color:#174679}
 .game-building-piece.player-2{--piece-color:#c74a42;--piece-edge:#8f2b27;color:#8f2b27}
-.game-building-piece.player-3{--piece-color:#4f8b51;--piece-edge:#2f6334;color:#2f6334}
+.game-building-piece.player-3{--piece-color:#f27ebd;--piece-edge:#993a70;color:#993a70}
 .game-building-piece.player-4{--piece-color:#8b55a1;--piece-edge:#633675;color:#633675}
 .game-building-piece.player-5{--piece-color:#d48826;--piece-edge:#9a5d12;color:#9a5d12}
 .game-building-piece.player-6{--piece-color:#2b9295;--piece-edge:#176b70;color:#176b70}

@@ -47,6 +47,8 @@ Roads render as three-layer wooden pieces: dark lower edge, player-color body, a
 
 Player colors support all six seats.
 
+Player 3 uses a saturated **rose pink** (`#f27ebd`, dark edge `#993a70`) instead of forest green. The pink is kept distinct from the violet Player 4 and muted teal Player 6. This one seat's color is shared by 3D house/road meshes, SVG pieces, public player frames, action notices, victory effects, and the per-player activity clock; the six-seat palette remains unique.
+
 ## Motion
 
 Only board-local motion is included in ART-A01:

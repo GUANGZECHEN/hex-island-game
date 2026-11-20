@@ -329,7 +329,16 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
 test('all six player UI colors match the authoritative board-piece palette',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- const colors=['#2868b2','#c74a42','#4f8b51','#8b55a1','#d48826','#2b9295'];
+ const colors=['#2868b2','#c74a42','#f27ebd','#8b55a1','#d48826','#2b9295'];
+ assert.equal(new Set(colors).size,6,'all six players need unique color assignments');
+ const rgb=(hex:string)=>[1,3,5].map(index=>Number.parseInt(hex.slice(index,index+2),16));
+ const rose=rgb(colors[2]);
+ for(const [index,color] of colors.entries()){
+  if(index===2)continue;
+  const distance=Math.hypot(...rose.map((channel,i)=>channel-rgb(color)[i]));
+  assert.ok(distance>100,`Seat 3 pink must be visually separate from seat ${index+1} (distance ${distance})`);
+ }
+ assert.equal(colors[5],'#2b9295','seat 6 retains its own teal hue');
  for(const [index,color] of colors.entries()){
   const seat=index+1;
   assert.ok(css.includes(`.player-summary.player-${seat}{--player-color:${color}}`));
@@ -341,7 +350,10 @@ test('all six player UI colors match the authoritative board-piece palette',()=>
  }
  assert.ok(ui.includes("const PLAYER_PIECE_PALETTE=[{body:'#2868b2'"));
  assert.ok(ui.includes("{body:'#d48826',edge:'#9a5d12'}"));
- assert.ok(ui.includes("{body:'#2b9295',edge:'#176b70'}"));
+ assert.ok(ui.includes("{body:'#f27ebd',edge:'#993a70'}"));
+  assert.ok(css.includes('.game-road-piece.player-3{--road-color:#f27ebd;--road-edge:#993a70}'));
+  assert.ok(css.includes('.game-building-piece.player-3{--piece-color:#f27ebd;--piece-edge:#993a70;color:#993a70}'));
+  assert.ok(ui.includes("{body:'#2b9295',edge:'#176b70'}"));
 });
 
 

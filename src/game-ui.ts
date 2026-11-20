@@ -94,7 +94,7 @@ function touchActionClock():void {
 
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
-const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#4f8b51',edge:'#2f6334'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
+const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#f27ebd',edge:'#993a70'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
 const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
 let localUndoState:GameState|null=null,localUndoPlayerId='',pendingLocalUndo:{state:GameState;playerId:string}|null=null;
 function applyWithLocalUndo<C extends {type:string;playerId:string}>(s:GameState,c:C,apply:(s:GameState,c:C)=>GameState):GameState|null{
