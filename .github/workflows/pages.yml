@@ -9,7 +9,19 @@ concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
+  # GitHub exposes new manual workflows only after they exist on the default branch.
+  # Bootstrap this unmerged QA branch through the already-existing Pages workflow.
+  signaling:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/game/mvp'
+    uses: ./.github/workflows/deploy-signaling.yml
+    permissions:
+      contents: read
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   build:
+    needs: signaling
+    if: ${{ !cancelled() && (needs.signaling.result == 'success' || needs.signaling.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +32,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_SIGNALING_URL: ${{ vars.SIGNALING_URL }}
+          VITE_SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin || vars.SIGNALING_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -36,3 +48,11 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Report QA site
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/game/mvp'
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          echo "## QA site" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open ${PAGE_URL}?qaPlayers=2 for the two-browser checklist." >> "$GITHUB_STEP_SUMMARY"
+          echo "If the signaling job used a temporary Worker, begin promptly; it expires after about 60 minutes." >> "$GITHUB_STEP_SUMMARY"

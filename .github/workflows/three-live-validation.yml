@@ -1,0 +1,66 @@
+name: Validate integrated 3D gameplay before deployment
+on:
+  push:
+    branches: [art/three-live]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: three-live-validation
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Validate application and signaling
+        run: |
+          npm run typecheck
+          npm test
+          (cd signaling && npm ci --no-audit --no-fund && npm run typecheck && npm test)
+      - name: Install actual browser test tools
+        run: |
+          npm install --no-save playwright@1.58.0 pngjs@7.0.0 --no-audit --no-fund
+          npx playwright install --with-deps chromium > /tmp/three-browser-install.log
+      - name: Build and start isolated test backend and site
+        env:
+          VITE_SIGNALING_URL: http://127.0.0.1:8787
+        run: |
+          npm run build
+          setsid bash -c 'cd signaling && exec npm exec -- wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.qa.jsonc' > /tmp/three-worker.log 2>&1 &
+          setsid npm exec -- vite preview --host 127.0.0.1 --port 4175 --strictPort > /tmp/three-preview.log 2>&1 &
+          for i in {1..40}; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS -H 'Origin: https://guangzechen.github.io' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type' http://127.0.0.1:8787/rooms || true)
+            if [[ "$status" == 204 ]] && curl -sf http://127.0.0.1:4175/hex-island-game/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/three-worker.log /tmp/three-preview.log
+          exit 1
+      - name: Actual 3D game pixels, commands, camera and multiplayer
+        env:
+          QA_URL: http://127.0.0.1:4175/hex-island-game/?qaPlayers=2
+          QA_SIGNALING_URL: http://127.0.0.1:8787
+        run: node scripts/qa-three-live.mjs
+      - name: Original SVG fallback and recovery regression
+        env:
+          QA_URL: http://127.0.0.1:4175/hex-island-game/?qaPlayers=2
+          QA_SIGNALING_URL: http://127.0.0.1:8787
+        run: node scripts/qa-e2e.mjs
+      - name: Upload tested build and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: three-live-evidence
+          retention-days: 7
+          path: |
+            three-evidence
+            dist
+            package-lock.json

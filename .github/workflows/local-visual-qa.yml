@@ -1,0 +1,52 @@
+name: Validate local visual gameplay without QA tunnel
+
+on:
+  push:
+    branches: [game/mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-visual-game-mvp
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install, typecheck, unit tests, and compile standalone frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Install headless Chromium for the actual board
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verify real dice geometry, resource payout and 2D fallback
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
+      - name: Verify 3D graphics, input, camera, audio-independent behavior and layouts
+        run: node scripts/qa-three-live.mjs
+      - name: Verify local Harbor Co-op rules and seven
+        run: node scripts/qa-harbor-coop.mjs
+      - name: Save screenshots and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-game-evidence
+          path: |
+            dice-evidence
+            three-evidence
+            harbor-evidence
+          if-no-files-found: ignore
+          retention-days: 7

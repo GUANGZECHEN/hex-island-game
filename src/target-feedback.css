@@ -1,0 +1,7 @@
+/* Legal choices stay yellow; only the hovered/focused/selected choice is orange. */
+#board .game-target-vertex.target-active{fill:#ff981f!important;stroke:#b75c0a!important;stroke-width:.065;opacity:1;filter:none!important}
+#board .game-target-road.target-active{stroke:#ff981f!important;stroke-opacity:1;opacity:1;filter:none!important}
+#board .game-target-city.target-active .game-building-shell{stroke:#ff981f!important;stroke-width:.10;filter:none!important}
+#board .robber-target.target-active .island-cell{stroke:#ff981f!important;stroke-width:.13;stroke-opacity:1}
+#board .robber-target.target-active .island-cell-inset{fill:#ff981f!important;fill-opacity:.36;stroke:#d56a0f;stroke-width:.055}
+#board [data-target-active="true"]{cursor:pointer}

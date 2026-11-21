@@ -1,0 +1,59 @@
+/* The renderer owns only the map viewport, never the hand, inputs or game controls. */
+#board[data-renderer="3d"]{position:relative;background:#8ab9b7;border-radius:.7rem;isolation:isolate}
+#board .three-island-board{display:block;width:100%;height:100%;min-width:0;max-width:none;border-radius:inherit;outline:none}
+.board-workspace .board-view-toolbar{display:flex;gap:.24rem;flex-wrap:wrap;align-items:center;justify-content:center;margin:.22rem 0 0;flex:0 0 auto;min-width:0}
+.board-workspace .board-view-toolbar button{font-size:.68rem;padding:.25rem .44rem;min-height:30px;margin:0;border:1px solid #bbccb7;border-radius:.4rem;background:#f4f7ee;color:#284638}
+.board-workspace .board-view-toolbar label{font-size:.66rem;display:inline-flex;gap:.18rem;align-items:center;margin:0}
+.board-workspace .board-view-toolbar input{width:auto;margin:0}
+#board-render-mode{font-size:.62rem;line-height:1.25;color:#526c60;flex-basis:100%;text-align:center;margin:0}
+@media(min-width:1101px){
+ .board-workspace .board-stage .board-map-column #board[data-renderer="3d"]{height:0;min-height:0;flex:1 1 0}
+ .board-view-touch{display:none!important}
+}
+@media(max-width:1100px){
+ .board-workspace .board-stage .board-map-column #board[data-renderer="3d"]{height:auto;aspect-ratio:1.12;min-height:250px;flex:none}
+ #board[data-renderer="3d"] .three-island-board{position:absolute;inset:0}
+ .board-workspace .board-view-toolbar button{font-size:.7rem;min-height:34px}
+}
+
+
+/* Board-integrated fallback for public dice results. The default 3D renderer uses
+   genuine rounded cube meshes; SVG mode keeps dice and gains inside the board. */
+#board{position:relative}
+#board .board-roll-overlay{position:absolute;inset:0;pointer-events:none;z-index:22;overflow:hidden;border-radius:inherit}
+#board .board-roll-dice-row{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:1.05rem;filter:drop-shadow(0 .35rem .27rem #273c3766)}
+#board .board-rolled-die{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);width:3.1rem;height:3.1rem;gap:.12rem;padding:.40rem;box-sizing:border-box;background:#fff8e6;border:.12rem solid #d4c7aa;border-radius:.64rem;box-shadow:inset .12rem .12rem .2rem #ffffffaa,inset -.11rem -.13rem .22rem #aa9d8580;animation:roll-board-die-drop .76s cubic-bezier(.23,.7,.22,1) both}
+#board .board-rolled-die:nth-child(2){animation-delay:.04s}
+#board .board-roll-pip{width:.37rem;height:.37rem;border-radius:50%;background:#2879c8;align-self:center;justify-self:center;box-shadow:inset .09rem .09rem .07rem #12385cbb,0 0 0 .055rem #9fa7a5aa}
+#board .board-roll-empty{width:.37rem;height:.37rem}
+#board .board-rolled-die[data-value="1"] .board-roll-pip,
+#board .board-rolled-die[data-value="4"] .board-roll-pip{background:#d73541;box-shadow:inset .09rem .09rem .07rem #80212cb8,0 0 0 .055rem #9fa7a5aa}
+@keyframes roll-board-die-drop{
+  0%{transform:translate3d(-2rem,-6rem,0) rotate(-340deg) scale(.7);opacity:.7}
+  52%{transform:translate3d(.35rem,.40rem,0) rotate(40deg) scale(1.08);opacity:1}
+  76%{transform:translate3d(-.12rem,-.75rem,0) rotate(-10deg) scale(.98)}
+  100%{transform:translate3d(0,0,0) rotate(0deg) scale(1);opacity:1}
+}
+#board .roll-producing-hex .terrain-art{transform-box:fill-box;transform-origin:center;animation:roll-board-resource-bounce .88s ease-in-out 1}
+@keyframes roll-board-resource-bounce{0%,100%{transform:translateY(0)}33%{transform:translateY(-.17px) rotate(-3deg)}66%{transform:translateY(.03px) rotate(2deg)}}
+#board .board-roll-gain{position:absolute;display:inline-flex;gap:.2rem;align-items:center;transform:translate(-50%,-100%);padding:.39rem .55rem;background:#fffdf4;color:var(--roll-player-color,#2c6254);border:2px solid var(--roll-player-color,#2c6254);border-radius:.52rem;box-shadow:0 .20rem .35rem #102b2952;font-size:1rem;font-weight:800;white-space:nowrap;animation:roll-board-gain-float 1.8s ease-out both}
+#board .board-roll-gain-resource{display:inline-flex;gap:.08rem;align-items:center}
+#board .board-roll-gain-resource .resource-icon{height:1.22em;width:1.22em;color:var(--roll-player-color,#2c6254)}
+#board .board-roll-gain-resource[data-resource="lumber"] .resource-icon{color:#247a4b}
+#board .board-roll-gain-resource[data-resource="brick"] .resource-icon{color:#c0654a}
+#board .board-roll-gain-resource[data-resource="wool"] .resource-icon{color:#83a34b}
+#board .board-roll-gain-resource[data-resource="grain"] .resource-icon{color:#bb8a20}
+#board .board-roll-gain-resource[data-resource="ore"] .resource-icon{color:#668592}
+@keyframes roll-board-gain-float{0%{opacity:0;translate:0 .22rem;scale:.86}20%,70%{opacity:1;scale:1}100%{opacity:0;translate:0 -1.2rem}}
+@media(prefers-reduced-motion:reduce){
+  #board .board-rolled-die,#board .board-roll-gain,#board .roll-producing-hex .terrain-art{animation:none!important;transition:none!important}
+}
+
+/* Match setup controls and the on-board dice audio switch to the tabletop UI. */
+.optional-rules{display:flex;flex-direction:column;gap:.40rem;margin:.55rem 0;padding:.70rem .82rem;border:1px solid #c3cbb7;border-radius:.55rem;background:#f7f7ee;color:#294536}
+.optional-rules legend{padding:0 .38rem;font-weight:700;font-size:.86rem}
+.optional-rules label{display:flex;gap:.47rem;align-items:flex-start;line-height:1.45;font-size:.79rem;cursor:pointer}
+.optional-rules input{flex:0 0 auto;width:1rem;height:1rem;margin:.08rem 0 0;accent-color:#267856}
+.optional-rules-disabled{opacity:.55}
+.sound-toggle{border:1px solid #becbbd;background:#f5f8f0;color:#335244;border-radius:.42rem;cursor:pointer;padding:.30rem .65rem;font-size:.78rem;min-height:30px;white-space:nowrap}
+.sound-toggle[aria-pressed="true"]{background:#ecece7;color:#59665f}

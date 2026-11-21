@@ -1,0 +1,279 @@
+import { createGame } from '../rules/state.ts';
+import type { GameMode } from '../rules/harbor.ts';
+import type { BoardLayout } from '../board/geometry.ts';
+import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
+import { HostAuthority } from './authority.ts';
+import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
+import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
+
+export interface LobbySeat { id:string; name:string; connected:boolean; ready:boolean }
+interface Seat extends LobbySeat { peer:string | null; token:string }
+const cleanName=(value:unknown,fallback:string)=>{if(typeof value!=='string')return fallback;const name=value.replace(/\s+/g,' ').trim();return name.length>=1&&name.length<=20?name:fallback;};
+type Send = (peer:string, message:string)=>void;
+
+/** Host-only session. Credentials must be generated with cryptographically secure randomness. */
+export class HostSession {
+ private seats:Seat[]; private spectators=new Set<string>(); private authority:HostAuthority|null=null; private gameId=''; private recovering=false;
+ constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number; mode?:GameMode; rules?:OptionalRules } = {}) {
+  this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;this.mode=options.mode??'classic';this.rules=validateOptionalRules(options.rules);
+  if(this.mode!=='classic'&&this.mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  if(this.mode==='harbor-coop'&&this.boardLayout!=='standard')throw new Error('Harbor Co-op requires the standard board.');
+   if(this.mode==='harbor-coop'&&(this.rules.catchUp||this.rules.ships))throw new Error('Optional rules require Classic mode.');
+  this.seats=[{id:'Player 1',name:'Player 1',connected:true,ready:false,peer:null,token:''}];
+ }
+ private mode:GameMode='classic';private rules:OptionalRules={catchUp:false,ships:false};
+ private qaTwoPlayers:boolean; private boardLayout:BoardLayout; private mapSeed:number; private send:Send; private publish:(value:unknown)=>void; private token:()=>string; private random:()=>number;
+
+ static fromRecovery(privateSend:Send,privatePublish:(value:unknown)=>void,privateToken:()=>string,privateRandom:()=>number,value:unknown):HostSession {
+  const recovery=parseSessionRecovery(value);
+  const host=new HostSession(privateSend,privatePublish,privateToken,privateRandom,{qaTwoPlayers:recovery.qaTwoPlayers,boardLayout:recovery.boardLayout,mapSeed:recovery.authority.state.board.seed,mode:recovery.authority.state.mode??'classic',rules:recovery.authority.state.rules});
+  host.restoreRecovery(recovery,true);
+  host.announce();
+  return host;
+ }
+
+ lobby():LobbySeat[]{return this.seats.map(({id,name,connected,ready})=>({id,name,connected,ready}));}
+ spectatorCount():number{return this.spectators.size;}
+ isRecovering():boolean{return this.recovering;}
+ allSeatsConnected():boolean{return this.seats.length>0&&this.seats.every(seat=>seat.connected);}
+ recovery():SessionRecovery {
+  if(!this.authority)throw new Error('Game not started.');
+  return {version:1,authority:this.authority.checkpoint(),seats:this.seats.map(({id,token,name})=>({id,token,name})),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout};
+ }
+ private output(peer:string,type:string,data:unknown){this.send(peer,JSON.stringify({protocol:1,type,data}));}
+ private capacity(){if(this.mode==='harbor-coop')return 2;return this.boardLayout==='expanded-5-6'?6:4;}
+ private availableSeatId(){for(let i=2;i<=this.capacity();i++)if(!this.seats.some(seat=>seat.id===`Player ${i}`))return `Player ${i}`;return null;}
+ private claimSeat(peer:string,name:unknown):Seat|null{
+  const vacant=this.seats.find((seat,index)=>index>0&&!seat.connected);
+  if(!vacant&&this.seats.length>=this.capacity())return null;
+  const credential=this.token();
+  if(!/^[A-Za-z0-9_-]{43}$/.test(credential)||this.seats.some(seat=>seat.token===credential))throw new Error('Invalid seat credential.');
+  if(vacant){vacant.token=credential;vacant.ready=false;vacant.name=cleanName(name,vacant.id);vacant.peer=peer;vacant.connected=true;return vacant;}
+  const id=this.availableSeatId();if(!id)return null;
+  const seat={id,name:cleanName(name,id),connected:true,ready:false,peer,token:credential};
+  this.seats.push(seat);return seat;
+ }
+ private announce(){
+  const lobby={mode:this.mode,rules:this.rules,seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
+  this.publish({type:'lobby',lobby});
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'lobby',lobby);
+  for(const peer of this.spectators)this.output(peer,'lobby',lobby);
+ }
+ private emitCheckpoint(replace=false){if(!this.authority)return;const data=this.recovery();this.publish({type:'checkpoint',data,revision:data.authority.revision,round:recoveryRound(data.authority.state),replace});}
+ private sendClock(peer:string){if(this.authority&&!this.recovering)this.output(peer,'clock',this.authority.clockStatus());}
+ private broadcastClock(){
+  if(!this.authority||this.recovering)return;
+  const data:TurnClockSnapshot|null=this.authority.clockStatus();
+  this.publish({type:'clock',data});
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'clock',data);
+  for(const peer of this.spectators)this.output(peer,'clock',data);
+ }
+ /** Called only by the host browser; observers have no authority to advance time. */
+ tick(){
+  if(!this.authority||this.recovering)return;
+  for(let attempts=0;attempts<12;attempts++){
+   const event=this.authority.advanceTimeout();
+   if(!event.handled)break;
+   this.publish({type:'clock-timeout',data:{playerId:event.playerId}});
+   if(event.pending){
+    this.emitCheckpoint(true);
+    const seat=this.seats.find(s=>s.id===event.playerId);
+    if(seat?.peer)this.output(seat.peer,'discard-pending',{revision:this.authority.currentRevision()});
+    if(event.playerId==='Player 1')this.publish({type:'discard-pending',data:{revision:this.authority.currentRevision()}});
+    this.broadcastClock();
+   }else{this.emitCheckpoint();this.broadcast();}
+  }
+ }
+ /** Host-only control; pause changes are checkpointed at the same game revision. */
+ setPaused(paused:boolean):boolean {
+  if(!this.authority||this.recovering)return false;
+  if(paused)this.tick();
+  const changed=this.authority.setPaused(paused);
+  if(changed){this.emitCheckpoint(true);this.broadcast();}
+  return changed;
+ }
+ private restoreRecovery(value:SessionRecovery,paused:boolean){
+  const currentPeers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
+  this.qaTwoPlayers=value.qaTwoPlayers;
+  this.boardLayout=value.boardLayout;
+  this.mapSeed=value.authority.state.board.seed;this.mode=value.authority.state.mode??'classic';
+   this.rules=validateOptionalRules(value.authority.state.rules);
+  this.gameId=value.authority.gameId;
+  this.authority=HostAuthority.fromRecovery(value.authority,this.random);
+  this.seats=value.seats.map((seat,index)=>({id:seat.id,name:cleanName(seat.name,seat.id),token:seat.token,peer:currentPeers.get(seat.id)??null,connected:index===0||(currentPeers.get(seat.id)!=null),ready:false}));
+  this.seats[0].connected=true;this.seats[0].peer=null;
+  this.recovering=paused;
+ }
+ disconnect(peer:string){this.disconnectMany([peer]);}
+ /** Remove every lost transport before announcing, so no message targets a dead relay. */
+ disconnectMany(peers:readonly string[]){
+  const lost=new Set(peers);let changed=false;
+  for(const peer of lost)if(this.spectators.delete(peer))changed=true;
+  for(const seat of this.seats)if(seat.peer&&lost.has(seat.peer)){seat.peer=null;seat.connected=false;seat.ready=false;changed=true;}
+  if(changed)this.announce();
+ }
+ receive(peer:string,text:string){
+  if(typeof text!=='string'||new TextEncoder().encode(text).length>16384)return;
+  let msg:{protocol?:unknown;type?:unknown;token?:unknown;name?:unknown;ready?:unknown;command?:unknown;role?:unknown;boardLayout?:unknown;mapSeed?:unknown};try{msg=JSON.parse(text);}catch{return;}
+  if(!msg||typeof msg!=='object'||Array.isArray(msg)||msg.protocol!==1||typeof msg.type!=='string')return;
+  if(msg.type==='hello'){
+   if(this.seats.some(s=>s.peer===peer)||this.spectators.has(peer))return;
+   let seat:Seat|undefined;
+   if(typeof msg.token==='string'&&msg.token)seat=this.seats.find(s=>s.token===msg.token);
+   else if(msg.token===undefined||msg.token===''){
+    if(this.authority||msg.role==='spectator'){
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});this.announce();
+     if(this.authority&&!this.recovering){this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));this.sendClock(peer);}
+     return;
+    }
+    seat=this.claimSeat(peer,msg.name)??undefined;
+    if(!seat){
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:false,gameId:null});this.announce();return;
+    }
+   }
+   if(!seat){this.output(peer,'error','Seat unavailable.');return;}
+   const stalePeer=seat.peer;
+   if(!this.authority)seat.name=cleanName(msg.name,seat.name||seat.id);
+   seat.peer=peer;seat.connected=true;seat.ready=false;
+   this.output(peer,'seat',{id:seat.id,token:seat.token,gameId:this.gameId||null});this.announce();
+   if(stalePeer&&stalePeer!==peer){/* stale peer no longer controls the credential */}
+   if(this.authority&&!this.recovering){
+    this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
+    if(this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+    this.sendClock(peer);
+   }
+   return;
+  }
+  const seat=this.seats.find(s=>s.peer===peer&&s.connected);
+  const spectator=this.spectators.has(peer);
+  if(!seat&&!spectator)return;
+  if(msg.type==='role'&&!this.authority&&(msg.role==='player'||msg.role==='spectator')){
+   if(seat&&seat.id!=='Player 1'&&msg.role==='spectator'){
+    this.seats.splice(this.seats.indexOf(seat),1);
+    this.spectators.add(peer);this.output(peer,'spectator',{watching:false});this.announce();
+   }else if(spectator&&msg.role==='player'){
+    const claimed=this.claimSeat(peer,msg.name);
+    if(!claimed){this.output(peer,'error','All player seats are occupied.');return;}
+    this.spectators.delete(peer);this.output(peer,'seat',{id:claimed.id,token:claimed.token,gameId:null});this.announce();
+   }
+   return;
+  }
+  if(msg.type==='name' && seat && !this.authority){seat.name=cleanName(msg.name,seat.name||seat.id);this.announce();return;}
+  if(msg.type==='ready' && seat && !this.authority && typeof msg.ready==='boolean'){seat.ready=msg.ready;this.announce();return;}
+  // Only the host controls the selected board. Guests receive an identical preview in lobby announcements.
+  if(msg.type==='map')return;
+  if(msg.type==='sync' && this.authority && !this.recovering){
+   this.output(peer,'snapshot',seat?this.decorate(this.authority.snapshot(seat.id)):this.decorate(this.authority.spectatorSnapshot()));
+   if(seat&&this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
+   this.sendClock(peer);
+   return;
+  }
+  if(msg.type==='command' && this.authority && typeof msg.command==='string'){
+   if(!seat){this.output(peer,'rejection',{ok:false,code:'spectator',revision:this.authority.currentRevision()});return;}
+   if(this.recovering){this.output(peer,'rejection',{ok:false,code:'recovery-pending',revision:this.authority.currentRevision()});return;}
+   this.tick();
+   const result=this.authority.receive(seat.id,msg.command);
+   if(!result.ok)this.output(peer,'rejection',result);
+   else if(result.pending){
+    this.emitCheckpoint(true);
+    this.output(peer,'discard-pending',{revision:result.revision});
+    this.broadcastClock();
+   }else{this.emitCheckpoint();this.broadcast();}
+  }
+ }
+ setHostName(name:string){if(this.authority)throw new Error('Game started.');this.seats[0].name=cleanName(name,this.seats[0].name);this.announce();}
+ setHostReady(ready:boolean){if(this.authority)throw new Error('Game started.');this.seats[0].ready=ready;this.announce();}
+ setGameMode(mode:GameMode){
+  if(this.authority||this.recovering)throw new Error('Choose the mode before starting.');
+  if(mode!=='classic'&&mode!=='harbor-coop')throw new Error('Invalid game mode.');
+  if(mode==='harbor-coop'&&this.seats.length>2)throw new Error('Harbor Co-op has exactly two seats; extra players may switch to spectating.');
+  if(mode===this.mode)return;
+  this.mode=mode;if(mode==='harbor-coop'){this.boardLayout='standard';this.rules={catchUp:false,ships:false};}
+  for(const seat of this.seats)seat.ready=false;this.announce();
+ }
+ setOptionalRules(value:OptionalRules){
+   if(this.authority||this.recovering)throw new Error('Optional rules can only be changed before the game starts.');
+   const rules=validateOptionalRules(value);
+   if(this.mode!=='classic'&&(rules.catchUp||rules.ships))throw new Error('Optional rules are available in Classic mode.');
+   if(rules.catchUp===this.rules.catchUp&&rules.ships===this.rules.ships)return;
+   this.rules=rules;for(const seat of this.seats)seat.ready=false;this.announce();
+ }
+ setMapSelection(layout:BoardLayout,seed:number){
+  if(this.mode==='harbor-coop'&&layout!=='standard')throw new Error('Harbor Co-op uses the standard board.');
+  if(this.authority||this.recovering)throw new Error('Map selection is only available before a game starts.');
+  if(layout!=='standard'&&layout!=='expanded-5-6')throw new Error('Invalid board layout.');
+  if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
+  if(layout==='standard'&&this.seats.length>4)throw new Error('Too many seated players for a standard board.');
+  if(layout===this.boardLayout&&seed===this.mapSeed)return;
+  this.boardLayout=layout;this.mapSeed=seed;
+  for(const seat of this.seats)seat.ready=false;
+  this.announce();
+ }
+ /** Close the current match while preserving seats, spectators and invitation capabilities. */
+ abortToSetup(){
+  if(!this.authority||this.recovering)throw new Error('No active game to end.');
+  // If the room WebSocket is disconnected, fail before modifying any game state.
+  this.publish({type:'checkpoint-clear'});
+  this.authority=null;this.gameId='';
+  for(const seat of this.seats)seat.ready=false;
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'abort',{});
+  for(const peer of this.spectators)this.output(peer,'abort',{});
+  this.publish({type:'abort'});
+  this.announce();
+ }
+ restart(){
+  if(!this.authority||this.recovering)throw new Error('No running game to restart.');
+  this.gameId=this.token();
+  this.authority=new HostAuthority(this.gameId,createGame(this.mapSeed,this.seats.map(seat=>seat.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.rules}),this.random);
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'restart',{gameId:this.gameId});
+  for(const peer of this.spectators)this.output(peer,'restart',{gameId:this.gameId});
+  this.announce();this.emitCheckpoint(true);this.broadcast();
+ }
+ start(seed:number){
+  const countValid=this.mode==='harbor-coop'?this.seats.length===2:this.boardLayout==='expanded-5-6'?this.seats.length>=5&&this.seats.length<=6:this.seats.length>=2&&this.seats.length<=4;
+  if(this.authority||!countValid||this.seats.some(s=>!s.connected||!s.ready))throw new Error(this.boardLayout==='expanded-5-6'?'Five to six connected, ready players are required for the 5–6 player board.':'Two to four connected, ready players are required for the standard board.');
+  if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
+  this.mapSeed=seed;this.gameId=this.token();const state=createGame(seed,this.seats.map(s=>s.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.rules});this.authority=new HostAuthority(this.gameId,state,this.random);this.recovering=false;this.announce();this.emitCheckpoint();this.broadcast();
+ }
+ resume(value:unknown){
+  if(!this.recovering)throw new Error('No saved game is waiting to resume.');
+  if(!this.allSeatsConnected())throw new Error('All original players must reconnect before resuming.');
+  const recovery=parseSessionRecovery(value);
+  const current=this.recovery();
+  if(recovery.authority.gameId!==current.authority.gameId||recovery.qaTwoPlayers!==current.qaTwoPlayers||recovery.boardLayout!==current.boardLayout||recovery.seats.length!==current.seats.length||recovery.seats.some((seat,index)=>seat.id!==current.seats[index].id||seat.token!==current.seats[index].token))throw new Error('Saved game does not belong to this room session.');
+  const peers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
+  this.restoreRecovery(recovery,false);
+  for(const seat of this.seats){seat.peer=peers.get(seat.id)??null;seat.connected=seat.id==='Player 1'||seat.peer!==null;}
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'resume',{gameId:recovery.authority.gameId,revision:recovery.authority.revision});
+  for(const peer of this.spectators)this.output(peer,'resume',{gameId:recovery.authority.gameId,revision:recovery.authority.revision});
+  this.announce();this.emitCheckpoint(true);this.broadcast();
+ }
+ submit(command:Record<string,unknown>,commandId:string,revision:number){
+  if(!this.authority)throw new Error('Game not started.');
+  if(this.recovering)throw new Error('Saved game is waiting to resume.');
+  const message=JSON.stringify({protocol:1,gameId:this.gameId,revision,commandId,sender:'Player 1',command:{...command,playerId:'Player 1'}});
+  this.tick();
+  const result=this.authority.receive('Player 1',message);
+  if(result.pending){
+   this.emitCheckpoint(true);
+   this.publish({type:'discard-pending',data:{revision:result.revision}});
+   this.broadcastClock();
+  }else if(result.ok){this.emitCheckpoint();this.broadcast();}
+  return result;
+ }
+ private decorate<T extends {public:{players:Array<{id:string;name:string}>}}>(snapshot:T):T {
+  const names=new Map(this.seats.map(seat=>[seat.id,seat.name]));
+  const copy=structuredClone(snapshot);
+  copy.public.players=copy.public.players.map(player=>({...player,name:names.get(player.id)??player.name??player.id}));
+  return copy;
+ }
+ private broadcast(){
+  if(!this.authority||this.recovering)return;
+  this.publish({type:'snapshot',data:this.decorate(this.authority.snapshot('Player 1'))});
+  if(this.authority.hasPendingDiscard('Player 1'))this.publish({type:'discard-pending',data:{revision:this.authority.currentRevision()}});
+  for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
+  const spectatorSnapshot=this.decorate(this.authority.spectatorSnapshot());
+  for(const peer of this.spectators)this.output(peer,'snapshot',spectatorSnapshot);
+  this.broadcastClock();
+ }
+}
