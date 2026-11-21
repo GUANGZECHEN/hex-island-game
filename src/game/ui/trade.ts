@@ -1,4 +1,4 @@
-import { RESOURCES, type Resource, type TradeOffer } from '../rules/state.ts';
+import { RESOURCES, type Resource, type Hand, type TradeOffer } from '../rules/state.ts';
 
 export interface TradeAmount { resource: Resource; count: number }
 export interface IncomingTradeView {
@@ -22,4 +22,9 @@ export function incomingTradeView(offer:TradeOffer|null,viewer:string):IncomingT
   if(!offer || offer.proposer===viewer || !offer.targets.includes(viewer))return null;
   const entries=(hand:TradeOffer['give'])=>RESOURCES.filter(resource=>hand[resource]>0).map(resource=>({resource,count:hand[resource]}));
   return {proposer:offer.proposer,receive:entries(offer.give),give:entries(offer.receive),isBroadcast:offer.targets.length>1,recipientCount:offer.targets.length};
+}
+
+/** Recipient-side affordability is independent of the public hand count. */
+export function missingTradeResources(hand:Readonly<Hand>,cost:Readonly<Hand>):TradeAmount[] {
+  return RESOURCES.filter(resource=>hand[resource]<cost[resource]).map(resource=>({resource,count:cost[resource]-hand[resource]}));
 }
