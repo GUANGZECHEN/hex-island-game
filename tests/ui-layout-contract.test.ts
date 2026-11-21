@@ -452,7 +452,8 @@ test('ship action is visible with materials even when there is no legal harbor t
   const ui=readFileSync('src/game-ui.ts','utf8');
   const status=readFileSync('src/game/ui/ship-action.ts','utf8');
   const css=readFileSync('src/compact-actions.css','utf8');
-  assert.ok(ui.includes("if(!isHarbor(s)&&(s.rules?.ships||affordable(actor.hand,SHIP_COST)))"));
+  assert.ok(ui.includes("if(!isHarbor(s)&&s.rules?.ships)"));
+   assert.ok(ui.includes('2 wood + 2 brick + 3 ore'),'Actions must display the same ship price as the reducer');
   assert.ok(ui.includes('const ship=shipActionAvailability(s,viewer)'));
   assert.ok(ui.includes("shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked'"));
   assert.ok(ui.includes("shipButton.disabled=true"));
@@ -491,4 +492,13 @@ test('Classic Harbor Ships show the reduced 2 lumber + 2 brick + 3 ore cost in b
  assert.ok(!html.includes('3 lumber + 3 brick + 3 ore'),'the superseded ship cost must not remain visible in setup copy');
  const rules=readFileSync('src/game/rules/build.ts','utf8');
  assert.ok(rules.includes('Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:3})'),'the authoritative ship reducer must keep the same cost');
+});
+
+test('room preview uses persistent 3D renderer and recipient shortages disable Accept, not Reject',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ assert.ok(ui.includes('boardRenderer.update({board:setup,roads:{},buildings:{},players:[]'));
+ assert.ok(!ui.includes("large.dataset.renderer='2d'"));
+ assert.ok(ui.includes('const missing=missingTradeResources(actor.hand,s.offer.receive)'));
+ assert.ok(ui.includes('accept.disabled=true'));
+ assert.ok(ui.includes("action(response,'Reject trade'"));
 });
