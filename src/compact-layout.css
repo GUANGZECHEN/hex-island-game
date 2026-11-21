@@ -19,7 +19,7 @@
 @media(min-width:1101px) {
   /* The middle track follows the actual rendered SVG width, not spare monitor width. */
   #game.board-workspace .board-stage {
-    grid-template-columns: var(--compact-player-width,210px) minmax(0,1fr) var(--compact-control-width,300px);
+    grid-template-columns: var(--compact-player-width,230px) minmax(0,1fr) var(--compact-control-width,330px);
     gap: var(--compact-gap,8px);
     width: 100%;
     max-width: var(--compact-stage-width,100%);

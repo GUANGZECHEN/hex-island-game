@@ -7,6 +7,19 @@ export interface CompactBoardSize {
   gap: number;
 }
 
+/** Keep desktop trays readable while leaving the center map the remaining space. */
+function compactSideWidths(availableWidth: number): {playerWidth: number; controlWidth: number} {
+  // At the narrow desktop breakpoint the side trays remain useful without
+  // taking the whole stage. They reach a comfortable desktop size quickly,
+  // then grow more gently toward the roomy-desktop targets around 1900px.
+  const firstRamp = Math.max(0, Math.min(1, (availableWidth - 1100) / 100));
+  const roomyRamp = Math.max(0, Math.min(1, (availableWidth - 1200) / 700));
+  return {
+    playerWidth: Math.round(availableWidth < 1200 ? 230 + firstRamp * 30 : 260 + roomyRamp * 20),
+    controlWidth: Math.round(availableWidth < 1200 ? 330 + firstRamp * 30 : 360 + roomyRamp * 40),
+  };
+}
+
 /** Remove SVG letterboxing from the center grid track, not by cropping the map. */
 export function compactBoardSize(
   availableWidth: number,
@@ -15,7 +28,7 @@ export function compactBoardSize(
   viewBoxHeight: number,
 ): CompactBoardSize | null {
   if (![availableWidth, availableHeight, viewBoxWidth, viewBoxHeight].every(value => Number.isFinite(value) && value > 0)) return null;
-  const playerWidth = 210, controlWidth = 300, gap = 8;
+  const {playerWidth, controlWidth} = compactSideWidths(availableWidth), gap = 8;
   const fixedWidth = playerWidth + controlWidth + 2 * gap;
   if (availableWidth <= fixedWidth) return null;
   const mapWidth = Math.floor(Math.min(availableWidth - fixedWidth, availableHeight * viewBoxWidth / viewBoxHeight));

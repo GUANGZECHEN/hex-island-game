@@ -77,7 +77,10 @@ try {
     assert.ok(!metrics.overflow,JSON.stringify(metrics));
     assert.equal(metrics.buttons.length,4);
     assert.ok(metrics.buttons.every(b=>b.iconClear&&b.labelFits&&b.costBelow&&b.costFits&&b.noInternalOverflow),JSON.stringify(metrics));
-    if(width>1100)assert.ok(metrics.buttons.every(b=>b.width<160&&b.height<95),JSON.stringify(metrics));
+    // Desktop actions intentionally remain a two-column grid. Keep this tied to
+    // the measured pane instead of an arbitrary fixed pixel cap so a wider
+    // command tray can grow without weakening the responsive fit check.
+    if(width>1100)assert.ok(metrics.buttons.every(b=>b.width<=metrics.paneWidth/2+2&&b.height<95),JSON.stringify(metrics));
     check(`Four short-label/cost layout fixtures fit ${width}x${height}`,metrics);
     if(width===1280||width===375)await page.screenshot({path:`${evidence}/compact-actions-${width}.png`,fullPage:true});
   }

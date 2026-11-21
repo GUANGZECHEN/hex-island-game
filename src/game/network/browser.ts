@@ -103,6 +103,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   const catchUp=el<HTMLInputElement>('room-rule-catch-up'),ships=el<HTMLInputElement>('room-rule-ships');
   catchUp.checked=rules.catchUp;ships.checked=rules.ships;
   catchUp.disabled=!canEditRules;ships.disabled=!canEditRules;
+  // Guests and spectators only need the compact checked/unchecked rule state.
+  // `hidden` also removes the host-only explanation from the accessibility tree.
+  document.querySelectorAll<HTMLElement>('[data-room-rule-host-detail]').forEach(detail=>{detail.hidden=role!=='host';});
   const modeInput=el<HTMLSelectElement>('room-game-mode');
   const setHostRules=()=>{
    if(role!=='host'||!host)return;

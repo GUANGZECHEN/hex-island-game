@@ -432,7 +432,7 @@ test('board workspace contains player, map, and simultaneous actions/trades with
  assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
  assert.ok(ui.includes('finishControls();'));
  assert.ok(css.includes('grid-template-areas:"status status" "actions trade"'));
- assert.ok(css.includes('grid-template-columns:minmax(195px,255px) minmax(0,1fr) minmax(260px,335px)'));
+ assert.ok(css.includes('grid-template-columns:minmax(230px,280px) minmax(0,1fr) minmax(330px,400px)'));
 });
 
 test('desktop map fits the viewport height while only side columns can scroll',()=>{

@@ -6,7 +6,7 @@ import {compactBoardSize} from '../src/game/ui/compact-layout.ts';
 test('height-limited boards keep side columns adjacent instead of stretching the middle track', () => {
   const size=compactBoardSize(1800,480,10,10)!;
   assert.equal(size.mapWidth,480);
-  assert.equal(size.stageWidth,1006);
+  assert.equal(size.stageWidth,1167);
   assert.equal(size.gap,8);
   assert.ok(size.stageWidth<1800);
 });
