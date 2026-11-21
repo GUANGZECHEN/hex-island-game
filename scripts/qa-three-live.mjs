@@ -80,7 +80,7 @@ try {
   const frozen=await page.locator('#turn-action-clock-seconds').textContent();
   await delay(1500);
   assert.equal(await page.locator('#turn-action-clock-seconds').textContent(),frozen,'paused clock must stay frozen');
-  assert.equal(await page.getByRole('button',{name:'Place settlement',exact:true}).count(),0,'game actions are unavailable while paused');
+  assert.equal(await page.getByRole('button',{name:'Place settlement',exact:true}).isDisabled(),true,'game actions are unavailable while paused');
   check('Local pause freezes the displayed time and blocks gameplay');
   let info = await inspect(page); report.renderer = info.device;
   const picksBeforeCameraChecks=info.picks;
@@ -169,7 +169,7 @@ try {
   assert.equal(await page.locator('.activity-alert.activity-dice').count(),0,'old dice popup is gone');
   assert.equal(await page.locator('.activity-production-summary').count(),0,'gains belong above buildings');
   await page.screenshot({path:`${evidence}/three-live-dice-production.png`,fullPage:true});
-  if (await page.getByRole('button', { name: 'Move robber', exact: true }).count()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
+  if (await page.getByRole('button', { name: 'Move robber', exact: true }).isEnabled()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
   check('Complete local setup, roads and dice use existing reducers and resource announcements');
   for (const [width, height] of [[1280, 720], [1920, 720], [2560, 900], [1101, 700], [375, 812], [320, 700]]) {
     await page.setViewportSize({ width, height }); await settle(page); await delay(120);
@@ -243,7 +243,7 @@ try {
     await guest.locator('#room-ready').click(); await host.locator('#room-ready').click(); await host.waitForFunction(() => !document.querySelector('#room-start')?.disabled); await host.locator('#room-start').click();
     await ready(host); await ready(guest); await spectator.goto(invite); await ready(spectator);
     assert.equal(await spectator.locator('#private-hand-card').isVisible(), false); assert.equal((await inspect(spectator)).targets.length, 0);
-    const actor = (await host.getByRole('button', { name: 'Place settlement', exact: true }).count()) ? host : guest;
+    const actor = (await host.getByRole('button', { name: 'Place settlement', exact: true }).isEnabled()) ? host : guest;
     const observer = actor === host ? guest : host;
     const observerCamera = (await inspect(observer)).camera;
     await drag(actor, 40, 0); assert.ok(moved(observerCamera, (await inspect(observer)).camera) < .001);
@@ -263,7 +263,7 @@ try {
     await delay(1500);
     for(const p of [host,guest,spectator])assert.equal(await p.locator('#turn-action-clock-seconds').textContent(),onlineFrozen,'every viewer sees the same frozen remaining time');
     assert.equal((await inspect(host)).buildings.length,pieces);
-    assert.equal(await actor.getByRole('button',{name:'Place settlement',exact:true}).count(),0);
+    assert.equal(await actor.getByRole('button',{name:'Place settlement',exact:true}).isDisabled(),true);
     await host.locator('#turn-clock-pause').click();
     for(const p of [host,guest,spectator])await p.waitForFunction(()=>!document.querySelector('#turn-hint')?.textContent.includes('Paused'));
     check('Only host can pause; all online viewers see the frozen clock and gameplay is blocked');

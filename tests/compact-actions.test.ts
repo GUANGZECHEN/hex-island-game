@@ -38,5 +38,6 @@ test('both action factories use compact labels and cost rows have dedicated grid
   assert.ok(css.includes('grid-column: 1 / -1'));
   assert.ok(css.includes('grid-row: 2'));
   assert.ok(css.includes('grid-template-columns: 1.12rem minmax(0, 1fr)'));
-  assert.ok(ui.includes("action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand)"));
+  assert.ok(ui.includes("add(s.phase==='setup-settlement'?'Place settlement':'Build settlement','settlement',()=>mode('settlement'),base.settlement,s.phase==='action'?{lumber:1,brick:1,wool:1,grain:1}:undefined)"));
+  assert.ok(ui.includes("action(grid,label,symbol,run,cost,actor.hand)"));
 });

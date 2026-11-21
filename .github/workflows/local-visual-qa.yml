@@ -2,14 +2,14 @@ name: Validate local visual gameplay without QA tunnel
 
 on:
   push:
-    branches: [game/mvp]
+    branches: [game/mvp, work/persistent-actions-20261121]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: local-visual-game-mvp
+  group: local-visual-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,11 +18,27 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Select focused browser checks for isolated layout changes
+        id: scope
+        shell: bash
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          focus=false
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/persistent-actions-20261121' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" ]]; then
+            changed=$(git diff --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(src/style\.css|scripts/qa-persistent-actions\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
+              focus=true
+            fi
+          fi
+          echo "focus=$focus" >> "$GITHUB_OUTPUT"
       - name: Install, typecheck, unit tests, and compile standalone frontend
         run: |
           npm ci
@@ -34,11 +50,16 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
       - name: Verify real dice geometry, resource payout and 2D fallback
+        if: steps.scope.outputs.focus != 'true'
         run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
       - name: Verify 3D graphics, input, camera, audio-independent behavior and layouts
+        if: steps.scope.outputs.focus != 'true'
         run: node scripts/qa-three-live.mjs
       - name: Verify local Harbor Co-op rules and seven
+        if: steps.scope.outputs.focus != 'true'
         run: node scripts/qa-harbor-coop.mjs
+      - name: Verify persistent action availability
+        run: node scripts/qa-persistent-actions.mjs
       - name: Save screenshots and test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,5 +69,6 @@ jobs:
             dice-evidence
             three-evidence
             harbor-evidence
+            persistent-actions-evidence
           if-no-files-found: ignore
           retention-days: 7

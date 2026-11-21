@@ -1,7 +1,7 @@
 import { usesTradeStations, stationCost } from './game/rules/trade-stations';
 import './style.css';
 import { renderHarborPanel } from './game/ui/harbor';
-import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type GameMode, type HarborCommand } from './game/rules/harbor';
+import { applyHarborCommand as localHarbor, isHarbor, type GameMode, type HarborCommand } from './game/rules/harbor';
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
@@ -14,8 +14,9 @@ import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
-import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, missingTradeResources, type TradeAmount } from './game/ui/trade';
-import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
+import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
+import { bankTradeRate } from './game/ui/interactions';
+import { createActionAvailabilityReader, type ActionAvailability } from './game/ui/action-availability';
 import { initializeNetwork, type BrowserGame, type RoomTableLobby } from './game/network/browser';
 import type { projectState, projectSpectatorState } from './game/network/authority';
 import { createIslandBoard } from './game/board/geometry';
@@ -141,25 +142,36 @@ function scheduleLocalBot(){
  if(!pendingLocalBot(state))return;
  botTimer=window.setTimeout(runLocalBotStep,BOT_DELAY_MS);
 }
-function button(parent:HTMLElement,label:string,action:()=>void){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>attempt(action);parent.append(b);return b;}
+function button(parent:HTMLElement,label:string,action:()=>void){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>{if(!b.disabled)attempt(action);};parent.append(b);return b;}
 function select(parent:HTMLElement,label:string,options:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const value of options){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
 function playerSelect(parent:HTMLElement,label:string,ids:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const id of ids){const option=document.createElement('option');option.value=id;option.textContent=playerName(id);input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
-function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURCES[0]):()=>Resource{
- const field=document.createElement('fieldset');field.className='resource-choice-group';const legend=document.createElement('legend');legend.textContent=label;field.append(legend);let selected=initial;
+const draftCounts=new Map<string,Hand>(),draftChoices=new Map<string,Resource>();
+let draftRecipient=ALL_OTHER_PLAYERS,tradeComposerOpen=false;
+function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURCES[0],onChange:()=>void=()=>{}):()=>Resource{
+ const field=document.createElement('fieldset');field.className='resource-choice-group';const legend=document.createElement('legend');legend.textContent=label;field.append(legend);const key=`${viewer}:${label}`;let selected=draftChoices.get(key)??initial;
  const buttons=new Map<Resource,HTMLButtonElement>();
  const refresh=()=>{for(const [resource,button] of buttons)button.setAttribute('aria-pressed',String(resource===selected));};
- for(const resource of RESOURCES){const choice=document.createElement('button');choice.type='button';choice.className='resource-choice-button';choice.title=resource;choice.setAttribute('aria-label',`Choose ${resource}`);choice.append(resourceIcon(resource));choice.onclick=()=>{selected=resource;refresh();};buttons.set(resource,choice);field.append(choice);}
+ for(const resource of RESOURCES){const choice=document.createElement('button');choice.type='button';choice.className='resource-choice-button';choice.title=resource;choice.setAttribute('aria-label',`Choose ${resource}`);choice.append(resourceIcon(resource));choice.onclick=()=>{if(field.disabled)return;selected=resource;draftChoices.set(key,resource);refresh();onChange();};buttons.set(resource,choice);field.append(choice);}
  refresh();parent.append(field);return ()=>selected;
 }
-function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number]){
+function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number],availability:ActionAvailability,reason:string){
  const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent='Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
- for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give||actor.hand[give]<rate||s.bank[receive]<1)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
+ for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
    const from=document.createElement('span');from.className='bank-trade-side';const rateBadge=document.createElement('span');rateBadge.className='bank-trade-rate';rateBadge.textContent=String(rate);from.append(rateBadge,resourceIcon(give));
    const arrow=document.createElement('span');arrow.className='bank-trade-arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');const to=document.createElement('span');to.className='bank-trade-side';to.append(resourceIcon(receive));
-   tradeButton.append(from,arrow,to);tradeButton.disabled=actor.hand[give]<rate||s.bank[receive]<1;
-   tradeButton.onclick=()=>attempt(()=>commit(applyEconomyCommand(s,{type:'bank-trade',playerId:viewer,give,receive,rate}),`${viewer} traded with the bank.`));grid.append(tradeButton);
+   tradeButton.append(from,arrow,to);setAvailability(tradeButton,availability.bankTrades[`${give}:${receive}`],reason==='Unavailable in this phase or with current resources'?(s.phase!=='action'?'Trade during the action phase':actor.hand[give]<rate?`Need ${rate} ${give}`:s.bank[receive]<1?`Bank has no ${receive}`:reason):reason);
+   tradeButton.onclick=()=>{if(!tradeButton.disabled)attempt(()=>commit(applyEconomyCommand(s,{type:'bank-trade',playerId:viewer,give,receive,rate}),`${viewer} traded with the bank.`));};grid.append(tradeButton);
  }}
  if(grid.childElementCount>0)parent.append(section);
+}
+
+const availabilityLabels=new WeakMap<HTMLButtonElement,{title:string;description:string}>();
+function setAvailability(button:HTMLButtonElement,availability:{enabled:boolean},reason:string){
+ const original=availabilityLabels.get(button)??{title:button.title,description:button.getAttribute('aria-description')??''};availabilityLabels.set(button,original);
+ button.disabled=!availability.enabled;
+ button.title=button.disabled?reason:original.title;
+ const description=[original.description,button.disabled?reason:''].filter(Boolean).join('. ');
+ if(description)button.setAttribute('aria-description',description);else button.removeAttribute('aria-description');
 }
 
 function resourceAmounts(parent:HTMLElement,amounts:readonly TradeAmount[]){for(const amount of amounts)parent.append(resourceChip(amount.resource,amount.count));}
@@ -175,10 +187,11 @@ function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer
 }
 function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:Partial<Record<Resource,number>>,hand?:Hand){
  const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';setCompactActionLabel(b,text,label);b.append(icon(ACTION_PATHS[symbol]),text);
- if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';b.setAttribute('aria-label',`${label}: not enough resources`);}}
+ if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);if(hand&&!affordable(hand,cost)){b.disabled=true;b.title='Not enough resources';}}
  return b;
 }
 function enterGame(){
+ draftCounts.clear();draftChoices.clear();draftRecipient=ALL_OTHER_PLAYERS;tradeComposerOpen=false;
  const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
  document.body.classList.remove('room-configuring');
@@ -217,9 +230,9 @@ window.addEventListener('resize',onViewportSizeChange);
 window.visualViewport?.addEventListener('resize',onViewportSizeChange);
 
 function connectionStatus(value:string){const lower=value.toLowerCase();el('connection-summary').textContent=lower.includes('watching')?'Spectating':lower.includes('paused')||lower.includes('unavailable')||lower.includes('failed')?'Disconnected · rejoin may be required':lower.includes('reconnected')?'Reconnected':lower.includes('reconnect')||lower.includes('interrupted')?'Reconnecting…':lower.includes('connected')||lower.includes('started')?'Connected':lower.includes('connecting')?'Connecting…':'';}
-function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
- const field=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent=label;field.append(legend);field.className='resource-stepper-grid';
- const values=Object.fromEntries(RESOURCES.map(resource=>[resource,0])) as Hand;
+function counts(parent:HTMLElement,label:string,max?:Hand,onChange:()=>void=()=>{},disabledReason=''):()=>Hand{
+ const field=document.createElement('fieldset');field.disabled=!!disabledReason;if(disabledReason){field.title=disabledReason;field.setAttribute('aria-description',disabledReason);}const legend=document.createElement('legend');legend.textContent=label;field.append(legend);field.className='resource-stepper-grid';
+ const key=`${viewer}:${label}`,saved=draftCounts.get(key);const values=Object.fromEntries(RESOURCES.map(resource=>[resource,Math.min(saved?.[resource]??0,max?.[resource]??99)])) as Hand;if(!field.disabled)draftCounts.set(key,values);
  for(const resource of RESOURCES){
   const row=document.createElement('div');row.className='resource-stepper';
   const name=document.createElement('span');name.className='resource-stepper-name';name.append(resourceIcon(resource),document.createTextNode(resource));
@@ -227,8 +240,8 @@ function counts(parent:HTMLElement,label:string,max?:Hand):()=>Hand{
   const count=document.createElement('span');count.className='stepper-count';count.textContent='0';count.setAttribute('aria-live','polite');
   const plus=document.createElement('button');plus.type='button';plus.className='stepper-button';plus.textContent='+';plus.setAttribute('aria-label',`Add one ${resource}`);
   const refresh=()=>{count.textContent=String(values[resource]);minus.disabled=values[resource]===0;plus.disabled=values[resource]>=(max?.[resource]??99);};
-  minus.onclick=()=>{values[resource]=Math.max(0,values[resource]-1);refresh();};
-  plus.onclick=()=>{values[resource]=Math.min(max?.[resource]??99,values[resource]+1);refresh();};
+  minus.onclick=()=>{if(field.disabled)return;values[resource]=Math.max(0,values[resource]-1);refresh();onChange();};
+  plus.onclick=()=>{if(field.disabled)return;values[resource]=Math.min(max?.[resource]??99,values[resource]+1);refresh();onChange();};
   row.append(name,minus,count,plus);field.append(row);refresh();
  }
  parent.append(field);return ()=>({...values});
@@ -519,6 +532,10 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=isPaused()?(remote?'Paused by host.':'Game paused.'):spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(!isPaused()&&usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
+ const canUndo=remote?projection?.public.undoPlayerId===viewer:localUndoState!==null&&localUndoPlayerId===viewer;
+ const context={paused:isPaused(),canUndo,deckCount:projection?.public.deckCount ?? s.deck.length,discardSubmitted};
+ const availability=actor?createActionAvailabilityReader(s,viewer,context):null,base=availability?.();
+ if(targetMode&&(!base||!base[targetMode].enabled))targetMode=null;
  drawBoard();actionClockDisplay();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
  if(pendingRollPresentation&&!el('game').hidden){
   if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
@@ -529,111 +546,79 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
  el('harbor-panel').inert=isPaused();
- if(isPaused()){actions.textContent='Game paused.';return;}
- if(spectating||!actor)return;
- const finishControls=()=>{
-  if(!actions.querySelector('button:not(:disabled)')&&!actions.querySelector('.discard-submitted')){
-   const pending=document.createElement('p');pending.className='board-action-empty';pending.textContent=el('turn-hint').textContent||'Waiting for the current player.';actions.append(pending);
-  }
-  if(!trade.querySelector('button:not(:disabled)')&&!trade.querySelector('.domestic-trade-card')){
-   const empty=document.createElement('p');empty.className='board-trade-empty';empty.textContent='No trades available at this stage.';trade.append(empty);
-  }
- };
+ if(spectating||!actor||!availability||!base)return;
+ const reason=isPaused()?'Game paused':s.phase==='finished'?'Game over':viewer!==active.id?'Waiting for your turn':'Unavailable in this phase or with current resources';
+ const apply=(b:HTMLButtonElement,a:{enabled:boolean},why=reason)=>setAvailability(b,a,why);
+ if(targetMode&&!base[targetMode].enabled)targetMode=null;
  if(targetMode){
   const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
   const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
   if(!legalTargetIds(s,viewer,targetMode).length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
  }
-
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
- const canUndo=remote?projection?.public.undoPlayerId===viewer:localUndoState!==null&&localUndoPlayerId===viewer;
- const appendUndoAction=()=>{
-  if(!canUndo)return;
-  const undoRow=document.createElement('div');undoRow.className='action-grid undo-action-row';actions.append(undoRow);
-  action(undoRow,'Undo last action','end',()=>{
-   if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
-   if(!localUndoState)throw new Error('Nothing safe to undo.');
-   const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
-   if(localUndoDeadlines){localActionDeadlines.clear();for(const [id,deadline] of localUndoDeadlines)localActionDeadlines.set(id,deadline);}localUndoDeadlines=null;
-   commit(previous,`${playerName(viewer)} undid the last action.`);
-  });
+ const add=(label:string,symbol:ActionIcon,run:()=>void,a:{visible:boolean;enabled:boolean},cost?:Partial<Record<Resource,number>>)=>{
+  if(!a.visible)return null;const b=action(grid,label,symbol,run,cost,actor.hand);const detail=reason==='Unavailable in this phase or with current resources'?(label.startsWith('Build')||label.startsWith('Place')||label==='Upgrade city'?'No legal target or insufficient resources':label==='Roll dice'?'Roll at the start of your turn':label==='End turn'?'End your turn during the action phase':label==='Move robber'?'Move the robber when required':label==='Finish free roads'?'Available during free road placement':label==='Claim victory'?'Need enough victory points':label==='Buy development card'?'Need resources and cards in the deck':label==='Steal'?'Choose an eligible victim':label==='Discard'?'Select the required number of cards':reason):reason;apply(b,a,detail);return b;
  };
- if(s.discards[viewer]&&s.phase==='discard'){
-  if(discardSubmitted){const note=document.createElement('p');note.className='discard-submitted';note.textContent='Discard submitted. Waiting for the other players…';actions.append(note);}
-  else{const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
+ add('Roll dice','dice',()=>commit(applyTurnCommand(s,{type:'roll',playerId:viewer}),`${viewer} rolled.`),base.roll);
+ add(s.phase==='setup-road'||s.phase==='free-road'?'Place road':'Build road','road',()=>mode('road'),base.road,s.phase==='action'?{lumber:1,brick:1}:undefined);
+ add(s.phase==='setup-settlement'?'Place settlement':'Build settlement','settlement',()=>mode('settlement'),base.settlement,s.phase==='action'?{lumber:1,brick:1,wool:1,grain:1}:undefined);
+ add(s.phase==='setup-city'?'Place city':'Upgrade city','city',()=>mode('city'),base.city,s.phase==='action'?{grain:2,ore:3}:undefined);
+ add('Build trade station','trade',()=>mode('station'),base.station,stationCost(s));
+ if(base.ship.visible){const ship=shipActionAvailability(s,viewer);const b=add(`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 3 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b){b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked';if(!base.ship.enabled&&ship.reason&&viewer===active.id&&!isPaused()&&s.phase==='action')apply(b,base.ship,ship.reason);}}
+ add('End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`),base.endTurn);
+ add('Move robber','settlement',()=>mode('robber'),base.robber);
+ add('Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'),base.finishFreeRoads);
+ add('Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`),base.claimVictory);
+ add('Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),base.buyDevelopment,{wool:1,grain:1,ore:1});
+ if(base.steal.visible){
+  const victim=playerSelect(actions,'Choose victim',s.victims);
+  const selectedVictim=availability({victimId:victim.value}).steal;
+  const steal=add('Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`),selectedVictim);
+  victim.disabled=!selectedVictim.enabled;if(victim.disabled){victim.title=reason;victim.setAttribute('aria-description',reason);}
+  victim.onchange=()=>{if(steal)apply(steal,availability({victimId:victim.value}).steal);};
  }
- if(s.offer?.targets.includes(viewer)){
-  incomingTradeCard(trade,s.offer);
-  const missing=missingTradeResources(actor.hand,s.offer.receive);
-  if(missing.length){const note=document.createElement('p');note.className='trade-insufficient';note.textContent=`Cannot accept: need ${missing.map(item=>`${item.count} more ${item.resource}`).join(', ')}.`;trade.append(note);}
-  const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);
-  const accept=action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});
-  if(missing.length){accept.disabled=true;accept.title='Insufficient resources to accept this offer';accept.setAttribute('aria-label','Accept trade unavailable: insufficient resources');}
-  action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));
+ if(discardSubmitted&&s.phase==='discard'){const note=document.createElement('p');note.className='discard-submitted';note.textContent='Discard submitted. Waiting for the other players…';actions.append(note);}
+ if(base.discard.visible){
+  const pendingDiscard=!isPaused()&&s.phase==='discard'&&!discardSubmitted&&!!s.discards[viewer];
+  const discardReason=pendingDiscard?'':isPaused()?'Game paused':discardSubmitted?'Discard already submitted':'No discard required';
+  let discardButton:HTMLButtonElement|null=null;
+  const get=counts(actions,`Discard exactly ${s.discards[viewer]??0} cards`,actor.hand,()=>{if(discardButton)apply(discardButton,availability({discard:get()}).discard,'Select the required number of cards');},discardReason);
+  discardButton=add('Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`),availability({discard:get()}).discard);
  }
- if(viewer!==active.id){appendUndoAction();finishControls();return;}
- if(s.phase==='setup-city')action(grid,'Place city','city',()=>mode('city'));
- if(s.phase==='setup-settlement')action(grid,'Place settlement','settlement',()=>mode('settlement'));
- if(s.phase==='setup-road'||s.phase==='free-road'){action(grid,'Place road','road',()=>mode('road'));if(s.phase==='free-road')action(grid,'Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'));}
- if(s.phase==='roll')action(grid,'Roll dice','dice',()=>commit(applyTurnCommand(s,{type:'roll',playerId:viewer}),`${viewer} rolled.`));
- if(s.phase==='robber')action(grid,'Move robber','settlement',()=>mode('robber'));
- if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
- if(s.phase==='action'){
-  if(usesTradeStations(s)&&affordable(actor.hand,stationCost(s))&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),stationCost(s),actor.hand);
-  // A lack of port ownership, legal harbor space, or supply must not make
-  // a ship action mysteriously disappear from the Actions panel.
-  if(!isHarbor(s)&&s.rules?.ships){
-   const ship=shipActionAvailability(s,viewer);
-   const shipButton=action(grid,`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 3 ore`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
-   shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked';
-   if(!ship.enabled&&ship.reason){
-    shipButton.disabled=true;
-    shipButton.title=ship.reason;
-    shipButton.setAttribute('aria-label',`Build ship unavailable: ${ship.reason}`);
-    shipButton.setAttribute('aria-description',`${shipButton.getAttribute('aria-description')??'Cost: 2 wood, 2 brick, 3 ore.'} ${ship.reason}`);
-    const hint=document.createElement('small');hint.className='ship-action-reason';hint.textContent=ship.reason;shipButton.append(hint);
-   }
-  }
-  action(grid,'End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`));
-  if(affordable(actor.hand,{lumber:1,brick:1})&&legalTargetIds(s,viewer,'road').length)action(grid,'Build road','road',()=>mode('road'),{lumber:1,brick:1},actor.hand);
-  if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
-  if(affordable(actor.hand,{grain:2,ore:3})&&legalTargetIds(s,viewer,'city').length)action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
-  bankTradeButtons(trade,s,actor);
-  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);if(!usesTradeStations(s)&&RESOURCES.some(resource=>actor.hand[resource]>0)&&(!isHarbor(s)||s.players.some(p=>p.id!==viewer&&partnersConnected(s,viewer,p.id))))trade.append(domestic);
-  const recipientLabel=document.createElement('label');recipientLabel.textContent='Offer trade to';
-  const opponent=document.createElement('select');opponent.className='trade-recipient-select';opponent.setAttribute('aria-label','Trade recipient');opponent.dataset.tradeRecipient='true';
+
+ const appendUndoAction=()=>{if(base.undo.visible){const undoRow=document.createElement('div');undoRow.className='action-grid undo-action-row';actions.append(undoRow);const undo=action(undoRow,'Undo last action','end',()=>{
+  if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
+  if(!localUndoState)throw new Error('Nothing safe to undo.');
+  const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
+  if(localUndoDeadlines){localActionDeadlines.clear();for(const [id,deadline] of localUndoDeadlines)localActionDeadlines.set(id,deadline);}localUndoDeadlines=null;
+  commit(previous,`${playerName(viewer)} undid the last action.`);
+ });apply(undo,base.undo,'Nothing available to undo');}};
+ if(s.offer?.targets.includes(viewer))incomingTradeCard(trade,s.offer);
+ if(base.acceptOffer.visible||base.rejectOffer.visible){const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);
+  if(base.acceptOffer.visible){const b=action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});apply(b,base.acceptOffer,'Cannot accept this offer');}
+  if(base.rejectOffer.visible){const b=action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));apply(b,base.rejectOffer);}
+ }
+ bankTradeButtons(trade,s,actor,base,reason);
+ if(base.offer.visible){
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);domestic.open=tradeComposerOpen;domestic.ontoggle=()=>{tradeComposerOpen=domestic.open;};trade.append(domestic);
+  const recipientLabel=document.createElement('label');recipientLabel.textContent='Offer trade to';const opponent=document.createElement('select');opponent.className='trade-recipient-select';opponent.setAttribute('aria-label','Trade recipient');opponent.dataset.tradeRecipient='true';
   const allPlayers=document.createElement('option');allPlayers.value=ALL_OTHER_PLAYERS;allPlayers.textContent='All other players';opponent.append(allPlayers);
-  for(const player of s.players.filter(p=>p.id!==viewer)){const option=document.createElement('option');option.value=player.id;option.textContent=playerName(player.id);opponent.append(option);}
-  recipientLabel.append(opponent);domestic.append(recipientLabel);
-  const offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');
-  action(domestic,'Make offer','trade',()=>{
-   const targets=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer);
-   if(!targets.length)throw new Error('Choose at least one other player.');
-   const broadcast=opponent.value===ALL_OTHER_PLAYERS;
-   commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets,give:offered(),receive:wanted()}),broadcast?`${viewer} offered a trade to all other players.`:`${viewer} offered a trade to ${playerName(targets[0])}.`);
-  });
-  if(s.offer){
-   if(s.offer.targets.length>1){const note=document.createElement('p');note.className='trade-broadcast-status';note.textContent=`Offer sent to ${s.offer.targets.length} players · first valid acceptance wins.`;trade.append(note);}
-   action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
-  }
+  for(const player of s.players.filter(p=>p.id!==viewer)){const option=document.createElement('option');option.value=player.id;option.textContent=playerName(player.id);opponent.append(option);}opponent.value=draftRecipient;if(!opponent.value)opponent.value=ALL_OTHER_PLAYERS;const canDraftOffer=!isPaused()&&s.phase==='action'&&viewer===active.id;const draftReason=canDraftOffer?'':isPaused()?'Game paused':'Trade during your action phase';opponent.disabled=!canDraftOffer;if(draftReason){opponent.title=draftReason;opponent.setAttribute('aria-description',draftReason);}recipientLabel.append(opponent);domestic.append(recipientLabel);
+  let offerButton:HTMLButtonElement;const refreshOffer=()=>{if(offerButton)apply(offerButton,availability({offer:{targets:tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer),give:offered(),receive:wanted()}}).offer,'Select a valid recipient and cards to offer and request');};
+  const offered=counts(domestic,'Offer these cards',actor.hand,refreshOffer,draftReason),wanted=counts(domestic,'Request these cards',undefined,refreshOffer,draftReason);opponent.onchange=()=>{draftRecipient=opponent.value;refreshOffer();};
+  offerButton=action(domestic,'Make offer','trade',()=>{const selected=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer);const broadcast=opponent.value===ALL_OTHER_PLAYERS;commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:selected,give:offered(),receive:wanted()}),broadcast?`${viewer} offered a trade to all other players.`:`${viewer} offered a trade to ${playerName(selected[0])}.`);});refreshOffer();
  }
- if(s.phase==='action'){
-  if(usesDevelopmentCards(s)&&(projection?.public.deckCount ?? s.deck.length)>0&&affordable(actor.hand,{wool:1,grain:1,ore:1}))action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
+ if(s.offer?.proposer===viewer&&s.offer.targets.length>1){const note=document.createElement('p');note.className='trade-broadcast-status';note.textContent=`Offer sent to ${s.offer.targets.length} players · first valid acceptance wins.`;trade.append(note);}
+ if(base.cancelOffer.visible){const b=action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));apply(b,base.cancelOffer);}
+ if(usesDevelopmentCards(s)){
+  const play=(card:Exclude<Development,'victory-point'>,extra:Partial<{resource:Resource;resources:Resource[]}>= {})=>commit(applyEconomyCommand(s,{type:'play-card',playerId:viewer,card,...extra}),`${viewer} played ${DEVELOPMENT_LABELS[card]}.`);
+  const section=document.createElement('section');section.className='development-actions-inline';const heading=document.createElement('h2');heading.textContent='Development cards';const cardGrid=document.createElement('div');cardGrid.className='action-grid development-action-grid';section.append(heading,cardGrid);actions.append(section);
+  for(const [label,card,a] of [['Play Knight','knight',base.knight],['Play Road Building','road-building',base.roadBuilding]] as const){if(a.visible){const b=developmentAction(cardGrid,label,card,()=>play(card));apply(b,a);}}
+  if(base.monopoly.visible){const box=document.createElement('div');box.className='development-effect';const resource=resourceChoice(box,'Choose Monopoly resource');const b=developmentAction(box,'Play Monopoly','monopoly',()=>play('monopoly',{resource:resource()}));apply(b,base.monopoly);box.querySelectorAll('fieldset').forEach(field=>field.disabled=!base.monopoly.enabled);section.append(box);}
+  if(base.yearOfPlenty.visible){const box=document.createElement('div');box.className='development-effect';let b:HTMLButtonElement;const refresh=()=>{if(b)apply(b,availability({invention:[first(),second()]}).yearOfPlenty,'Choose two resources available in the bank');};const first=resourceChoice(box,'First resource',RESOURCES[0],refresh),second=resourceChoice(box,'Second resource',RESOURCES[0],refresh);b=developmentAction(box,'Play Year of Plenty','invention',()=>play('invention',{resources:[first(),second()]}));refresh();const bankSelection:Resource[]=[];for(const resource of RESOURCES)for(let i=0;i<Math.min(s.bank[resource],2)&&bankSelection.length<2;i++)bankSelection.push(resource);const canChoose=bankSelection.length===2&&availability({invention:bankSelection}).yearOfPlenty.enabled;box.querySelectorAll('fieldset').forEach(field=>{field.disabled=!canChoose;if(!canChoose){field.title=reason;field.setAttribute('aria-description',reason);}});section.append(box);}
  }
- if(usesDevelopmentCards(s)&&(s.phase==='action'||s.phase==='roll')){
-  const playable=playableDevelopmentTypes(s,viewer),play=(card:Exclude<Development,'victory-point'>,extra:Partial<{resource:Resource;resources:Resource[]}>= {})=>{commit(applyEconomyCommand(s,{type:'play-card',playerId:viewer,card,...extra}),`${viewer} played ${DEVELOPMENT_LABELS[card]}.`);};
-  if(playable.length){
-   const cardSection=document.createElement('section');cardSection.className='development-actions-inline';const heading=document.createElement('h2');heading.textContent='Development cards';const cardGrid=document.createElement('div');cardGrid.className='action-grid development-action-grid';cardSection.append(heading,cardGrid);actions.append(cardSection);
-   if(playable.includes('knight'))developmentAction(cardGrid,'Play Knight','knight',()=>play('knight'));
-   if(playable.includes('road-building'))developmentAction(cardGrid,'Play Road Building','road-building',()=>play('road-building'));
-   if(playable.includes('monopoly')){const box=document.createElement('div');box.className='development-effect';const resource=resourceChoice(box,'Choose Monopoly resource');developmentAction(box,'Play Monopoly','monopoly',()=>play('monopoly',{resource:resource()}));cardSection.append(box);}
-   if(playable.includes('invention')){const box=document.createElement('div');box.className='development-effect';const first=resourceChoice(box,'First resource'),second=resourceChoice(box,'Second resource');developmentAction(box,'Play Year of Plenty','invention',()=>play('invention',{resources:[first(),second()]}));cardSection.append(box);}
-  }
- }
- if(!isHarbor(s)&&!['setup-settlement','setup-road','finished'].includes(s.phase)&&publicVictoryPoints(s,viewer)+actor.cards.filter(card=>card.type==='victory-point').length>=10)action(grid,'Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`));
  appendUndoAction();
- finishControls();
 }
 function refreshLocalMapPreview(){
  if(!localRoomOpen)return;

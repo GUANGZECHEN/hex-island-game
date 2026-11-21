@@ -1407,9 +1407,10 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
 .board-workspace .board-command-pane .bank-trade-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.2rem}
 .board-workspace .board-command-pane .bank-trade-button{min-width:0;min-height:42px;padding:.25rem}
 .board-workspace .board-command-pane .bank-trade-side .resource-icon{width:.88rem;height:.88rem}
-.board-workspace .board-command-pane .resource-stepper-grid{grid-template-columns:minmax(0,1fr);gap:.26rem;padding:.25rem}
-.board-workspace .board-command-pane .resource-stepper{grid-template-columns:minmax(0,1fr) 30px 1.4rem 30px;gap:.12rem}
-.board-workspace .board-command-pane .stepper-button{min-width:0;padding:0;min-height:32px}
+.board-workspace .board-command-pane .resource-stepper-grid{display:block;width:100%;max-width:100%;padding:.25rem}
+.board-workspace .board-command-pane .resource-stepper-grid .resource-stepper+.resource-stepper{margin-top:.26rem}
+.board-workspace .board-command-pane .resource-stepper{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr) 30px 1.4rem 30px;gap:.12rem}
+.board-workspace .board-command-pane .stepper-button{width:100%;min-width:0;padding:0;min-height:32px}
 .board-workspace .board-command-pane fieldset{min-width:0;margin:.3rem 0}
 .board-workspace .board-command-pane .undo-action-row{margin-top:.45rem}
 .board-workspace .board-command-pane .undo-action-row .action-button{grid-column:1/-1}
@@ -1451,7 +1452,7 @@ select{max-width:100%}button{min-height:44px}button:focus-visible,input:focus-vi
  .board-workspace .board-command-pane .action-button{font-size:.66rem;min-height:42px}
  .board-workspace .board-command-pane .bank-trade-side .resource-icon{width:.8rem;height:.8rem}
  .board-workspace .board-command-pane .resource-stepper{grid-template-columns:minmax(0,1fr) 24px 1.1rem 24px;gap:.08rem}
- .board-workspace .board-command-pane .resource-stepper-name{font-size:.6rem}
+ .board-workspace .board-command-pane .resource-stepper-name{display:block;min-width:0;max-width:100%;font-size:.6rem;line-height:1.1;overflow-wrap:anywhere}
  .board-workspace .board-player-column .resource-chip{font-size:.65rem}
 }
 
@@ -1609,3 +1610,24 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 
 .board-workspace #turn-clock-pause{pointer-events:auto;min-height:28px;margin:.15rem 0 0;padding:.18rem .48rem;font-size:.7rem;line-height:1.1}
 .board-workspace #turn-clock-pause[hidden]{display:none!important}
+
+/* Keep unavailable draft controls legible while distinguishing them from active inputs. */
+.board-workspace .board-command-pane .resource-stepper-grid:disabled,
+.board-workspace .board-command-pane .resource-choice-group:disabled{
+ color:#66736d;
+ border-color:#d8ded9;
+ opacity:.72;
+ filter:grayscale(.8);
+}
+.board-workspace .board-command-pane .resource-choice-group:disabled .resource-choice-button[aria-pressed="true"]{
+ border-color:#87938b;
+ background:#e4e9e4;
+ box-shadow:inset 0 0 0 2px #a1aaa3;
+}
+.board-workspace .board-command-pane select:disabled{
+ color:#66736d;
+ background-color:#edf0ed;
+ border-color:#ccd4ce;
+ opacity:.8;
+ cursor:not-allowed;
+}
