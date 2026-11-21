@@ -1581,3 +1581,27 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
  .board-workspace #turn-action-clock-player{font-size:.6rem}
  .board-workspace #turn-action-clock-seconds{font-size:1.12rem}
 }
+
+/* Waiting-room controls occupy the exact command column used by the live game. */
+.playing.room-table.room-configuring .board-workspace .board-command-column #room-section{
+ width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow-wrap:anywhere;flex:0 0 auto;
+}
+@media(max-width:1100px){
+ .room-table.room-configuring .board-workspace .board-command-column{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-areas:"status status";
+  grid-template-rows:auto;
+ }
+ .room-table.room-configuring .board-workspace .board-command-column #room-section{
+  grid-area:status;grid-column:1/-1;width:100%;max-width:100%;min-width:0;
+ }
+}
+.board-workspace .trade-recipient-select{
+ display:block;width:100%;max-width:100%;min-width:0;min-height:38px;margin:.2rem 0 .4rem;
+ padding:.32rem .42rem;border:1px solid #cbd8c8;border-radius:.45rem;background:#fffef9;color:#244638;
+}
+.trade-broadcast-note,.trade-broadcast-status{
+ margin:.3rem 0;padding:.35rem .48rem;border-radius:.45rem;background:#eef5ec;color:#315b43;
+ font-size:.72rem;font-weight:700;line-height:1.35;
+}
+.trade-broadcast-status{border-left:3px solid #4d9670}
