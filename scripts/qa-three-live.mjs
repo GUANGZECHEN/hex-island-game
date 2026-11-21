@@ -163,7 +163,7 @@ try {
   assertCameraUnchanged(viewBeforeUndo,await inspect(page),'Undo');
   check('Rotated 3D ray picking executes a real settlement command; safe Undo removes it');
   await page.locator('#board-view-reset').click();
-  for (let i = 0; i < 6; i++) { await reveal(page); await canvasPlace(page, 'Build settlement'); await canvasPlace(page, 'Place road'); }
+  for (let i = 0; i < 6; i++) { await reveal(page); await canvasPlace(page, 'Build settlement'); await canvasPlace(page, 'Build road'); }
   await reveal(page); info = await inspect(page);
   assert.equal(info.buildings.length, 6); assert.equal(info.roads.length, 6);
   await drag(page,35,-14);
