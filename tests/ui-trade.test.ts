@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection } from '../src/game/ui/trade.ts';
+import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, missingTradeResources } from '../src/game/ui/trade.ts';
 import type { TradeOffer } from '../src/game/rules/state.ts';
 
 const offer:TradeOffer={
@@ -37,4 +37,12 @@ test('broadcast incoming offers tell every recipient that the first acceptance w
  assert.equal(view.isBroadcast,true);
  assert.equal(view.recipientCount,3);
  assert.equal(incomingTradeView(broadcast,'Player 1'),null);
+});
+
+test('recipient can only accept if every required resource is available',()=>{
+ const hand={lumber:1,brick:0,wool:0,grain:3,ore:0};
+ assert.deepEqual(missingTradeResources(hand,offer.receive),[
+  {resource:'brick',count:1}, {resource:'ore',count:1}
+ ]);
+ assert.deepEqual(missingTradeResources({...hand,brick:1,ore:1},offer.receive),[]);
 });
