@@ -33,7 +33,15 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   const offer=state.offer;
   if(state.phase!=='action'||!offer||offer.id!==command.id||!offer.targets.includes(player.id)||offer.proposer!==active.id)throw new Error('Offer is stale or not addressed to player.');
   if(isHarbor(state)&&!partnersConnected(state,player.id,active.id))throw new Error('Connect both settlements before trading.');
-  if(command.type==='accept-offer'){transfer(active.hand,player.hand,offer.give);transfer(player.hand,active.hand,offer.receive);state.offer=null;}
+  if(command.type==='accept-offer'){
+   // Check both hands before moving any cards; the first valid recipient wins.
+   // Keep rejected/stale offers intact on the authoritative host.
+   if(RESOURCES.some(resource=>active.hand[resource]<offer.give[resource]||player.hand[resource]<offer.receive[resource]))
+    throw new Error('Insufficient resources to accept this trade.');
+   transfer(active.hand,player.hand,offer.give);
+   transfer(player.hand,active.hand,offer.receive);
+   state.offer=null;
+  }
   else {offer.targets=offer.targets.filter(id=>id!==player.id);if(!offer.targets.length)state.offer=null;}
   return state;
  }
