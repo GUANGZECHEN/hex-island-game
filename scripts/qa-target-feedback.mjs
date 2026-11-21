@@ -29,7 +29,7 @@ const fixture=`
  initial.currentSeat=0;initial.turn=10;initial.phase='action';initial.playedDevelopment=false;
  initial.players[0].cards=card?[{type:card,boughtTurn:0}]:[];
  for(const p of initial.players)for(const r of RESOURCES){initial.bank[r]+=p.hand[r]-4;p.hand[r]=4;}
- state=initial;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,3,0);syncLocalActionClock();lastTurnCue='10:0';log=[];publicActivity='Choose a target.';pendingActivityAlert='';pendingProductionSummary=null;
+ state=initial;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,3,0);syncLocalActionClock();lastTurnCue='10:0';log=[];publicActivity='Choose a target.';pendingActivityAlert='';pendingRollPresentation=null;
  el('pass').hidden=true;el('game').hidden=false;enterGame();render();
 }};
 `;
