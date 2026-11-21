@@ -16,7 +16,8 @@ import {drawIndex as fixtureDraw} from './game/rules/state.ts';
 (window as any).__diceFixture={
  load(variant:'normal'|'blocked'|'seven'|'multiple'='normal'){
   clearBotTimer();boardRenderer?.clearRoll();remote=null;projection=null;networkRevision=0;localBotIds=new Set();
-  targetMode=null;localUndoState=null;pendingLocalUndo=null;pendingRollPresentation=null;
+  targetMode=null;localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;pendingRollPresentation=null;
+  localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
   const next=createGame(24680,['Player 1','Player 2'],()=>0);
   const tile=next.board.hexes.find(h=>h.token===(variant==='multiple'?9:8)&&h.resource!==null)!;
   const hex=createIslandBoard(next.board.layout).hexes.find(h=>h.id===tile.hexId)!;
@@ -45,7 +46,7 @@ import {drawIndex as fixtureDraw} from './game/rules/state.ts';
    if(a.index+b.index+2===total){next.randomState=seed;matched=true;break;}
   }
   if(!matched)throw new Error('No matching deterministic dice stream');
-  state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0);
+  state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0);syncLocalActionClock();
   log=[];publicActivity='Dice visual fixture';lastTurnCue='9:0';pendingActivityAlert='';pendingRollPresentation=null;
   el('pass').hidden=true;el('game').hidden=false;enterGame();render();
   (window as any).__diceExpected={total,resource:tile.resource,secondResource,hexId:tile.hexId,city:verts[0],settlement:verts[1]};

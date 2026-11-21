@@ -18,7 +18,8 @@ const fixture=`
 // Disposable test data only; excluded from every production build.
 (window as any).__targetFixture={load(card:'knight'|'road-building'|null){
  clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();
- localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;targetMode=null;
+ localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;
+ localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
  let initial=createGame(24680,['Player 1','Player 2','Player 3'],()=>0);
  for(let guard=0;guard<30&&initial.phase.startsWith('setup-');guard++){
   const playerId=initial.players[initial.currentSeat].id,kind=initial.phase==='setup-settlement'?'settlement':'road';
@@ -28,7 +29,7 @@ const fixture=`
  initial.currentSeat=0;initial.turn=10;initial.phase='action';initial.playedDevelopment=false;
  initial.players[0].cards=card?[{type:card,boughtTurn:0}]:[];
  for(const p of initial.players)for(const r of RESOURCES){initial.bank[r]+=p.hand[r]-4;p.hand[r]=4;}
- state=initial;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,3,0);lastTurnCue='10:0';log=[];publicActivity='Choose a target.';pendingActivityAlert='';pendingProductionSummary=null;
+ state=initial;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,3,0);syncLocalActionClock();lastTurnCue='10:0';log=[];publicActivity='Choose a target.';pendingActivityAlert='';pendingProductionSummary=null;
  el('pass').hidden=true;el('game').hidden=false;enterGame();render();
 }};
 `;

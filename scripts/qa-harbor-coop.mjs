@@ -9,7 +9,8 @@ const report={scope:process.env.HARBOR_ALLOW_2D==='1'?'Fallback accepted for loc
 const html='__harbor-fixture.html',source='src/__harbor-fixture.ts';
 const fixture=`
 (window as any).__harborFixture={load(outcome:'playing'|'win'|'lose'|'station'|'road-support'|'own-shipping'|'seven'='playing'){
- clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();localUndoState=null;pendingLocalUndo=null;targetMode=null;lastWinnerAlert='';
+ clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;lastWinnerAlert='';
+ localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
  let s=createGame(24680,['Player 1','Player 2'],undefined,{mode:'harbor-coop'});
  for(let n=0;n<8;n++){const c=chooseBotCommand(s,s.players[s.currentSeat].id)!;s=applyBotCommand(s,c);}
  s.currentSeat=0;s.phase='action';s.turn=1;
@@ -51,7 +52,7 @@ const fixture=`
   s.buildings={[ownEnd]:{playerId:'Player 1',kind:'settlement'},[otherEnd]:{playerId:'Player 2',kind:'city'}};
   (window as any).__harborRoadFixture={allowed:allowed.id,forbidden:forbidden.id};
  }
- state=s;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,'harbor-coop');lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;
+ state=s;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,'harbor-coop');syncLocalActionClock();lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;
  el('pass').hidden=true;el('game').hidden=false;enterGame();render();
 },snapshot(){return structuredClone(state);},redraw(){render();},completeOwnRoute(){
  const port=state!.board.ports.find(p=>p.edgeId===state!.harbor!.orders[0].portId)!;
