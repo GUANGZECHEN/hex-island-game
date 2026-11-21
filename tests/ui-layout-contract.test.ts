@@ -501,3 +501,22 @@ test('room preview uses persistent 3D renderer and recipient shortages disable A
  assert.ok(ui.includes('apply(b,base.rejectOffer'));
  assert.ok(ui.includes("action(response,'Reject trade'"));
 });
+
+test('only currently executable gameplay actions are shown, with four persistent cost-reference panels',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8');
+ const css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes("if(!a.visible||!a.enabled)return null"),'ordinary action controls must remain actionable-only');
+ assert.ok(ui.includes("learning.className='learn-action-panel'"));
+ assert.ok(ui.includes("learningAction('Build road'"));
+ assert.ok(ui.includes("learningAction('Build settlement'"));
+ assert.ok(ui.includes("learningAction('Upgrade house to city'"));
+ assert.ok(ui.includes("learningAction('Buy development card'"));
+ assert.ok(ui.includes("{lumber:1,brick:1}"));
+ assert.ok(ui.includes("{lumber:1,brick:1,wool:1,grain:1}"));
+ assert.ok(ui.includes("{grain:2,ore:3}"));
+ assert.ok(ui.includes("{wool:1,grain:1,ore:1}"));
+ assert.ok(ui.includes("if(s.phase==='action'&&viewer===active.id&&!isPaused())bankTradeButtons"));
+ assert.ok(ui.includes("availability.bankTrades"));
+ assert.ok(css.includes('.learn-action-panel{'));
+ assert.ok(css.includes('.learn-action-grid .action-button:disabled'));
+});
