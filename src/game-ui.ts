@@ -602,7 +602,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(base.acceptOffer.visible){const b=action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});apply(b,base.acceptOffer,'Cannot accept this offer');}
   if(base.rejectOffer.visible){const b=action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));apply(b,base.rejectOffer);}
  }
- bankTradeButtons(trade,s,actor,base,reason);
+ if(s.phase==='action'&&viewer===active.id&&!isPaused())bankTradeButtons(trade,s,actor,base,reason);
  if(base.offer.visible){
   const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);domestic.open=tradeComposerOpen;domestic.ontoggle=()=>{tradeComposerOpen=domestic.open;};trade.append(domestic);
   const recipientLabel=document.createElement('label');recipientLabel.textContent='Offer trade to';const opponent=document.createElement('select');opponent.className='trade-recipient-select';opponent.setAttribute('aria-label','Trade recipient');opponent.dataset.tradeRecipient='true';
