@@ -52,6 +52,7 @@ test('camera is never auto-fitted by an in-game action, a map refresh or a canva
  assert.ok(renderer.includes('restoreView(view: BoardCameraView)'));
  assert.ok(controller.includes('if (this.rememberedCamera) this.instance.restoreView(this.rememberedCamera)'));
  assert.ok(controller.includes('if (this.instance) this.rememberedCamera = this.instance.captureView()'));
- assert.ok(ui.includes('rememberedBoardCamera=boardRenderer?.cameraView()??rememberedBoardCamera'));
+ assert.ok(ui.includes('boardRenderer.update({board:setup,roads:{},buildings:{},players:[]'),'lobby now retains the live Three.js renderer and camera');
+ assert.ok(!ui.includes('boardRenderer?.dispose();boardRenderer=null;'),'lobby changes must not destroy the camera');
  assert.ok(ui.includes('id=>attempt(()=>moveTarget(id)),rememberedBoardCamera'));
 });
