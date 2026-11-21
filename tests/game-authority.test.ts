@@ -137,3 +137,35 @@ test('invalid staged discard is rejected without blocking the other submitter',(
  assert.equal(host.currentRevision(),8);assert.equal(host.snapshot('a').public.phase,'robber');
  assert.deepEqual(host.checkpoint().pendingDiscards,{});
 });
+
+test('broadcast trade reaches every target privately and the first valid acceptance wins atomically',()=>{
+ const state=createGame(41,['a','b','c']);
+ state.phase='action';state.currentSeat=0;state.turn=4;
+ state.players[0].hand.lumber=2;
+ state.players[1].hand.brick=2;
+ state.players[2].hand.brick=2;
+ const host=new HostAuthority('broadcast-trade',state,()=>0);
+ const send=(sender:string,revision:number,id:string,command:Record<string,unknown>)=>
+  host.receive(sender,JSON.stringify({protocol:1,gameId:'broadcast-trade',revision,commandId:id,sender,command}));
+ assert.equal(send('a',0,'offer-all',{type:'offer',playerId:'a',id:'offer-all',targets:['b','c'],give:{lumber:1,brick:0,wool:0,grain:0,ore:0},receive:{lumber:0,brick:1,wool:0,grain:0,ore:0}}).ok,true);
+ const offerB=host.snapshot('b').public.offer,offerC=host.snapshot('c').public.offer;
+ assert.deepEqual(offerB?.targets,['b','c']);
+ assert.deepEqual(offerC?.targets,['b','c']);
+ assert.equal(host.snapshot('a').public.offer?.id,'offer-all');
+ assert.equal(host.spectatorSnapshot().public.offer,null);
+ const first=send('b',1,'accept-first',{type:'accept-offer',playerId:'b',id:'offer-all'});
+ assert.deepEqual(first,{ok:true,revision:2});
+ const proposer=host.snapshot('a'),winner=host.snapshot('b'),other=host.snapshot('c');
+ assert.equal(proposer.private.hand.lumber,1);
+ assert.equal(proposer.private.hand.brick,1);
+ assert.equal(winner.private.hand.lumber,1);
+ assert.equal(winner.private.hand.brick,1);
+ assert.equal(other.private.hand.brick,2,'the other recipient cannot receive the same trade');
+ assert.equal(other.private.hand.lumber,0);
+ assert.equal(proposer.public.offer,null);
+ assert.equal(other.public.offer,null,'the accepted offer disappears for every other recipient');
+ assert.equal(other.public.tradeSummary?.accepter,'b');
+ assert.equal(send('c',1,'simultaneous-stale',{type:'accept-offer',playerId:'c',id:'offer-all'}).code,'stale');
+ assert.equal(send('c',2,'late-accept',{type:'accept-offer',playerId:'c',id:'offer-all'}).code,'illegal');
+ assert.equal(host.snapshot('c').private.hand.brick,2,'a later accept cannot duplicate resource transfers');
+});

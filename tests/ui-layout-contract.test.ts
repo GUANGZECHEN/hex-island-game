@@ -460,3 +460,26 @@ test('ship action is visible with materials even when there is no legal harbor t
   assert.ok(status.includes("legalTargetIds(state,playerId,'ship')"));
   assert.ok(css.includes('> .ship-action-reason'));
 });
+
+test('multiplayer waiting lobby keeps the final board workspace layout on desktop and mobile',()=>{
+ const html=readFileSync('index.html','utf8'),ui=readFileSync('src/game-ui.ts','utf8'),css=readFileSync('src/style.css','utf8'),qa=readFileSync('scripts/qa-e2e.mjs','utf8');
+ assert.ok(html.includes('class="game-layout board-workspace"'));
+ assert.ok(ui.includes("sidebar.insertBefore(room,el('turn-card'))"));
+ assert.ok(ui.includes("document.body.classList.add('playing','room-table','room-configuring')"));
+ assert.ok(css.includes('.playing.room-table.room-configuring .board-workspace .board-command-column #room-section{'));
+ assert.ok(css.includes('grid-template-areas:"status status"'));
+ assert.ok(css.includes('grid-column:1/-1'));
+ assert.ok(qa.includes('assertRoomWorkspaceLayout'));
+ assert.ok(qa.includes('roomSectionInsideCommand'));
+});
+test('trade composer can address one player or all opponents, with first-accept broadcast messaging',()=>{
+ const ui=readFileSync('src/game-ui.ts','utf8'),trade=readFileSync('src/game/ui/trade.ts','utf8'),css=readFileSync('src/style.css','utf8');
+ assert.ok(ui.includes("allPlayers.value=ALL_OTHER_PLAYERS"));
+ assert.ok(ui.includes("textContent='All other players'"));
+ assert.ok(ui.includes('targets=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer)'));
+ assert.ok(ui.includes('first valid acceptance wins'));
+ assert.ok(ui.includes("view.isBroadcast?'Open trade':'Trade offer'"));
+ assert.ok(trade.includes('export const ALL_OTHER_PLAYERS'));
+ assert.ok(css.includes('.board-workspace .trade-recipient-select{'));
+ assert.ok(css.includes('.trade-broadcast-note,.trade-broadcast-status{'));
+});
