@@ -14,7 +14,7 @@ import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
-import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
+import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, missingTradeResources, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
 import { initializeNetwork, type BrowserGame, type RoomTableLobby } from './game/network/browser';
 import type { projectState, projectSpectatorState } from './game/network/authority';
@@ -255,15 +255,17 @@ function renderPieceSupply(player:GameState['players'][number]){
   playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','supply-city','C'));
  if(state?.rules?.ships)supply.append(playerStat(ACTION_PATHS.ship,shipsRemaining(state,player.id),'Ships remaining (max 2)','supply-ship','Ship'));
 }
+let lobbyPreviewBoard: ReturnType<typeof generateBoardSetup>|null=null;
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  const boardVersion=el<HTMLSelectElement>('room-board-version').value;
  const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard');
  renderIslandBoard(preview,setup);const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
- // Pre-start map preview lives on the very same board used during the round.
- if(document.body.classList.contains('room-configuring')&&!state){
-  const large=el('board');renderIslandBoard(large,setup);large.dataset.renderer='2d';
-  const full=large.querySelector('svg');if(full){full.removeAttribute('aria-hidden');full.setAttribute('aria-label',`Room map preview, seed ${input.value}`);}
+ // Reuse the live Three.js renderer from lobby through gameplay.
+ if(document.body.classList.contains('room-configuring')){
+  lobbyPreviewBoard=setup;
+  if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)),rememberedBoardCamera);
+  boardRenderer.update({board:setup,roads:{},buildings:{},players:[],targetMode:null,legalTargets:[],harborPorts:el<HTMLSelectElement>('room-game-mode').value==='harbor-coop'});
   scheduleDesktopBoardFit();
  }
 }
@@ -292,8 +294,7 @@ function renderNetworkLobby(view:RoomTableLobby){
  document.body.classList.toggle('room-running',view.started&&!view.recovering);
  if(view.started&&!view.recovering)return;
  if(el('room-reconnect').parentElement===el('reconnect-holder'))el('room-section').append(el('room-reconnect'));
- rememberedBoardCamera=boardRenderer?.cameraView()??rememberedBoardCamera;
- boardRenderer?.dispose();boardRenderer=null;
+ // Preserve the WebGL canvas and camera as players join or become ready.
  const strip=el('player-strip');strip.replaceChildren();
  strip.dataset.playerCount=String(view.seats.length);
  for(const [index,seat] of view.seats.entries()){
@@ -440,7 +441,7 @@ function drawBoard(){
   stations:state.harbor?.stations,harborPorts:isHarbor(state),targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
 }
 function drawSvgBoard(){
- const s=state!,container=el('board');renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
+ const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
  const legal=targetMode?new Set(legalTargetIds(s,viewer,targetMode)):new Set<string>();
  for(const edge of view.edges){
   const owner=s.roads[edge.id];
@@ -563,7 +564,15 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(discardSubmitted){const note=document.createElement('p');note.className='discard-submitted';note.textContent='Discard submitted. Waiting for the other players…';actions.append(note);}
   else{const get=counts(actions,`Discard exactly ${s.discards[viewer]} cards`,actor.hand);action(grid,'Discard','trade',()=>commit(applyTurnCommand(s,{type:'discard',playerId:viewer,cards:get()}),`${viewer} discarded.`));}
  }
- if(s.offer?.targets.includes(viewer)){incomingTradeCard(trade,s.offer);const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));}
+ if(s.offer?.targets.includes(viewer)){
+  incomingTradeCard(trade,s.offer);
+  const missing=missingTradeResources(actor.hand,s.offer.receive);
+  if(missing.length){const note=document.createElement('p');note.className='trade-insufficient';note.textContent=`Cannot accept: need ${missing.map(item=>`${item.count} more ${item.resource}`).join(', ')}.`;trade.append(note);}
+  const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);
+  const accept=action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});
+  if(missing.length){accept.disabled=true;accept.title='Insufficient resources to accept this offer';accept.setAttribute('aria-label','Accept trade unavailable: insufficient resources');}
+  action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));
+ }
  if(viewer!==active.id){appendUndoAction();finishControls();return;}
  if(s.phase==='setup-city')action(grid,'Place city','city',()=>mode('city'));
  if(s.phase==='setup-settlement')action(grid,'Place settlement','settlement',()=>mode('settlement'));
@@ -575,9 +584,9 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
   // A lack of port ownership, legal harbor space, or supply must not make
   // a ship action mysteriously disappear from the Actions panel.
-  if(!isHarbor(s)&&(s.rules?.ships||affordable(actor.hand,SHIP_COST))){
+  if(!isHarbor(s)&&s.rules?.ships){
    const ship=shipActionAvailability(s,viewer);
-   const shipButton=action(grid,`Build ship · ${ship.remaining}/2 left · 1 VP`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
+   const shipButton=action(grid,`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 3 ore`,'ship',()=>mode('ship'),SHIP_COST,actor.hand);
    shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked';
    if(!ship.enabled&&ship.reason){
     shipButton.disabled=true;
