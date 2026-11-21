@@ -2,7 +2,7 @@ name: Validate local visual gameplay without QA tunnel
 
 on:
   push:
-    branches: [game/mvp, work/persistent-actions-20261121]
+    branches: [game/mvp, work/persistent-actions-20261121, work/learnable-action-panels-20261122]
   workflow_dispatch:
 
 permissions:
