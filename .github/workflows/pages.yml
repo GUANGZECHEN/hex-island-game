@@ -1,7 +1,7 @@
 name: Deploy PoC to GitHub Pages
 on:
   push:
-    branches: [main]
+    branches: [main, game/mvp]
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
   # GitHub exposes new manual workflows only after they exist on the default branch.
   # Bootstrap this unmerged QA branch through the already-existing Pages workflow.
   signaling:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/game/mvp'
+    if: github.ref == 'refs/heads/game/mvp'
     uses: ./.github/workflows/deploy-signaling.yml
     permissions:
       contents: read
@@ -30,6 +30,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
         env:
           VITE_SIGNALING_URL: ${{ needs.signaling.outputs.worker_origin || vars.SIGNALING_URL }}
