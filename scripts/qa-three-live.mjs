@@ -129,7 +129,11 @@ try {
   assert.deepEqual(paused.ambientMotion.waveSamples, pausedAfter.ambientMotion.waveSamples);
   assert.ok(pausedAfter.frames - paused.frames <= 1);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.waitForFunction(() => window.__hex3D.inspect().ambientMotion.enabled);
+  // Re-enter the board viewport before expecting the renderer's visibility
+  // observers to resume its ambient animation loop after reduced motion.
+  await page.locator('#board').scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await page.waitForFunction(() => window.__hex3D.inspect().ambientMotion.enabled, null, { timeout: 10000 });
   check('Reduced-motion preference pauses ambient animation and keeps the canvas static');
   const startCamera = (await inspect(page)).camera;
   await drag(page, 90, -20); let rotated = await inspect(page);
