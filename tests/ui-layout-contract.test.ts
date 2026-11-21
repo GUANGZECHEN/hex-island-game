@@ -88,7 +88,7 @@ test('bank and port trading uses direct resource-icon buttons with live port rat
  assert.ok(ui.includes("rateBadge.textContent=String(rate)"));
  assert.ok(ui.includes("arrow.textContent='→'"));
  assert.ok(ui.includes('tradeButton.append(from,arrow,to)'));
- assert.ok(ui.includes('if(receive===give)continue;')&&ui.includes('availability.bankTrades[`${give}:${receive}`]'));
+ assert.ok(ui.includes('if(receive===give||!availability.bankTrades[')&&ui.includes('availability.bankTrades'));
  assert.ok(!ui.includes("rateBadge.textContent=`×${rate}`"));
  assert.ok(!ui.includes("icon(ACTION_PATHS.trade,'icon bank-trade-arrow')"));
  assert.ok(!ui.includes("select(trade,'Bank trade: give'"));
