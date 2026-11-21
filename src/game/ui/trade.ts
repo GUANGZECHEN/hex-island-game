@@ -5,11 +5,21 @@ export interface IncomingTradeView {
   proposer: string;
   receive: TradeAmount[];
   give: TradeAmount[];
+  isBroadcast: boolean;
+  recipientCount: number;
+}
+
+export const ALL_OTHER_PLAYERS='__all_other_players__';
+
+export function tradeTargetsForSelection(selection:string,players:readonly string[],proposer:string):string[] {
+  const others=players.filter(id=>id!==proposer);
+  if(selection===ALL_OTHER_PLAYERS)return others;
+  return others.includes(selection)?[selection]:[];
 }
 
 /** Translate an offer into the recipient's point of view. */
 export function incomingTradeView(offer:TradeOffer|null,viewer:string):IncomingTradeView|null {
   if(!offer || offer.proposer===viewer || !offer.targets.includes(viewer))return null;
   const entries=(hand:TradeOffer['give'])=>RESOURCES.filter(resource=>hand[resource]>0).map(resource=>({resource,count:hand[resource]}));
-  return {proposer:offer.proposer,receive:entries(offer.give),give:entries(offer.receive)};
+  return {proposer:offer.proposer,receive:entries(offer.give),give:entries(offer.receive),isBroadcast:offer.targets.length>1,recipientCount:offer.targets.length};
 }

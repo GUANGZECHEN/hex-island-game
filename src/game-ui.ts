@@ -169,8 +169,9 @@ function resourceAmounts(parent:HTMLElement,amounts:readonly TradeAmount[]){for(
 function domesticTradeMessage(offer:NonNullable<GameState['offer']>,accepter:string){const give=RESOURCES.reduce((sum,r)=>sum+offer.give[r],0),receive=RESOURCES.reduce((sum,r)=>sum+offer.receive[r],0);return `${playerName(offer.proposer)} traded ${give} card${give===1?'':'s'} for ${receive} card${receive===1?'':'s'} with ${playerName(accepter)}.`;}
 function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer']>){
  const view=incomingTradeView(offer,viewer);if(!view)return;
- const card=document.createElement('section');card.className='incoming-trade';card.setAttribute('aria-label',`Trade offer from ${view.proposer}`);
- const title=document.createElement('h2');title.textContent=`Trade offer from ${playerName(view.proposer)}`;card.append(title);
+ const card=document.createElement('section');card.className='incoming-trade';card.setAttribute('aria-label',`${view.isBroadcast?'Broadcast trade':'Trade offer'} from ${view.proposer}`);
+ const title=document.createElement('h2');title.textContent=`${view.isBroadcast?'Open trade':'Trade offer'} from ${playerName(view.proposer)}`;card.append(title);
+ if(view.isBroadcast){const note=document.createElement('p');note.className='trade-broadcast-note';note.textContent=`Sent to ${view.recipientCount} players · first to accept completes the trade.`;card.append(note);}
  const receive=document.createElement('div');receive.className='trade-offer-row';const receiveLabel=document.createElement('strong');receiveLabel.textContent='You receive';const receiveResources=document.createElement('span');receiveResources.className='trade-offer-resources';resourceAmounts(receiveResources,view.receive);receive.append(receiveLabel,receiveResources);
  const give=document.createElement('div');give.className='trade-offer-row';const giveLabel=document.createElement('strong');giveLabel.textContent='You give';const giveResources=document.createElement('span');giveResources.className='trade-offer-resources';resourceAmounts(giveResources,view.give);give.append(giveLabel,giveResources);
  card.append(receive,give);parent.append(card);
@@ -591,9 +592,23 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(affordable(actor.hand,{lumber:1,brick:1,wool:1,grain:1})&&legalTargetIds(s,viewer,'settlement').length)action(grid,'Build settlement','settlement',()=>mode('settlement'),{lumber:1,brick:1,wool:1,grain:1},actor.hand);
   if(affordable(actor.hand,{grain:2,ore:3})&&legalTargetIds(s,viewer,'city').length)action(grid,'Upgrade city','city',()=>mode('city'),{grain:2,ore:3},actor.hand);
   bankTradeButtons(trade,s,actor);
-  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer to another player';domestic.append(summary);if(!usesTradeStations(s)&&RESOURCES.some(resource=>actor.hand[resource]>0)&&(!isHarbor(s)||s.players.some(p=>p.id!==viewer&&partnersConnected(s,viewer,p.id))))trade.append(domestic);
-  const opponent=playerSelect(domestic,'Offer trade to',s.players.filter(p=>p.id!==viewer).map(p=>p.id)), offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');action(domestic,'Make offer','trade',()=>commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:[opponent.value],give:offered(),receive:wanted()}),`${viewer} proposed a trade.`));
-  if(s.offer)action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);if(!usesTradeStations(s)&&RESOURCES.some(resource=>actor.hand[resource]>0)&&(!isHarbor(s)||s.players.some(p=>p.id!==viewer&&partnersConnected(s,viewer,p.id))))trade.append(domestic);
+  const recipientLabel=document.createElement('label');recipientLabel.textContent='Offer trade to';
+  const opponent=document.createElement('select');opponent.className='trade-recipient-select';opponent.setAttribute('aria-label','Trade recipient');opponent.dataset.tradeRecipient='true';
+  const allPlayers=document.createElement('option');allPlayers.value=ALL_OTHER_PLAYERS;allPlayers.textContent='All other players';opponent.append(allPlayers);
+  for(const player of s.players.filter(p=>p.id!==viewer)){const option=document.createElement('option');option.value=player.id;option.textContent=playerName(player.id);opponent.append(option);}
+  recipientLabel.append(opponent);domestic.append(recipientLabel);
+  const offered=counts(domestic,'Offer these cards',actor.hand), wanted=counts(domestic,'Request these cards');
+  action(domestic,'Make offer','trade',()=>{
+   const targets=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer);
+   if(!targets.length)throw new Error('Choose at least one other player.');
+   const broadcast=opponent.value===ALL_OTHER_PLAYERS;
+   commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets,give:offered(),receive:wanted()}),broadcast?`${viewer} offered a trade to all other players.`:`${viewer} offered a trade to ${playerName(targets[0])}.`);
+  });
+  if(s.offer){
+   if(s.offer.targets.length>1){const note=document.createElement('p');note.className='trade-broadcast-status';note.textContent=`Offer sent to ${s.offer.targets.length} players · first valid acceptance wins.`;trade.append(note);}
+   action(trade,'Cancel offer','end',()=>commit(applyEconomyCommand(s,{type:'cancel-offer',playerId:viewer,id:s.offer!.id}),`${viewer} cancelled a trade.`));
+  }
  }
  if(s.phase==='action'){
   if((projection?.public.deckCount ?? s.deck.length)>0&&affordable(actor.hand,{wool:1,grain:1,ore:1}))action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
