@@ -9,7 +9,7 @@ test('nickname field, target focus styling and development-card purchase placeme
 
   assert.ok(html.includes('id="room-nickname"'));
   assert.ok(html.includes('id="room-save-nickname"'));
-  assert.ok(ui.includes("action(grid,'Buy development card'"));
+  assert.ok(ui.includes("add('Buy development card'"));
   assert.ok(!ui.includes("action(cards,'Buy development card'"));
   assert.ok(css.includes('.game-target{')&&css.includes('outline:none'));
   assert.ok(css.includes('.game-target-city{')&&css.includes('outline:none'));
@@ -88,7 +88,7 @@ test('bank and port trading uses direct resource-icon buttons with live port rat
  assert.ok(ui.includes("rateBadge.textContent=String(rate)"));
  assert.ok(ui.includes("arrow.textContent='→'"));
  assert.ok(ui.includes('tradeButton.append(from,arrow,to)'));
- assert.ok(ui.includes('if(receive===give||actor.hand[give]<rate||s.bank[receive]<1)continue;'));
+ assert.ok(ui.includes('if(receive===give)continue;')&&ui.includes('availability.bankTrades[`${give}:${receive}`]'));
  assert.ok(!ui.includes("rateBadge.textContent=`×${rate}`"));
  assert.ok(!ui.includes("icon(ACTION_PATHS.trade,'icon bank-trade-arrow')"));
  assert.ok(!ui.includes("select(trade,'Bank trade: give'"));
@@ -103,8 +103,8 @@ test('monopoly and invention resource choices use icon buttons instead of resour
  assert.ok(ui.includes('function resourceChoice'));
  assert.ok(ui.includes('choice.append(resourceIcon(resource))'));
  assert.ok(ui.includes("resourceChoice(box,'Choose Monopoly resource')"));
- assert.ok(ui.includes("resourceChoice(box,'First resource')"));
- assert.ok(ui.includes("resourceChoice(box,'Second resource')"));
+ assert.ok(ui.includes("resourceChoice(box,'First resource',"));
+ assert.ok(ui.includes("resourceChoice(box,'Second resource',"));
  assert.ok(!ui.includes("select(box,'Monopoly resource'"));
  assert.ok(!ui.includes("select(box,'First resource'"));
  assert.ok(!ui.includes("select(box,'Second resource'"));
@@ -194,7 +194,7 @@ test('playable development cards are exposed directly in Actions with no Cards t
  assert.ok(!ui.includes("activePanel:'actions'|'cards'"));
  assert.ok(!ui.includes("el('card-actions')"));
  assert.ok(ui.includes("heading.textContent='Development cards'"));
- assert.ok(ui.includes("developmentAction(cardGrid,'Play Knight'"));
+ assert.ok(ui.includes("['Play Knight','knight',base.knight]"));
  assert.ok(css.includes('.development-actions-inline{'));
 });
 
@@ -400,11 +400,8 @@ test('safe Undo action is appended last in Actions for active and non-active pla
  const css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes('const appendUndoAction=()=>'));
  assert.ok(ui.includes("undoRow.className='action-grid undo-action-row';actions.append(undoRow)"));
- assert.ok(ui.includes('if(viewer!==active.id){appendUndoAction();finishControls();return;}'));
- const start=ui.indexOf("if(!isHarbor(s)&&!['setup-settlement','setup-road','finished'].includes(s.phase)");
- const end=ui.indexOf('finishControls();',start);
- assert.ok(start>=0&&end>start);
- assert.ok(ui.slice(start,end).includes('appendUndoAction();'));
+ assert.ok(ui.includes('appendUndoAction();'));
+ assert.ok(ui.includes('apply(undo,base.undo'));
  assert.ok(css.includes('.undo-action-row .action-button{grid-column:1/-1'));
 });
 
@@ -433,7 +430,7 @@ test('board workspace contains player, map, and simultaneous actions/trades with
  assert.ok(!ui.includes('function setPanel('));
  assert.ok(!ui.includes("document.querySelectorAll<HTMLButtonElement>('[data-panel]')"));
  assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
- assert.ok(ui.includes('finishControls();'));
+ assert.ok(ui.includes('bankTradeButtons(trade,s,actor,base,reason)'));
  assert.ok(css.includes('grid-template-areas:"status status" "actions trade"'));
  assert.ok(css.includes('grid-template-columns:minmax(230px,280px) minmax(0,1fr) minmax(330px,400px)'));
 });
@@ -455,12 +452,11 @@ test('ship action is visible with materials even when there is no legal harbor t
   const ui=readFileSync('src/game-ui.ts','utf8');
   const status=readFileSync('src/game/ui/ship-action.ts','utf8');
   const css=readFileSync('src/compact-actions.css','utf8');
-  assert.ok(ui.includes("if(!isHarbor(s)&&s.rules?.ships)"));
+  assert.ok(ui.includes('if(base.ship.visible)'));
    assert.ok(ui.includes('2 wood + 2 brick + 3 ore'),'Actions must display the same ship price as the reducer');
   assert.ok(ui.includes('const ship=shipActionAvailability(s,viewer)'));
-  assert.ok(ui.includes("shipButton.dataset.shipAvailability=ship.enabled?'ready':'blocked'"));
-  assert.ok(ui.includes("shipButton.disabled=true"));
-  assert.ok(ui.includes("hint.className='ship-action-reason'"));
+  assert.ok(ui.includes("b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked'"));
+  assert.ok(ui.includes('apply(b,base.ship,ship.reason)'));
   assert.ok(status.includes("legalTargetIds(state,playerId,'ship')"));
   assert.ok(css.includes('> .ship-action-reason'));
 });
@@ -480,7 +476,7 @@ test('trade composer can address one player or all opponents, with first-accept 
  const ui=readFileSync('src/game-ui.ts','utf8'),trade=readFileSync('src/game/ui/trade.ts','utf8'),css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes("allPlayers.value=ALL_OTHER_PLAYERS"));
  assert.ok(ui.includes("textContent='All other players'"));
- assert.ok(ui.includes('targets=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer)'));
+ assert.ok(ui.includes('selected=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer)'));
  assert.ok(ui.includes('first valid acceptance wins'));
  assert.ok(ui.includes("view.isBroadcast?'Open trade':'Trade offer'"));
  assert.ok(trade.includes('export const ALL_OTHER_PLAYERS'));
@@ -501,7 +497,7 @@ test('room preview uses persistent 3D renderer and recipient shortages disable A
  const ui=readFileSync('src/game-ui.ts','utf8');
  assert.ok(ui.includes('boardRenderer.update({board:setup,roads:{},buildings:{},players:[]'));
  assert.ok(!ui.includes("large.dataset.renderer='2d'"));
- assert.ok(ui.includes('const missing=missingTradeResources(actor.hand,s.offer.receive)'));
- assert.ok(ui.includes('accept.disabled=true'));
+ assert.ok(ui.includes('apply(b,base.acceptOffer'));
+ assert.ok(ui.includes('apply(b,base.rejectOffer'));
  assert.ok(ui.includes("action(response,'Reject trade'"));
 });

@@ -1609,3 +1609,24 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 
 .board-workspace #turn-clock-pause{pointer-events:auto;min-height:28px;margin:.15rem 0 0;padding:.18rem .48rem;font-size:.7rem;line-height:1.1}
 .board-workspace #turn-clock-pause[hidden]{display:none!important}
+
+/* Keep unavailable draft controls legible while distinguishing them from active inputs. */
+.board-workspace .board-command-pane .resource-stepper-grid:disabled,
+.board-workspace .board-command-pane .resource-choice-group:disabled{
+ color:#66736d;
+ border-color:#d8ded9;
+ opacity:.72;
+ filter:grayscale(.8);
+}
+.board-workspace .board-command-pane .resource-choice-group:disabled .resource-choice-button[aria-pressed="true"]{
+ border-color:#87938b;
+ background:#e4e9e4;
+ box-shadow:inset 0 0 0 2px #a1aaa3;
+}
+.board-workspace .board-command-pane select:disabled{
+ color:#66736d;
+ background-color:#edf0ed;
+ border-color:#ccd4ce;
+ opacity:.8;
+ cursor:not-allowed;
+}

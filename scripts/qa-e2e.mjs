@@ -515,7 +515,7 @@ try{
     if(Number(robberOpacity)>=0.7)throw new Error(`Robber tile was not visibly dimmed at ${width}px.`);
     if(await actor.locator('#board [data-hex-id][data-resource]:not([data-resource="none"]) text.island-label').count()!==0)throw new Error(`Resource tiles still show terrain labels at ${width}px.`);
     if(await actor.locator('#board ul[aria-label="Island terrain and number tokens"] li').count()!==19)throw new Error('Accessible tile descriptions are missing.');
-    if(await actor.getByRole('button',{name:'Place road',exact:true}).count()!==1)throw new Error('Expected one primary setup action.');
+    if(!await actor.getByRole('button',{name:'Place road',exact:true}).isEnabled())throw new Error('Expected an enabled setup road action.');
     if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error(`Page overflow at ${width}px.`);
     const responsive=await actor.evaluate(()=>{
       const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();
