@@ -101,7 +101,7 @@ try{
  await page.evaluate(()=>window.__persistentFixture.hand(5));
  assert.equal(await button(page,'Build road').isEnabled(),true,'affordable legal road becomes enabled');
  assert.equal(await button(page,'Build settlement').isEnabled(),true,'affordable legal settlement becomes enabled');
- assert.equal(await button(page,'Upgrade house to city').isDisabled(),true,'city upgrade remains disabled without an owned settlement');
+ assert.equal(await button(page,'Upgrade house to city').isEnabled(),true,'city upgrade becomes enabled when a legal owned settlement and resources are available');
  assert.ok(await page.locator('#trade-actions .bank-trade-button').count()>0,'only executable bank exchanges are shown');
  await page.evaluate(()=>window.__persistentFixture.phase('roll'));
  assert.equal(await button(page,'Roll dice').isEnabled(),true,'roll is shown in roll phase');
