@@ -60,6 +60,12 @@ jobs:
         run: node scripts/qa-harbor-coop.mjs
       - name: Verify persistent action availability
         run: node scripts/qa-persistent-actions.mjs
+      - name: Verify compact costs, target feedback and trade camera stability
+        if: steps.scope.outputs.focus != 'true'
+        run: |
+          node scripts/qa-compact-actions.mjs
+          node scripts/qa-target-feedback.mjs
+          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-trade-camera.mjs
       - name: Save screenshots and test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,5 +76,7 @@ jobs:
             three-evidence
             harbor-evidence
             persistent-actions-evidence
+            compact-action-evidence
+            target-evidence
           if-no-files-found: ignore
           retention-days: 7

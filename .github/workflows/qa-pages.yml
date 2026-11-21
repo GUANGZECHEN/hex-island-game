@@ -260,7 +260,7 @@ jobs:
       - name: Run real Chromium multiplayer, reconnect, rejoin and saved-game E2E
         if: env.QA_INGRESS_VALID != 'false'
         env:
-          QA_URL: ${{ steps.deployment.outputs.page_url }}?qaPlayers=2
+          QA_URL: ${{ steps.deployment.outputs.page_url }}?v=${{ github.sha }}&qaPlayers=2
           QA_SIGNALING_URL: ${{ env.QA_SIGNALING_URL }}
         run: |
           set -euo pipefail

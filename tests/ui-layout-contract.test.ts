@@ -9,7 +9,7 @@ test('nickname field, target focus styling and development-card purchase placeme
 
   assert.ok(html.includes('id="room-nickname"'));
   assert.ok(html.includes('id="room-save-nickname"'));
-  assert.ok(ui.includes("add('Buy development card'"));
+  assert.ok(ui.includes("learningAction('Buy development card'"));
   assert.ok(!ui.includes("action(cards,'Buy development card'"));
   assert.ok(css.includes('.game-target{')&&css.includes('outline:none'));
   assert.ok(css.includes('.game-target-city{')&&css.includes('outline:none'));
@@ -448,7 +448,7 @@ test('desktop map fits the viewport height while only side columns can scroll',(
  assert.ok(qa.includes('for(const height of [720,900,1080])'));
 });
 
-test('ship action is visible with materials even when there is no legal harbor target',()=>{
+test('ship action uses the approved resource cost and availability metadata',()=>{
   const ui=readFileSync('src/game-ui.ts','utf8');
   const status=readFileSync('src/game/ui/ship-action.ts','utf8');
   const css=readFileSync('src/compact-actions.css','utf8');
@@ -476,7 +476,7 @@ test('trade composer can address one player or all opponents, with first-accept 
  const ui=readFileSync('src/game-ui.ts','utf8'),trade=readFileSync('src/game/ui/trade.ts','utf8'),css=readFileSync('src/style.css','utf8');
  assert.ok(ui.includes("allPlayers.value=ALL_OTHER_PLAYERS"));
  assert.ok(ui.includes("textContent='All other players'"));
- assert.ok(ui.includes('selected=tradeTargetsForSelection(opponent.value,s.players.map(p=>p.id),viewer)'));
+ assert.ok(ui.includes('selected=tradeTargetsForSelection(opponent.value,tradePlayerIds,viewer)'));
  assert.ok(ui.includes('first valid acceptance wins'));
  assert.ok(ui.includes("view.isBroadcast?'Open trade':'Trade offer'"));
  assert.ok(trade.includes('export const ALL_OTHER_PLAYERS'));
@@ -493,7 +493,7 @@ test('Classic Harbor Ships show the reduced 2 lumber + 2 brick + 3 ore cost in b
  assert.ok(rules.includes('Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:3})'),'the authoritative ship reducer must keep the same cost');
 });
 
-test('room preview uses persistent 3D renderer and recipient shortages disable Accept, not Reject',()=>{
+test('room preview uses persistent 3D renderer and trade responses honor availability',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  assert.ok(ui.includes('boardRenderer.update({board:setup,roads:{},buildings:{},players:[]'));
  assert.ok(!ui.includes("large.dataset.renderer='2d'"));

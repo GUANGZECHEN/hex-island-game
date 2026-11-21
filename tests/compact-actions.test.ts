@@ -6,7 +6,7 @@ import { compactActionLabel, setCompactActionLabel } from '../src/game/ui/compac
 test('construction and development labels use short consistent words', () => {
   for (const [full, short] of Object.entries({
     'Place road':'Road', 'Build road':'Road', 'Place settlement':'Settlement',
-    'Build settlement':'Settlement', 'Upgrade city':'City', 'Buy development card':'Develop',
+    'Build settlement':'Settlement', 'Upgrade house to city':'City', 'Buy development card':'Develop',
   })) assert.equal(compactActionLabel(full), short);
 });
 test('other common action labels are short; Undo and unknown labels keep their explicit wording', () => {
@@ -39,5 +39,5 @@ test('both action factories use compact labels and cost rows have dedicated grid
   assert.ok(css.includes('grid-row: 2'));
   assert.ok(css.includes('grid-template-columns: 1.12rem minmax(0, 1fr)'));
   assert.ok(ui.includes("learningAction('Build settlement','settlement',()=>mode('settlement'),base.settlement,{lumber:1,brick:1,wool:1,grain:1}"));
-  assert.ok(ui.includes("action(grid,label,symbol,run,cost,actor.hand)"));
+  assert.ok(ui.includes("action(grid,label,symbol,run,cost)"));
 });

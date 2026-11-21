@@ -65,16 +65,16 @@ try{
  browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  page=await browser.newPage({viewport:{width:1440,height:900}});page.on('pageerror',e=>report.errors.push(String(e)));
  await start(page);
- let state=await preview(page,'Place settlement','Settlement');
+ let state=await preview(page,'Build settlement','Settlement');
  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});await page.screenshot({path:`${evidence}/orange-settlement.png`,fullPage:true});
  await clickBoardTarget(page,state.b);await settle(page);
  assert.ok((await inspect(page)).buildings.some(([id])=>id===state.b));assert.equal((await inspect(page)).highlightedTarget,null);
  check('Direct board click places the pointed settlement and removes stale highlight');
- state=await preview(page,'Place road','Road');
+ state=await preview(page,'Build road','Road');
  await page.getByRole('button',{name:'Cancel selection',exact:true}).click();await settle(page);
  assert.equal((await inspect(page)).targets.length,0);assert.equal((await inspect(page)).highlightedTarget,null);
  assert.deepEqual((await inspect(page)).roads,state.before.roads);check('Cancel clears all orange targets without a move');
- await page.getByRole('button',{name:'Place road',exact:true}).click();await settle(page);
+ await page.getByRole('button',{name:'Build road',exact:true}).click();await settle(page);
  let point=await page.evaluate(()=>window.__hex3D.point(window.__hex3D.inspect().targets[0]));
  const pre=await inspect(page);await page.mouse.move(point.x,point.y);await page.mouse.down({button:'middle'});await page.mouse.move(point.x+25,point.y-10,{steps:4});await page.mouse.up({button:'middle'});await settle(page);
  assert.equal((await inspect(page)).picks,pre.picks);assert.deepEqual((await inspect(page)).roads,pre.roads);check('Middle drag does not place a highlighted road');
@@ -82,7 +82,7 @@ try{
  point=await page.evaluate(()=>window.__hex3D.point(window.__hex3D.inspect().targets[0]));await page.mouse.click(point.x,point.y);await settle(page);assert.equal((await inspect(page)).roads.length,1);check('Direct canvas click still places one road');
  if(!process.env.QA_URL){
   const fixtureURL=new URL('__target-feedback-fixture.html?qa3d=1',url);
-  for(const [mode,card,label] of [['city',null,'Upgrade city'],['robber','knight','Move robber'],['free-road','road-building','Place road']]){
+  for(const [mode,card,label] of [['city',null,'Upgrade house to city'],['robber','knight','Move robber'],['free-road','road-building','Build road']]){
    await page.goto(fixtureURL.href,{waitUntil:'networkidle'});await page.evaluate(card=>window.__targetFixture.load(card),card);await ready(page);
    if(card)await page.getByRole('button',{name:card==='knight'?'Play Knight':'Play Road Building',exact:true}).click();
    state=await preview(page,label,mode);
@@ -91,11 +91,11 @@ try{
    const done=await inspect(page);assert.equal(done.highlightedTarget,null);
    if(mode==='city')assert.ok(done.buildings.some(([id,piece])=>id===state.b&&piece.kind==='city'));
    if(mode==='robber')assert.equal(done.robber,state.b);
-   if(mode==='free-road'){assert.ok(done.roads.includes(state.b));await preview(page,'Place road','Second free road');}
+   if(mode==='free-road'){assert.ok(done.roads.includes(state.b));await preview(page,'Build road','Second free road');}
    check(mode+': selected target remains correct through the actual reducer');
   }
  }
- await start(page,'2d');await page.getByRole('button',{name:'Place settlement',exact:true}).click();
+ await start(page,'2d');await page.getByRole('button',{name:'Build settlement',exact:true}).click();
  const nodes=page.locator('#board [data-target-id]');assert.ok(await nodes.count()>1);
  const first=await nodes.nth(0).getAttribute('data-target-id'),second=await nodes.nth(1).getAttribute('data-target-id');
  await assertDirectTargets(page);await page.mouse.move(0,0);assert.equal(await page.locator('#board .target-active').count(),0);
@@ -105,11 +105,11 @@ try{
  assert.equal(await nodes.nth(0).evaluate(n=>getComputedStyle(n).fill),'rgb(255, 152, 31)');
  await nodes.nth(0).press('Enter');assert.equal(await page.locator('#board [data-building-kind]').count(),1);
  await page.locator('#board-render-toggle').click();await ready(page);assert.equal((await inspect(page)).buildings.length,1);assert.equal((await inspect(page)).highlightedTarget,null);
- await page.getByRole('button',{name:'Place road',exact:true}).click();await assertDirectTargets(page);
+ await page.getByRole('button',{name:'Build road',exact:true}).click();await assertDirectTargets(page);
  await page.getByRole('button',{name:'Cancel selection',exact:true}).click();assert.equal((await inspect(page)).highlightedTarget,null);
  check('SVG keyboard placement and renderer switching work without any coordinate picker');
  const context=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true});const phone=await context.newPage();phone.on('pageerror',e=>report.errors.push(String(e)));
- await start(phone);await phone.getByRole('button',{name:'Place settlement',exact:true}).click();await settle(phone);
+ await start(phone);await phone.getByRole('button',{name:'Build settlement',exact:true}).click();await settle(phone);
  const targets=(await inspect(phone)).targets;point=await phone.evaluate(id=>window.__hex3D.point(id),targets[1]);
  await phone.locator('#board canvas').scrollIntoViewIfNeeded();await settle(phone);point=await phone.evaluate(id=>window.__hex3D.point(id),targets[1]);const touch=await context.newCDPSession(phone);await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:point.x,y:point.y}]});await settle(phone);await orange(phone,targets[1],'Touch press');
  await touch.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await settle(phone);assert.equal((await inspect(phone)).buildings.length,0);assert.equal((await inspect(phone)).picks,0);check('Touch press highlights and touch cancellation never places a building');

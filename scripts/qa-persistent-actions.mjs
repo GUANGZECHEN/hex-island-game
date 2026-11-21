@@ -1,3 +1,4 @@
+import {clickBoardTarget} from './qa-board-targets.mjs';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -26,7 +27,9 @@ const fixture=`
  phase(phase:GameState['phase']){state!.phase=phase;render();},
  paused(value:boolean){localPaused=value;render();},
  cards(age:'none'|'new'|'old'){state!.players[0].cards=age==='none'?[]:[{type:'knight',boughtTurn:age==='new'?state!.turn:state!.turn-1}];render();},
- offer(){const empty=()=>({lumber:0,brick:0,wool:0,grain:0,ore:0});state!.offer={id:'fixture',proposer:'Player 1',targets:['Player 2'],give:{...empty(),lumber:1},receive:{...empty(),brick:1}};state!.players[1].hand.brick=1;render();},
+ offer(canAccept=true){const empty=()=>({lumber:0,brick:0,wool:0,grain:0,ore:0});state!.offer={id:'fixture',proposer:'Player 1',targets:['Player 2'],give:{...empty(),lumber:1},receive:{...empty(),brick:1}};state!.players[1].hand.brick=canAccept?1:0;render();},
+ discard(){state!.phase='discard';state!.discards={'Player 1':2};discardSubmitted=false;render();},
+ deadline(){return localActionDeadlines.get('Player 1');},
  snapshot(){return JSON.stringify(state);}
 };`;
 const origin='http://127.0.0.1:4183/hex-island-game/__persistent-actions-fixture.html?qa3d=1';
@@ -91,18 +94,33 @@ try{
  const learning=page.locator('.learn-action-grid');
  assert.equal(await learning.locator('button.action-button').count(),4,'exactly four learning actions are shown');
  for(const name of ['Build road','Build settlement','Upgrade house to city','Buy development card'])await presentDisabled(page,name);
- assert.equal(await page.locator('#actions button.action-button').filter({hasText:'Roll dice'}).count(),0,'roll is hidden outside roll phase');
+ for(const [name,cost] of Object.entries({
+  'Build road':{lumber:1,brick:1},'Build settlement':{lumber:1,brick:1,wool:1,grain:1},
+  'Upgrade house to city':{grain:2,ore:3},'Buy development card':{wool:1,grain:1,ore:1},
+ })){
+  const chips=await button(page,name).locator('.action-cost .resource-chip').evaluateAll(nodes=>nodes.map(n=>({className:n.className,text:n.textContent.trim()})));
+  assert.equal(chips.length,Object.keys(cost).length,name+' cost resource count');
+  for(const [resource,amount] of Object.entries(cost))assert.ok(chips.some(chip=>chip.className.includes('resource-chip-'+resource)&&chip.text.endsWith(String(amount))),name+' '+resource+' cost');
+ }
+ const deadline=await page.evaluate(()=>window.__persistentFixture.deadline());
+ assert.equal(await button(page,'Roll dice').count(),0,'roll is hidden outside roll phase');
  assert.equal(await page.locator('#actions button.action-button').filter({hasText:'End turn'}).count(),1,'only currently executable end turn is shown');
  assert.equal(await page.locator('#trade-actions .bank-trade-button').count(),0,'unavailable bank exchanges are hidden');
  assert.equal(await page.locator('.domestic-trade-card').count(),0,'trade composer is hidden outside a valid action turn');
  const before=await page.evaluate(()=>window.__persistentFixture.snapshot());
  await button(page,'Build road').evaluate(b=>b.click());
  assert.equal(await page.evaluate(()=>window.__persistentFixture.snapshot()),before,'disabled learning action cannot mutate game state');
+ assert.equal(await page.evaluate(()=>window.__persistentFixture.deadline()),deadline,'disabled control does not reset the action clock');
  await page.evaluate(()=>window.__persistentFixture.hand(5));
  assert.equal(await button(page,'Build road').isEnabled(),true,'affordable legal road becomes enabled');
- assert.equal(await button(page,'Build settlement').isEnabled(),true,'affordable legal settlement becomes enabled');
+ assert.equal(await button(page,'Build settlement').isDisabled(),true,'settlement remains unavailable without a legal site');
  assert.equal(await button(page,'Upgrade house to city').isEnabled(),true,'city upgrade becomes enabled when a legal owned settlement and resources are available');
  assert.ok(await page.locator('#trade-actions .bank-trade-button').count()>0,'only executable bank exchanges are shown');
+ const cityBefore=JSON.parse(await page.evaluate(()=>window.__persistentFixture.snapshot()));
+ await button(page,'Upgrade house to city').click();await clickBoardTarget(page);
+ const cityAfter=JSON.parse(await page.evaluate(()=>window.__persistentFixture.snapshot()));
+ assert.equal(Object.values(cityAfter.buildings).filter(b=>b.playerId==='Player 1'&&b.kind==='city').length,Object.values(cityBefore.buildings).filter(b=>b.playerId==='Player 1'&&b.kind==='city').length+1,'reference control performs a real city upgrade');
+ await page.evaluate(()=>{window.__persistentFixture.load();window.__persistentFixture.hand(5);});
  await page.evaluate(()=>window.__persistentFixture.phase('roll'));
  assert.equal(await button(page,'Roll dice').isEnabled(),true,'roll is shown in roll phase');
  assert.equal(await page.locator('#actions button.action-button').filter({hasText:'End turn'}).count(),0,'end turn hidden outside action phase');
@@ -120,16 +138,31 @@ try{
  await page.locator('.domestic-trade-card fieldset').nth(1).getByRole('button',{name:'Add one grain'}).click();
  assert.equal(await button(page,'Make offer').isEnabled(),true,'complete affordable offer is valid');
  await screenshot(page,'classic-valid-desktop');
+ await page.evaluate(()=>window.__persistentFixture.discard());
+ assert.equal(await button(page,'Discard').isDisabled(),true,'discard draft starts invalid');
+ await page.locator('#actions fieldset.resource-stepper-grid').getByRole('button',{name:'Add one lumber'}).click();
+ await page.locator('#actions fieldset.resource-stepper-grid').getByRole('button',{name:'Add one lumber'}).click();
+ assert.equal(await button(page,'Discard').isEnabled(),true,'complete discard draft becomes executable');
+ const discardBefore=JSON.parse(await page.evaluate(()=>window.__persistentFixture.snapshot()));
+ await button(page,'Discard').click();
+ const discardAfter=JSON.parse(await page.evaluate(()=>window.__persistentFixture.snapshot()));
+ assert.equal(discardAfter.players[0].hand.lumber,discardBefore.players[0].hand.lumber-2,'discard command removes selected cards');
+ assert.equal(discardAfter.discards['Player 1'],undefined,'completed discard clears the player requirement');
+ assert.equal(await button(page,'Discard').count(),0,'completed discard control disappears');
+ await page.evaluate(()=>{window.__persistentFixture.load();window.__persistentFixture.hand(5);});
  await page.evaluate(()=>window.__persistentFixture.view('Player 2'));
  assert.equal(await page.locator('#actions button.action-button').filter({hasText:'End turn'}).count(),0,'off-turn action buttons are hidden');
  for(const name of ['Build road','Build settlement','Upgrade house to city','Buy development card'])await presentDisabled(page,name);
+ await page.evaluate(()=>window.__persistentFixture.offer(false));
+ assert.equal(await button(page,'Accept trade').count(),0,'unaffordable incoming offer hides Accept');
+ assert.equal(await button(page,'Reject trade').isEnabled(),true,'unaffordable incoming offer can still be rejected');
  await page.evaluate(()=>window.__persistentFixture.offer());
  assert.equal(await button(page,'Accept trade').isEnabled(),true,'incoming trade can still be accepted off turn');
  assert.equal(await button(page,'Reject trade').isEnabled(),true,'incoming trade can still be rejected off turn');
  await page.evaluate(()=>window.__persistentFixture.view('Player 1'));
  await page.evaluate(()=>window.__persistentFixture.paused(true));
  for(const name of ['Build road','Build settlement','Upgrade house to city','Buy development card'])await presentDisabled(page,name);
- assert.equal(await page.locator('#actions button.action-button').count(),0,'ordinary gameplay actions are hidden while paused');
+ assert.equal(await page.locator('#actions > .action-grid button').count(),0,'ordinary gameplay actions are hidden while paused');
  await page.evaluate(()=>window.__persistentFixture.paused(false));
  assert.equal(await button(page,'Build road').isEnabled(),true,'resume restores legal build');
  await page.evaluate(()=>window.__persistentFixture.phase('finished'));
@@ -143,13 +176,13 @@ try{
  assert.equal(await page.locator('[data-action="ship"]').count(),0,'unavailable optional ship action is hidden');
  await page.evaluate(()=>window.__persistentFixture.load('classic',false));
  assert.equal(await page.locator('[data-action="ship"]').count(),0,'optional ships remain excluded when off');
- for(const width of [375,320]){
+ for(const width of [1280,375,320]){
   await page.setViewportSize({width,height:812});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,width+'px mobile panel does not overflow');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,width+'px panel does not overflow');
   const metrics=await learning.locator('button.action-button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,disabled:node.disabled};}));
   assert.equal(metrics.length,4);
-  assert.ok(metrics.every(x=>x.width>0&&x.left>=0&&x.right<=innerWidth+1),width+'px learning cards fit viewport');
+  assert.ok(metrics.every(x=>x.width>0&&x.left>=0&&x.right<=width+1),width+'px learning cards fit viewport');
   await page.screenshot({path:`${evidence}/learning-panels-${width}.png`,fullPage:true});
  }
  assert.deepEqual(errors,[]);console.log('PASS actionable-only controls, four persistent learning panels, resource costs and mobile layout');

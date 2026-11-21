@@ -178,7 +178,7 @@ try {
   assert.equal(await page.locator('.activity-alert.activity-dice').count(),0,'old dice popup is gone');
   assert.equal(await page.locator('.activity-production-summary').count(),0,'gains belong above buildings');
   await page.screenshot({path:`${evidence}/three-live-dice-production.png`,fullPage:true});
-  if (await page.getByRole('button', { name: 'Move robber', exact: true }).isEnabled()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
+  if (await page.getByRole('button', { name: 'Move robber', exact: true }).count()) { const old = (await inspect(page)).robber; await canvasPlace(page, 'Move robber'); assert.notEqual((await inspect(page)).robber, old); }
   check('Complete local setup, roads and dice use existing reducers and resource announcements');
   for (const [width, height] of [[1280, 720], [1920, 720], [2560, 900], [1101, 700], [375, 812], [320, 700]]) {
     await page.setViewportSize({ width, height }); await settle(page); await delay(120);

@@ -69,17 +69,17 @@ const reveal=async p=>{if(await p.locator('#pass').isVisible())await p.locator('
 const watch=p=>{p.on('pageerror',e=>report.errors.push(String(e)));return p;};
 async function setupPair(p){
  if(await p.locator('#actions [data-action=city]').isEnabled()){
-  await p.getByRole('button',{name:'Place city',exact:true}).click();await clickBoardTarget(p);return;
+  await p.getByRole('button',{name:'Upgrade house to city',exact:true}).click();await clickBoardTarget(p);return;
  }
- await p.getByRole('button',{name:'Place settlement',exact:true}).click();await clickBoardTarget(p);
- for(let n=0;n<2;n++){await p.getByRole('button',{name:'Place road',exact:true}).click();await clickBoardTarget(p);}
+ await p.getByRole('button',{name:'Build settlement',exact:true}).click();await clickBoardTarget(p);
+ for(let n=0;n<2;n++){await p.getByRole('button',{name:'Build road',exact:true}).click();await clickBoardTarget(p);}
 }
 async function setupHumanBot(p){
  for(let n=0;n<2;n++){
   await p.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes("Player 1's turn; phase: setup-city"),null,{timeout:30000});
   assert.equal(await p.locator('#pass').isVisible(),false);
   assert.equal(await p.getByRole('button',{name:'Build settlement',exact:true}).isDisabled(),true);
-  await p.getByRole('button',{name:'Place city',exact:true}).click();await clickBoardTarget(p);
+  await p.getByRole('button',{name:'Upgrade house to city',exact:true}).click();await clickBoardTarget(p);
  }
  await p.waitForFunction(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.length===4:document.querySelectorAll('#board [data-building-kind]').length===4,null,{timeout:30000});
  const buildings=await p.evaluate(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.map(([,b])=>b):Array.from(document.querySelectorAll('#board [data-building-kind]')).map(n=>({kind:n.getAttribute('data-building-kind'),playerId:n.querySelector('title')?.textContent.startsWith('Bot ')?'Bot':'Player 1'})));
@@ -113,7 +113,7 @@ try{
   assert.equal(await page.locator('#harbor-panel').getAttribute('data-completed'),'1');await page.locator('#harbor-panel').scrollIntoViewIfNeeded();await page.screenshot({path:`${evidence}/harbor-load.png`,fullPage:true});check('Real Load buttons submit partial cargo and complete a ship through the cooperative reducer');
   await page.evaluate(()=>window.__harborFixture.load('win'));const winId=await page.locator('.harbor-order').first().getAttribute('data-order-id');
   for(let n=0;n<5&&await page.locator('#harbor-panel').getAttribute('data-outcome')==='playing';n++){await page.locator(`.harbor-order[data-order-id="${winId}"] button`).first().click();}
-  assert.equal(await page.locator('#harbor-panel').getAttribute('data-outcome'),'won');assert.equal(await page.getByRole('button',{name:'End turn',exact:true}).isDisabled(),true);check('Tenth ship produces a real joint victory and disables action controls');
+  assert.equal(await page.locator('#harbor-panel').getAttribute('data-outcome'),'won');assert.equal(await page.getByRole('button',{name:'End turn',exact:true}).count(),0);check('Tenth ship produces a real joint victory and disables action controls');
   await page.evaluate(()=>window.__harborFixture.load('lose'));await page.getByRole('button',{name:'End turn',exact:true}).click();assert.equal(await page.locator('#harbor-panel').getAttribute('data-outcome'),'lost');check('Third missed order produces a real team loss, with restart still available');
  }
  if(!process.env.QA_URL){
@@ -144,7 +144,7 @@ try{
    assert.equal(await page.getByText('Offer to another player',{exact:true}).count(),0);
    const station=page.locator('.harbor-station');await station.locator('[data-send-resource]').first().click();
    assert.equal(await station.locator('button').count(),0);assert.match(await station.textContent(),/Sent this turn/);
-   assert.equal(await page.getByRole('button',{name:'Undo last action',exact:true}).isDisabled(),true);
+   assert.equal(await page.getByRole('button',{name:'Undo last action',exact:true}).count(),0);
    await page.getByRole('button',{name:'End turn',exact:true}).click();await reveal(page);
    assert.match(await page.locator('#game-status').textContent(),/Player 2's turn/);
    // Quota from Player 1 does not consume Player 2's slot; raw state and legal use are also covered by authority tests.
@@ -231,7 +231,7 @@ try{
   await spectator.goto(invite);await ready(spectator);assert.equal(await spectator.locator('#private-hand-card').isVisible(),false);assert.equal(await spectator.locator('#harbor-panel button').count(),0);
   for(let n=0;n<4;n++){
    await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes('phase: setup-'));
-   const actor=await host.getByRole('button',{name:/^Place (settlement|city)$/}).isEnabled()?host:guest;await setupPair(actor);
+   const actor=await host.locator('.learn-action-grid button:enabled').count()?host:guest;await setupPair(actor);
    const expected=n+1;await Promise.all([host,guest,spectator].map(p=>p.waitForFunction(expected=>window.__hex3D.inspect().buildings.length===expected,expected)));
   }
   const orders=await host.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId]));assert.deepEqual(await guest.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId])),orders);assert.equal(orders.length,1);check('Live host, guest and spectator share the same cooperative orders; private hands stay private');

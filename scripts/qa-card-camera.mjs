@@ -88,7 +88,7 @@ try{
    assert.equal(after.game.phase,'free-road');
    const roadReference=await inspect();
    for(let step=0;step<2;step++){
-    await page.getByRole('button',{name:'Place road',exact:true}).click();await stable();
+    await page.getByRole('button',{name:'Build road',exact:true}).click();await stable();
     const [selected]=await boardTargetIds(page);assert.ok(selected);
     await clickBoardTarget(page);await stable();
     const now=await inspect();report.checks.push({width,card,step:step+1,after:now});verifyView(roadReference,now,width+' free road '+(step+1));
@@ -97,9 +97,9 @@ try{
    assert.equal((await inspect()).game.phase,'action');
    await page.getByRole('button',{name:'Undo last action',exact:true}).click();await stable();
    const undone=await inspect();verifyView(roadReference,undone,width+' undo free road');assert.equal(undone.game.phase,'free-road');assert.equal(undone.game.roads.length,before.game.roads.length+1);
-   await page.getByRole('button',{name:'Place road',exact:true}).click();await stable();
+   await page.getByRole('button',{name:'Build road',exact:true}).click();await stable();
    await page.getByRole('button',{name:'Cancel selection',exact:true}).click();await stable();verifyView(roadReference,await inspect(),width+' cancel target');
-   await page.getByRole('button',{name:'Place road',exact:true}).click();await clickBoardTarget(page);await stable();verifyView(roadReference,await inspect(),width+' replay free road');
+   await page.getByRole('button',{name:'Build road',exact:true}).click();await clickBoardTarget(page);await stable();verifyView(roadReference,await inspect(),width+' replay free road');
   }
   await delay(2200);const timed=await inspect();report.checks.push({width,card,alertExpired:true,after:timed});verifyView(resized,timed,width+' '+card+' notice dismissal');
   if(width===1280&&card==='road-building')await page.screenshot({path:`${evidence}/road-building.png`,fullPage:true});

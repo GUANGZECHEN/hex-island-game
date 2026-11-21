@@ -143,6 +143,13 @@ try{
   if(await host.locator('#switch-player').isVisible())throw new Error('Two-bot mode exposed manual player switching.');
   if(!(await host.locator('#connection-summary').textContent())?.includes('2 test bots enabled'))throw new Error('Two-bot mode status was missing.');
   if(await host.locator('#player-strip .player-summary').count()!==3)throw new Error('Two-bot mode did not create three player cards.');
+  const reference=host.locator('.learn-action-panel');
+  if(!await reference.isVisible())throw new Error('Live Classic game is missing the resource-cost reference panel.');
+  const references=reference.locator('button.action-button');
+  const names=await references.evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-label')));
+  const expected=['Build road','Build settlement','Upgrade house to city','Buy development card'];
+  if(JSON.stringify(names)!==JSON.stringify(expected))throw new Error('Live Classic cost controls do not match: '+JSON.stringify(names));
+  if(await host.locator('#actions > .action-grid button:disabled').count())throw new Error('Unavailable ordinary actions should be absent in setup.');
   if(await host.locator('#game-tabs').count()!==0)throw new Error('The obsolete navigation tabs are still rendered.');
   if(await host.locator('#board-action-pane').count()!==1||await host.locator('#board-trade-pane').count()!==1)throw new Error('Both board action regions are required.');
   if(await host.locator('#private-hand-card .resource-chip').count()!==5)throw new Error('ART-B01 hand does not expose five resource tokens.');
@@ -152,9 +159,9 @@ try{
   if(!handSurface.background||handSurface.background==='none')throw new Error('ART-B01 hand tray has no material surface.');
   if(await host.locator('#actions .action-button').count()&&await host.locator('#actions .action-button[class*="action-"]').count()!==await host.locator('#actions .action-button').count())throw new Error('ART-B01 action semantic styling is incomplete.');
   const placeHumanSetupPair=async()=>{
-    await host.getByRole('button',{name:'Place settlement'}).click();
+    await host.getByRole('button',{name:'Build settlement'}).click();
     await clickBoardTarget(host);
-    await host.getByRole('button',{name:'Place road',exact:true}).click();
+    await host.getByRole('button',{name:'Build road',exact:true}).click();
     await clickBoardTarget(host);
   };
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
@@ -426,14 +433,14 @@ try{
   if(await spectator.locator('#player-strip .player-summary').count()!==2)throw new Error('Spectator did not receive public player state.');
 
   const placeSetupPair=async(actor,observer,startRevision)=>{
-    await actor.getByRole('button',{name:'Place settlement'}).click();
+    await actor.getByRole('button',{name:'Build settlement'}).click();
     if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
     await actor.getByRole('button',{name:'Cancel selection'}).click();
     if(await actor.locator('[data-legal-target="settlement"]').count()!==0)throw new Error('Cancel selection left settlement targets active.');
-    await actor.getByRole('button',{name:'Place settlement'}).click();
+    await actor.getByRole('button',{name:'Build settlement'}).click();
     await clickBoardTarget(actor);
     await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+1,{timeout:15000});
-    await actor.getByRole('button',{name:'Place road',exact:true}).click();
+    await actor.getByRole('button',{name:'Build road',exact:true}).click();
     if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
     await clickBoardTarget(actor);
     await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),startRevision+2,{timeout:15000});
@@ -475,7 +482,7 @@ try{
   const actor=guest;
   const observer=host;
   const visualBeforeTarget=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
-  await actor.getByRole('button',{name:'Place settlement'}).click();
+  await actor.getByRole('button',{name:'Build settlement'}).click();
   if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget)throw new Error('Opening target mode sent a network message.');
   await clickBoardTarget(actor);
@@ -487,7 +494,7 @@ try{
   await spectator.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   await spectator.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   const beforeRoadHighlight=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
-  await actor.getByRole('button',{name:'Place road',exact:true}).click();
+  await actor.getByRole('button',{name:'Build road',exact:true}).click();
   if(await actor.locator('[data-legal-target="road"]').count()<1)throw new Error('No legal road targets were highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==beforeRoadHighlight)throw new Error('Road highlighting sent a network message.');
 
@@ -515,7 +522,7 @@ try{
     if(Number(robberOpacity)>=0.7)throw new Error(`Robber tile was not visibly dimmed at ${width}px.`);
     if(await actor.locator('#board [data-hex-id][data-resource]:not([data-resource="none"]) text.island-label').count()!==0)throw new Error(`Resource tiles still show terrain labels at ${width}px.`);
     if(await actor.locator('#board ul[aria-label="Island terrain and number tokens"] li').count()!==19)throw new Error('Accessible tile descriptions are missing.');
-    if(!await actor.getByRole('button',{name:'Place road',exact:true}).isEnabled())throw new Error('Expected an enabled setup road action.');
+    if(!await actor.getByRole('button',{name:'Build road',exact:true}).isEnabled())throw new Error('Expected an enabled setup road action.');
     if(await actor.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw new Error(`Page overflow at ${width}px.`);
     const responsive=await actor.evaluate(()=>{
       const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();

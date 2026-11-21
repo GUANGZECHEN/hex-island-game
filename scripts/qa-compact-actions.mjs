@@ -25,15 +25,15 @@ try {
   await page.goto(url.href,{waitUntil:'networkidle'});
   await page.locator('#local-room-create').click();await page.locator('#seats').selectOption('2');await page.locator('#start').click();
   if(await page.locator('#pass').isVisible())await page.locator('#reveal').click();
-  const settlement=page.getByRole('button',{name:'Place settlement',exact:true});
+  const settlement=page.getByRole('button',{name:'Build settlement',exact:true});
   assert.equal(await settlement.locator('.action-label').textContent(),'Settlement');
-  assert.equal(await settlement.getAttribute('title'),'Place settlement');
+  assert.equal(await settlement.getAttribute('title'),'Build settlement');
   await settlement.click();await clickBoardTarget(page);
-  const road=page.getByRole('button',{name:'Place road',exact:true});
+  const road=page.getByRole('button',{name:'Build road',exact:true});
   assert.equal(await road.locator('.action-label').textContent(),'Road');
   assert.match((await page.locator('#actions button').allTextContents()).at(-1),/Undo last action/);
   await page.getByRole('button',{name:'Undo last action',exact:true}).click();
-  assert.equal(await page.getByRole('button',{name:'Place settlement',exact:true}).locator('.action-label').textContent(),'Settlement');
+  assert.equal(await page.getByRole('button',{name:'Build settlement',exact:true}).locator('.action-label').textContent(),'Settlement');
   assert.equal(await page.locator('#game-error').textContent(),'');
   check('Actual game setup uses short labels, full accessible names and unchanged safe Undo');
 
@@ -50,9 +50,9 @@ try {
     const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
     for(const [full,label,iconType,cost] of [
       ['Build road','Road','road',[0,1]],['Build settlement','Settlement','settlement',[0,1,2,3]],
-      ['Upgrade city','City','city',[3,4]],['Buy development card','Develop','card',[2,3,4]],
+      ['Upgrade house to city','City','city',[3,4]],['Buy development card','Develop','card',[2,3,4]],
     ]){
-      const b=source.cloneNode(true);b.dataset.action=iconType;b.setAttribute('aria-label',full);b.title=full;
+      const b=source.cloneNode(true);b.querySelector('.action-cost')?.remove();b.disabled=false;b.dataset.action=iconType;b.setAttribute('aria-label',full);b.title=full;
       b.querySelector('.action-label').textContent=label;
       const row=document.createElement('span');row.className='action-cost';
       for(const i of cost){const chip=chips[i].cloneNode(true);const number=Array.from(chip.childNodes).find(n=>n.nodeType===3);if(number)number.textContent='1';row.append(chip);}
