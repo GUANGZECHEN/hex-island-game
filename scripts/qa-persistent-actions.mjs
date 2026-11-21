@@ -48,10 +48,33 @@ const draftUnavailable=async (p,label)=>{
  const choices=p.locator('#actions .development-effect fieldset');assert.equal(await choices.count(),3);
  for(let i=0;i<3;i++)await fieldDisabled(choices.nth(i),label+' development choice');
 };
-// Capture after fonts, images, the real 3D renderer and two paint frames are ready.
+// Test the individual controls, not merely the page's scroll width: a narrow grid
+// can clip or overlap its children without expanding the document.
+const checkSteppers=async (p,selector,paneSelector,label)=>{
+ const fields=p.locator(selector);const expected=selector.includes('domestic')?2:1;
+ assert.equal(await fields.count(),expected,label+' fieldset count');
+ for(let i=0;i<expected;i++){
+  const metrics=await fields.nth(i).evaluate((field,paneSelector)=>{
+   const pane=document.querySelector(paneSelector),rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+   const rows=Array.from(field.querySelectorAll('.resource-stepper')).map(row=>({row:rect(row),parts:Array.from(row.children,rect),name:row.querySelector('.resource-stepper-name')?.textContent?.trim()}));
+   return {field:rect(field),pane:rect(pane),rows};
+  },paneSelector);
+  assert.equal(metrics.rows.length,5,label+' must show all five resource rows');
+  assert.deepEqual(metrics.rows.map(row=>row.name),['lumber','brick','wool','grain','ore']);
+  const inside=(inner,outer)=>inner.left>=outer.left-1&&inner.right<=outer.right+1&&inner.top>=outer.top-1&&inner.bottom<=outer.bottom+1;
+  for(const {row,parts,name} of metrics.rows){
+   assert.equal(parts.length,4,label+' '+name+' has label, minus, count and plus');
+   assert.ok(inside(row,metrics.field)&&inside(row,metrics.pane),label+' '+name+' row outside field or pane: '+JSON.stringify(metrics));
+   for(const part of parts)assert.ok(part.width>0&&part.height>0&&inside(part,row)&&inside(part,metrics.field)&&inside(part,metrics.pane),label+' '+name+' control clipped: '+JSON.stringify(metrics));
+   for(let j=1;j<parts.length;j++)assert.ok(parts[j-1].right<=parts[j].left+1,label+' '+name+' adjacent controls overlap: '+JSON.stringify(metrics));
+  }
+ }
+};
+// Capture after transient turn alerts, fonts, images, the real 3D renderer and paint frames are ready.
 const screenshot=async (p,name)=>{
  await p.waitForFunction(()=>window.__hex3D?.inspect().mode==='3d'&&!!document.querySelector('#board canvas'),null,{timeout:30000});
- await p.evaluate(async()=>{await document.fonts.ready;await Promise.all(Array.from(document.images, image=>image.decode().catch(()=>{})));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+ await p.locator('#board .turn-alert').waitFor({state:'detached',timeout:10000});
+ await p.evaluate(async()=>{document.querySelector('.board-command-column').scrollTop=0;window.scrollTo(0,0);await document.fonts.ready;await Promise.all(Array.from(document.images, image=>image.decode().catch(()=>{})));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
  await p.screenshot({path:`${evidence}/${name}.png`,fullPage:true,animations:'disabled'});
 };
 try{
@@ -109,9 +132,21 @@ try{
  await screenshot(page,'coop-disabled-desktop');
  await page.evaluate(()=>window.__persistentFixture.load('classic',true));assert.equal(await page.locator('[data-action="ship"]').count(),1,'optional ships appear when enabled');assert.equal(await page.locator('[data-action="ship"]').isDisabled(),true);
  await page.evaluate(()=>window.__persistentFixture.load('classic',false));assert.equal(await page.locator('[data-action="ship"]').count(),0,'optional ships are excluded when off');
- await page.setViewportSize({width:375,height:812});await page.evaluate(()=>window.__persistentFixture.hand(5));
+ await page.evaluate(()=>window.__persistentFixture.hand(5));
+ if(!await page.locator('.domestic-trade-card').evaluate(el=>el.open))await page.locator('.domestic-trade-card summary').click();
+ for(const width of [375,320]){
+  await page.setViewportSize({width,height:812});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,width+'px mobile panel does not overflow');
+  await checkSteppers(page,'#actions fieldset.resource-stepper-grid','#board-action-pane',width+'px disabled discard');
+  await checkSteppers(page,'.domestic-trade-card fieldset','#board-trade-pane',width+'px enabled trade');
+  await page.evaluate(()=>window.__persistentFixture.view('Player 2'));
+  await draftUnavailable(page,width+'px off turn');
+  await checkSteppers(page,'.domestic-trade-card fieldset','#board-trade-pane',width+'px disabled trade');
+  await page.evaluate(()=>window.__persistentFixture.view('Player 1'));
+ }
+ await page.setViewportSize({width:375,height:812});
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'mobile panel does not overflow');
  const camera=await page.evaluate(()=>window.__hex3D?.inspect());await page.evaluate(()=>window.__persistentFixture.hand(0));
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
  const after=await page.evaluate(()=>window.__hex3D?.inspect());if(camera&&after){assert.deepEqual(after.camera,camera.camera);assert.deepEqual(after.target,camera.target);assert.equal(after.instanceId,camera.instanceId);}
