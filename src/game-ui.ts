@@ -14,7 +14,7 @@ import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, affordable, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
 import { legalTargetIds, type TargetMode } from './game/ui/targets';
-import { incomingTradeView, type TradeAmount } from './game/ui/trade';
+import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate, playableDevelopmentTypes } from './game/ui/interactions';
 import { initializeNetwork, type BrowserGame, type RoomTableLobby } from './game/network/browser';
 import type { projectState, projectSpectatorState } from './game/network/authority';
