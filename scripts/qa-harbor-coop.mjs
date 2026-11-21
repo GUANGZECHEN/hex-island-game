@@ -216,6 +216,10 @@ try{
   qaClockPages=[rh,rg];
   await rh.goto(base.href);await rh.locator('#room-reconnect').click();await rh.locator('#room-recovery-panel').waitFor({state:'visible',timeout:20000});
   await rg.goto(base.href);await rg.locator('#room-reconnect').click();await rh.getByRole('button',{name:/Resume latest/}).waitFor({state:'visible',timeout:25000});await rh.waitForFunction(()=>Array.from(document.querySelectorAll('#room-recovery-options button')).some(b=>!b.disabled));await rh.getByRole('button',{name:/Resume latest/}).click();await ready(rh);await ready(rg);
+  await rg.waitForFunction(expected=>{
+   const actual=Array.from(document.querySelectorAll('.harbor-order')).map(n=>[n.dataset.orderId,n.dataset.portId]);
+   return JSON.stringify(actual)===JSON.stringify(expected);
+  },orders,{timeout:15000});
   assert.deepEqual(await rg.locator('.harbor-order').evaluateAll(ns=>ns.map(n=>[n.dataset.orderId,n.dataset.portId])),orders);check('Host full-page shutdown and saved-game resume preserves cooperative mode and exact orders');
   rh.once('dialog',d=>d.accept());await rh.locator('#game-restart').click();await rg.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes('Revision 0'));assert.match(await rg.locator('#turn-banner').textContent(),/Harbor Co-op/);assert.equal(await rg.locator('.harbor-order').count(),1);check('Live same-room restart begins a new cooperative match');
   await hc.close();await gc.close();await sc.close();
