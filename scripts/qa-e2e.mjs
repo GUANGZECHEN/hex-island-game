@@ -33,6 +33,39 @@ const host=await hostContext.newPage();
 const guest=await guestContext.newPage();
 const spectator=await spectatorContext.newPage();
 
+async function assertRoomWorkspaceLayout(page,label){
+ const measure=()=>page.evaluate(()=>{
+  const box=(selector)=>{
+   const node=document.querySelector(selector),r=node?.getBoundingClientRect();
+   return r?{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}:null;
+  };
+  const roomNode=document.querySelector('#room-section'),room=box('#room-section'),command=box('.board-command-column');
+  return {
+   gameVisible:!document.querySelector('#game')?.hidden,
+   roomVisible:!!roomNode&&!!room&&!!command&&getComputedStyle(roomNode).display!=='none'&&room.width>0,
+   player:box('.board-player-column'),map:box('.board-map-column'),command,room,
+   roomSectionInsideCommand:roomNode?.parentElement===document.querySelector('.board-command-column')
+  };
+ });
+ await page.setViewportSize({width:1280,height:900});
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ const desktop=await measure();
+ if(!desktop.gameVisible||!desktop.roomVisible||!desktop.roomSectionInsideCommand||!desktop.player||!desktop.map||!desktop.command||!desktop.room||
+    desktop.player.right>desktop.map.x+4||desktop.map.right>desktop.command.x+4||
+    desktop.room.x<desktop.command.x-4||desktop.room.right>desktop.command.right+4){
+  throw new Error(label+' desktop room lobby does not match the final player / map / command layout: '+JSON.stringify(desktop));
+ }
+ await page.setViewportSize({width:390,height:844});
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ const mobile=await measure();
+ if(!mobile.gameVisible||!mobile.roomVisible||!mobile.player||!mobile.map||!mobile.command||!mobile.room||
+    mobile.player.bottom>mobile.map.y+4||mobile.map.bottom>mobile.command.y+4||
+    mobile.room.x<mobile.command.x-4||mobile.room.right>mobile.command.right+4){
+  throw new Error(label+' mobile room lobby does not stack like the final game layout: '+JSON.stringify(mobile));
+ }
+ await page.setViewportSize({width:1280,height:900});
+}
+
 try{
   // Local-only deterministic bot range: one human plus up to five bots.
   await host.goto(qaUrl,{waitUntil:'networkidle'});
@@ -203,6 +236,7 @@ try{
   await host.locator('#room-map-lobby').waitFor({state:'visible'});
   await host.locator('#game').waitFor({state:'visible'});
   if(!(await host.evaluate(()=>document.querySelector('#room-section')?.closest('.board-command-column')!==null&&document.querySelectorAll('#board [data-hex-id]').length===19)))throw new Error('Host did not enter the shared board workspace before starting.');
+  await assertRoomWorkspaceLayout(host,'Host');
   await host.locator('#room-seed').fill('24680');
   await host.locator('#room-seed').dispatchEvent('change');
   await host.waitForFunction(()=>document.querySelectorAll('#room-map-preview [data-hex-id]').length===19);
@@ -219,6 +253,7 @@ try{
   await guest.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 2: connected'),null,{timeout:30000});
   if(!(await guest.locator('#room-ready').isEnabled()))throw new Error('Ready stayed disabled after Player 2 joined.');
   if(!(await guest.evaluate(()=>!document.querySelector('#game')?.hidden&&document.querySelector('#room-section')?.closest('.board-command-column')!==null&&document.querySelectorAll('#board [data-hex-id]').length===19)))throw new Error('Guest did not see the board directly inside the room.');
+  await assertRoomWorkspaceLayout(guest,'Guest');
   await guest.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24680',null,{timeout:10000});
   if(!(await guest.locator('#room-seed').isDisabled()))throw new Error('Guest can change the host-selected map.');
   if(await guest.locator('#room-map-preview [data-hex-id]').count()!==19)throw new Error('Guest did not receive a shared map preview.');
