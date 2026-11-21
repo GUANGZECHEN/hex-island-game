@@ -34,13 +34,19 @@ let server,browser;
 const button=(p,name)=>p.getByRole('button',{name,exact:true});
 const presentDisabled=async (p,name)=>{const b=button(p,name);assert.equal(await b.count(),1,name+' remains present');assert.equal(await b.isDisabled(),true,name+' is disabled');};
 const bank=async p=>{assert.equal(await p.locator('#trade-actions .bank-trade-button').count(),20,'all distinct resource pairs remain present');};
+const fieldDisabled=async (field,label)=>{
+ assert.equal(await field.evaluate(node=>node.disabled),true,label+' fieldset disabled');
+ const children=field.locator('button');assert.ok(await children.count()>0,label+' has choice buttons');
+ assert.equal(await children.first().isDisabled(),true,label+' child button disabled');
+ assert.equal(await children.evaluateAll(nodes=>nodes.every(node=>node.matches(':disabled'))),true,label+' child buttons disabled');
+};
 const draftUnavailable=async (p,label)=>{
  assert.equal(await p.locator('.domestic-trade-card select').isDisabled(),true,label+' recipient disabled');
  const fields=p.locator('.domestic-trade-card fieldset');assert.equal(await fields.count(),2);
- for(let i=0;i<2;i++)assert.equal(await fields.nth(i).isDisabled(),true,label+' draft fieldset disabled');
- assert.equal(await p.locator('#actions fieldset.resource-stepper-grid').isDisabled(),true,label+' discard fieldset disabled');
+ for(let i=0;i<2;i++)await fieldDisabled(fields.nth(i),label+' draft');
+ await fieldDisabled(p.locator('#actions fieldset.resource-stepper-grid'),label+' discard');
  const choices=p.locator('#actions .development-effect fieldset');assert.equal(await choices.count(),3);
- for(let i=0;i<3;i++)assert.equal(await choices.nth(i).isDisabled(),true,label+' development choice disabled');
+ for(let i=0;i<3;i++)await fieldDisabled(choices.nth(i),label+' development choice');
 };
 // Capture after fonts, images, the real 3D renderer and two paint frames are ready.
 const screenshot=async (p,name)=>{
@@ -84,8 +90,11 @@ try{
  await page.locator('.domestic-trade-card fieldset').nth(1).getByRole('button',{name:'Add one grain'}).click();
  assert.equal(await button(page,'Make offer').isEnabled(),true,'complete affordable offer is valid');
  assert.equal(await page.locator('.domestic-trade-card select').isEnabled(),true,'own-turn recipient selection is enabled');
- assert.equal(await page.locator('.domestic-trade-card fieldset').nth(0).isEnabled(),true,'own-turn offer draft is enabled');
- assert.equal(await page.locator('.domestic-trade-card fieldset').nth(1).isEnabled(),true,'own-turn request draft is enabled');
+ for(let i=0;i<2;i++){
+  const field=page.locator('.domestic-trade-card fieldset').nth(i);
+  assert.equal(await field.evaluate(node=>node.disabled),false,'own-turn draft fieldset is enabled');
+  assert.equal(await field.getByRole('button',{name:'Add one wool'}).isEnabled(),true,'own-turn draft button is enabled');
+ }
  await screenshot(page,'classic-valid-desktop');
  await page.evaluate(()=>window.__persistentFixture.view('Player 2'));await bank(page);
  await presentDisabled(page,'Build road');assert.equal(await page.locator('#trade-actions .bank-trade-button:enabled').count(),0);
