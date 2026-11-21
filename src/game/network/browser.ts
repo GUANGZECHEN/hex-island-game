@@ -15,7 +15,7 @@ export interface RoomTableLobby {
  seats:Array<{id:string;name:string;connected:boolean;ready:boolean}>;
 }
 type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; clock?:(clock:TurnClockSnapshot|null)=>void; timedOut?:(playerId:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void };
-export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void; activity:()=>void }
+export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void; canPause:()=>boolean; setPaused:(paused:boolean)=>void }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
 const token=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
@@ -362,9 +362,5 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  // The host's authority checks deadlines. Hidden tabs may throttle the callback,
  // but the next tick catches up without trusting a guest's device clock.
  window.setInterval(()=>{if(role==='host'&&host&&!recoveryMode)host.tick();},300);
- return {activity(){
-  if(!gameId||!playerId||awaitingSnapshot||spectator)return;
-  if(role==='host')host?.touchClock('Player 1');
-  else if(role==='guest'&&open){try{send('host',JSON.stringify({protocol:1,type:'activity'}));}catch{/* Lost peer can reconnect normally. */}}
- },submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
+ return {canPause(){return role==='host'&&!!host;},setPaused(paused){if(role!=='host'||!host)throw new Error('Only the host can pause.');host.setPaused(paused);},submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

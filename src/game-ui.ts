@@ -6,7 +6,7 @@ import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
-import { ACTION_WINDOW_MS, clockParticipants, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
+import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { shipActionAvailability } from './game/ui/ship-action.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
@@ -37,16 +37,18 @@ const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
-/** Both modes use the same 30-second rule; the host alone decides remote expiry. */
-let remoteActionClock:{playerId:string;deadlineAt:number}|null=null;
+/** The host alone decides remote expiry. */
+let remoteActionClock:{playerId:string;deadlineAt:number;paused:boolean;remainingMs:number}|null=null;
+let localPaused=false,localPauseAt=0;
+let pendingClockCommand:{type:string;playerId:string}|null=null;
+const isPaused=()=>remote?projection?.public.paused===true:localPaused;
 const localActionDeadlines=new Map<string,number>();
-let lastActionTouch=0;
 
-function syncLocalActionClock():void {
+function syncLocalActionClock(resetActors:string[]=[]):void {
  if(!state||remote){localActionDeadlines.clear();return;}
  const participants=clockParticipants(state);
  for(const id of localActionDeadlines.keys())if(!participants.includes(id))localActionDeadlines.delete(id);
- for(const id of participants)localActionDeadlines.set(id,Date.now()+ACTION_WINDOW_MS);
+ for(const id of participants)if(!localActionDeadlines.has(id)||resetActors.includes(id))localActionDeadlines.set(id,Date.now()+ACTION_WINDOW_MS);
 }
 function actionClockDisplay():void {
  const tag=el<HTMLElement>('turn-action-clock');
@@ -56,18 +58,20 @@ function actionClockDisplay():void {
   ?remoteActionClock
   :[...localActionDeadlines].sort((a,b)=>a[1]-b[1]).map(([playerId,deadlineAt])=>({playerId,deadlineAt}))[0]??null;
  if(!clock){tag.hidden=true;return;}
- const seconds=remainingClockSeconds(clock.deadlineAt-now),player=state.players.find(p=>p.id===clock.playerId);
+ const remaining=remote&&remoteActionClock?.paused?remoteActionClock.remainingMs:clock.deadlineAt-(localPaused&&!remote?localPauseAt:now);
+ const seconds=remainingClockSeconds(remaining),player=state.players.find(p=>p.id===clock.playerId);
  const name=playerName(clock.playerId);
  tag.hidden=false;
- el('turn-action-clock-player').textContent=name;
+ el('turn-action-clock-player').textContent=isPaused()?`Paused · ${name}`:name;
+ const pauseButton=el<HTMLButtonElement>('turn-clock-pause');pauseButton.hidden=!!remote&&!remote.canPause();pauseButton.textContent=isPaused()?'Resume':'Pause';pauseButton.setAttribute('aria-pressed',String(isPaused()));
  el('turn-action-clock-seconds').textContent='00:'+String(seconds).padStart(2,'0');
  tag.classList.toggle('running-out',seconds<=10);
- tag.setAttribute('aria-label',`${name} has ${seconds} seconds left to act`);
+ tag.setAttribute('aria-label',`${isPaused()?'Paused. ':''}${name} has ${seconds} seconds left to act`);
  const seat=player?.seat??0;
  tag.style.setProperty('--clock-seat-color',PLAYER_PIECE_PALETTE[seat]?.body??'#456d61');
 }
 function localTimedAction():void {
- if(remote||!state||state.phase==='finished')return;
+ if(remote||localPaused||!state||state.phase==='finished')return;
  const closest=[...localActionDeadlines].sort((a,b)=>a[1]-b[1])[0];
  if(!closest||closest[1]>Date.now())return;
  const [playerId]=closest,command=timeoutCommand(state,playerId);
@@ -75,32 +79,25 @@ function localTimedAction():void {
  try{
   const next=command.type==='place-settlement'||command.type==='place-city'||command.type==='place-road'
    ?localSetup(state,command):command.type==='stop-free-roads'?localEconomy(state,command):localTurn(state,command as Parameters<typeof localTurn>[1]);
-  pendingLocalUndo=null;
+  pendingLocalUndo=null;pendingClockCommand=command;
   commit(next,`${playerName(playerId)} ran out of time; automatic ${command.type}.`);
  }catch(error){
   localActionDeadlines.set(playerId,Date.now()+ACTION_WINDOW_MS);
   el('game-error').textContent=error instanceof Error?error.message:'Automatic action failed.';
  }
 }
-function touchActionClock():void {
- if(!state||state.phase==='finished')return;
- const now=Date.now();
- if(now-lastActionTouch<650)return;
- lastActionTouch=now;
- if(remote){try{remote.activity();}catch{/* Optional activity ping must not interfere with gameplay. */}}
- else if(localActionDeadlines.has(viewer))localActionDeadlines.set(viewer,now+ACTION_WINDOW_MS);
- actionClockDisplay();
-}
 
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
 const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#f27ebd',edge:'#993a70'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
 const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
-let localUndoState:GameState|null=null,localUndoPlayerId='',pendingLocalUndo:{state:GameState;playerId:string}|null=null;
+let localUndoState:GameState|null=null,localUndoPlayerId='',localUndoDeadlines:Map<string,number>|null=null,pendingLocalUndo:{state:GameState;playerId:string;deadlines:Map<string,number>}|null=null;
 function applyWithLocalUndo<C extends {type:string;playerId:string}>(s:GameState,c:C,apply:(s:GameState,c:C)=>GameState):GameState|null{
+ if(isPaused())throw new Error('Game is paused.');
  if(remote){remote.submit(c,networkRevision);return null;}
  const result=apply(s,c);
- pendingLocalUndo=reversibleActions.has(c.type)?{state:structuredClone(s),playerId:c.playerId}:null;
+ pendingClockCommand=c;
+ pendingLocalUndo=reversibleActions.has(c.type)?{state:structuredClone(s),playerId:c.playerId,deadlines:new Map(localActionDeadlines)}:null;
  return result;
 }
 const applySetupCommand = (s:GameState, c:Parameters<typeof localSetup>[1]) => applyWithLocalUndo(s,c,localSetup);
@@ -118,7 +115,7 @@ function activityState(s:GameState):PublicActivityState {
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote)syncLocalActionClock();const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice)pendingRollPresentation=describeRoll(old,next.dice,next);targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -129,7 +126,7 @@ function pendingLocalBot(s:GameState):string|null{
  const active=s.players[s.currentSeat]?.id;return active&&localBotIds.has(active)?active:null;
 }
 function runLocalBotStep(){
- botTimer=null;if(remote||localBotIds.size===0||!state||state.phase==='finished')return;
+ botTimer=null;if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished')return;
  const botId=pendingLocalBot(state);if(!botId)return;
  const key=`${state.turn}:${state.currentSeat}:${botId}`;if(key!==botTurnKey){botTurnKey=key;botActionCount=0;}
  let command=chooseBotCommand(state,botId);if(!command)return;
@@ -137,10 +134,10 @@ function runLocalBotStep(){
   if(state.players[state.currentSeat]?.id===botId&&state.phase==='action')command={type:'end-turn',playerId:botId};
   else{log.unshift(`${playerName(botId)} action limit reached; automation paused.`);publicActivity=`${playerName(botId)} automation paused.`;render();return;}
  }
- botActionCount++;const before=state,description=botDescription(command,before);pendingLocalUndo=null;commit(applyBotCommand(before,command),description);
+ botActionCount++;const before=state,description=botDescription(command,before);pendingLocalUndo=null;const next=applyBotCommand(before,command);pendingClockCommand=command;commit(next,description);
 }
 function scheduleLocalBot(){
- if(remote||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null)return;
+ if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null)return;
  if(!pendingLocalBot(state))return;
  botTimer=window.setTimeout(runLocalBotStep,BOT_DELAY_MS);
 }
@@ -313,7 +310,7 @@ function renderNetworkLobby(view:RoomTableLobby){
  scheduleDesktopBoardFit();
 }
 document.addEventListener('hex-room-map-updated',renderRoomMapPreview);
-function moveTarget(id:string){if(!state)return;const current=state.players[state.currentSeat].id;if(viewer!==current)return;
+function moveTarget(id:string){if(!state||isPaused())return;const current=state.players[state.currentSeat].id;if(viewer!==current)return;
  if(targetMode==='settlement')commit(state.phase==='setup-settlement'?applySetupCommand(state,{type:'place-settlement',playerId:viewer,vertexId:id}):applyBuildCommand(state,{type:'build-settlement',playerId:viewer,vertexId:id}),`${viewer} placed a settlement.`);
  else if(targetMode==='city')commit(state.phase==='setup-city'?applySetupCommand(state,{type:'place-city',playerId:viewer,vertexId:id}):applyBuildCommand(state,{type:'build-city',playerId:viewer,vertexId:id}),`${viewer} upgraded a city.`);
  else if(targetMode==='road')commit(state.phase==='setup-road'?applySetupCommand(state,{type:'place-road',playerId:viewer,edgeId:id}):state.phase==='free-road'?applyEconomyCommand(state,{type:'free-road',playerId:viewer,edgeId:id}):applyBuildCommand(state,{type:'build-road',playerId:viewer,edgeId:id}),`${viewer} placed a road.`);
@@ -521,8 +518,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
- el('turn-hint').textContent=spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
- if(usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
+ el('turn-hint').textContent=isPaused()?(remote?'Paused by host.':'Game paused.'):spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
+ if(!isPaused()&&usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
  drawBoard();actionClockDisplay();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
  if(pendingRollPresentation&&!el('game').hidden){
   if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
@@ -532,6 +529,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
  actionPane.hidden=spectating;tradePane.hidden=spectating;
+ el('harbor-panel').inert=isPaused();
+ if(isPaused()){actions.textContent='Game paused.';return;}
  if(spectating||!actor)return;
  const finishControls=()=>{
   if(!actions.querySelector('button:not(:disabled)')&&!actions.querySelector('.discard-submitted')){
@@ -557,6 +556,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
    if(remote){remote.submit({type:'undo',playerId:viewer},networkRevision);return;}
    if(!localUndoState)throw new Error('Nothing safe to undo.');
    const previous=structuredClone(localUndoState);pendingLocalUndo=null;localUndoState=null;localUndoPlayerId='';
+   if(localUndoDeadlines){localActionDeadlines.clear();for(const [id,deadline] of localUndoDeadlines)localActionDeadlines.set(id,deadline);}localUndoDeadlines=null;
    commit(previous,`${playerName(viewer)} undid the last action.`);
   });
  };
@@ -651,8 +651,8 @@ function refreshLocalMapPreview(){
  }catch(error){preview.textContent=error instanceof Error?error.message:'Invalid local room settings.';}
 }
 function startLocalRound(settings:LocalRoomSettings){
- clearBotTimer();remote=null;projection=null;networkRevision=0;
- localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;targetMode=null;
+ clearBotTimer();remote=null;projection=null;networkRevision=0;localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
+ localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;
  renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';
  localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
  botTurnKey='';botActionCount=0;viewer='';
@@ -711,36 +711,42 @@ const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectE
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();roomSeed.dispatchEvent(new Event('change',{bubbles:true}));};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkRoom,lobby:renderNetworkLobby,
- clock:pulse=>{remoteActionClock=pulse?{playerId:pulse.playerId,deadlineAt:Date.now()+Math.max(0,Math.min(ACTION_WINDOW_MS,pulse.remainingMs))}:null;actionClockDisplay();},
- timedOut:playerId=>{log.unshift(`${playerName(playerId)} was inactive for 30 seconds; automatic action.`);},
+ clock:pulse=>{remoteActionClock=pulse?{playerId:pulse.playerId,deadlineAt:Date.now()+Math.max(0,Math.min(ACTION_WINDOW_MS,pulse.remainingMs)),paused:pulse.paused,remainingMs:pulse.remainingMs}:null;actionClockDisplay();},
+ timedOut:playerId=>{log.unshift(`${playerName(playerId)} ran out of time; automatic action.`);},
  discardPending:()=>{
  discardSubmitted=true;
  if(state?.phase==='discard')render();
 },reset:()=>{
-  remoteActionClock=null;localActionDeadlines.clear();discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
+  remoteActionClock=null;localActionDeadlines.clear();localPaused=false;localPauseAt=0;pendingClockCommand=null;discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
-  if(projection&&value.gameId===projection.gameId&&value.revision<=networkRevision)return;
-  const previousPublic=projection?.public as unknown as PublicActivityState|null;
+  if(projection&&value.gameId===projection.gameId&&(value.revision<networkRevision||(value.revision===networkRevision&&value.public.paused===projection.public.paused)))return;
+  const sameGame=projection?.gameId===value.gameId;
+  const gameplayUpdate=!sameGame||value.revision>networkRevision;
+  const previousPublic=(sameGame?projection?.public:null) as unknown as PublicActivityState|null;
   const tradeSummary=value.public.tradeSummary;
   const publicName=(id:string)=>value.public.players.find(player=>player.id===id)?.name||id;
-  const tradeActivity=projection&&tradeSummary?.revision===value.revision?`${publicName(tradeSummary.proposer)} traded ${tradeSummary.giveCount} card${tradeSummary.giveCount===1?'':'s'} for ${tradeSummary.receiveCount} card${tradeSummary.receiveCount===1?'':'s'} with ${publicName(tradeSummary.accepter)}.`:null;
+  const tradeActivity=sameGame&&gameplayUpdate&&tradeSummary?.revision===value.revision?`${publicName(tradeSummary.proposer)} traded ${tradeSummary.giveCount} card${tradeSummary.giveCount===1?'':'s'} for ${tradeSummary.receiveCount} card${tradeSummary.receiveCount===1?'':'s'} with ${publicName(tradeSummary.accepter)}.`:null;
   const nextPublic=value.public as unknown as PublicActivityState;
   if(value.public.phase!=='discard'||!value.public.discards[playerId])discardSubmitted=false;
-  const activity=(value.public.harbor&&value.public.harbor.event!==projection?.public.harbor?.event?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic);
-  if(projection?.gameId===value.gameId&&isNewRoll(projection.public,value.public)&&value.public.dice)pendingRollPresentation=describeRoll(projection.public,value.public.dice,value.public);
+  const activity=gameplayUpdate?((value.public.harbor&&value.public.harbor.event!==(sameGame?projection?.public.harbor?.event:null)?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic)):null;
+  if(gameplayUpdate&&projection?.gameId===value.gameId&&isNewRoll(projection.public,value.public)&&value.public.dice)pendingRollPresentation=describeRoll(projection.public,value.public.dice,value.public);
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
-  projection=value;networkRevision=value.revision;viewer=playerId;remote=network;targetMode=null;
+  if(!projection||value.gameId!==projection.gameId||value.revision!==networkRevision)targetMode=null;
+  projection=value;networkRevision=value.revision;viewer=playerId;remote=network;
   const pub=value.public;
   const privateView=value.private;
   state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
 }});
 
-// A click, touch or keyboard interaction in the game counts as player activity.
-// Cursor hovering alone never extends a player's turn.
-el('game').addEventListener('pointerdown',touchActionClock,{passive:true});
-el('game').addEventListener('keydown',event=>{if(!event.repeat)touchActionClock();});
-el('game').addEventListener('change',touchActionClock);
-el('game').addEventListener('input',touchActionClock);
-el('game').addEventListener('wheel',touchActionClock,{passive:true});
+el('turn-clock-pause').onclick=()=>attempt(()=>{
+ if(!state)return;
+ if(remote){if(state.phase!=='finished')remote.setPaused(!isPaused());return;}
+ if(!localPaused)localTimedAction();
+ if(!state||state.phase==='finished')return;
+ const now=Date.now();
+ if(localPaused){for(const [id,deadline] of localActionDeadlines)localActionDeadlines.set(id,now+Math.max(0,deadline-localPauseAt));if(localUndoDeadlines)for(const [id,deadline] of localUndoDeadlines)localUndoDeadlines.set(id,now+Math.max(0,deadline-localPauseAt));localPaused=false;localPauseAt=0;}
+ else{localPaused=true;localPauseAt=now;clearBotTimer();}
+ render();
+});
 window.setInterval(()=>{localTimedAction();actionClockDisplay();},200);

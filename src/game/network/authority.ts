@@ -4,7 +4,7 @@ import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
 import { applyHarborCommand, validateHarborState, type HarborCommand } from '../rules/harbor.ts';
 import type { AuthorityRecovery } from './recovery.ts';
-import { ACTION_WINDOW_MS, clockParticipants, timeoutCommand, type TurnClockSnapshot } from '../rules/turn-clock.ts';
+import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, timeoutCommand, type TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
@@ -26,7 +26,7 @@ const fields: Record<string,string[]> = {
 };
 /** Public state is shared with every player and spectator; private trade details remain viewer-scoped. */
 function publicProjection(state:GameState, viewer?:string, tradeSummary:PublicTradeSummary|null=null, undoPlayerId:string|null=null) {
- return {mode:state.mode??'classic',harbor:state.harbor??null,rules:state.rules??{catchUp:false,ships:false},catchUpReward:state.catchUpReward??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,setupRoadEdges:state.setupRoadEdges,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
+ return {mode:state.mode??'classic',harbor:state.harbor??null,rules:state.rules??{catchUp:false,ships:false},catchUpReward:state.catchUpReward??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,setupRoadEdges:state.setupRoadEdges,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,paused:false,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
 }
 /** Only public quantities and this viewer's own cards are serialized. */
 export function projectState(state:GameState, viewer:string, revision:number, gameId:string, tradeSummary:PublicTradeSummary|null=null) {
@@ -39,15 +39,15 @@ export function projectSpectatorState(state:GameState, revision:number, gameId:s
 }
 /** Peer-to-seat binding is established by the room layer, never from the payload. */
 export class HostAuthority {
- private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private pendingDiscards:Record<string,Hand>={}; private lastUndo:{playerId:string;previous:GameState}|null=null;
+ private revision=0; private seen=new Set<string>(); private lastTradeSummary:PublicTradeSummary|null=null; private pendingDiscards:Record<string,Hand>={}; private lastUndo:{playerId:string;previous:GameState;clockDeadlines:Map<string,number>}|null=null;
  private gameId:string; private state:GameState; private random:()=>number;
  private readonly clockNow:()=>number;
- private clockDeadlines=new Map<string,number>();private timeoutSerial=0;
+ private clockDeadlines=new Map<string,number>();private clockPaused=false;private timeoutSerial=0;
  constructor(gameId:string,state:GameState,random:()=>number,revision=0,clockNow:()=>number=Date.now){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;this.clockNow=clockNow;this.refreshClock();}
- static fromRecovery(value:AuthorityRecovery,random:()=>number):HostAuthority {
+ static fromRecovery(value:AuthorityRecovery,random:()=>number,clockNow:()=>number=Date.now):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
   validateHarborState(value.state);
-  const restored=new HostAuthority(value.gameId,value.state,random,value.revision);
+  const restored=new HostAuthority(value.gameId,value.state,random,value.revision,clockNow);
   const pending=value.pendingDiscards??{};
   if(!pending||typeof pending!=='object'||Array.isArray(pending))throw new Error('Invalid saved pending discards.');
   for(const [playerId,cards] of Object.entries(pending)){
@@ -58,28 +58,40 @@ export class HostAuthority {
   }
   restored.pendingDiscards=structuredClone(pending);
   restored.refreshClock();
+  if(value.clock!==undefined){
+   const clock=value.clock;
+   const participants=clockParticipants(restored.state,restored.pendingDiscards);
+   if(!clock||typeof clock.paused!=='boolean'||!clock.remaining||typeof clock.remaining!=='object'||Array.isArray(clock.remaining)||
+      Object.keys(clock.remaining).sort().join(',')!==[...participants].sort().join(',')||
+      Object.values(clock.remaining).some(ms=>typeof ms!=='number'||!Number.isFinite(ms)||ms<0||ms>ACTION_WINDOW_MS)||
+      (clock.paused&&restored.state.phase==='finished'))throw new Error('Invalid saved clock.');
+   restored.clockPaused=clock.paused;
+   restored.clockDeadlines=new Map(Object.entries(clock.remaining).map(([id,ms])=>[id,clock.paused?ms:clockNow()+ms]));
+  }
   return restored;
  }
  /** Action deadlines live only in the host's authority, not in the deterministic game reducer. */
  private refreshClock(actingPlayer?:string):void {
   const participants=clockParticipants(this.state,this.pendingDiscards);
   for(const id of this.clockDeadlines.keys())if(!participants.includes(id))this.clockDeadlines.delete(id);
-  for(const id of participants)if(!this.clockDeadlines.has(id)||id===actingPlayer)this.clockDeadlines.set(id,this.clockNow()+ACTION_WINDOW_MS);
+  for(const id of participants)if(!this.clockDeadlines.has(id)||id===actingPlayer)this.clockDeadlines.set(id,this.clockPaused?ACTION_WINDOW_MS:this.clockNow()+ACTION_WINDOW_MS);
  }
  clockStatus():TurnClockSnapshot|null {
   this.refreshClock();
   const [playerId,deadline]=[...this.clockDeadlines].sort((a,b)=>a[1]-b[1])[0]??[];
-  return playerId===undefined?null:{playerId,remainingMs:Math.max(0,deadline-this.clockNow())};
+  return playerId===undefined?null:{playerId,remainingMs:Math.max(0,this.clockPaused?deadline:deadline-this.clockNow()),paused:this.clockPaused};
  }
- /** Any authenticated board/control interaction by a timed player restarts their deadline. */
- touchClock(playerId:string):boolean {
+ setPaused(paused:boolean):boolean {
+  if(typeof paused!=='boolean'||this.state.phase==='finished'||this.clockPaused===paused)return false;
   this.refreshClock();
-  const until=this.clockDeadlines.get(playerId);
-  if(until===undefined||until<=this.clockNow())return false;
-  this.clockDeadlines.set(playerId,this.clockNow()+ACTION_WINDOW_MS);return true;
+  const now=this.clockNow();
+  for(const [id,deadline] of this.clockDeadlines)this.clockDeadlines.set(id,paused?Math.max(0,deadline-now):now+deadline);
+  if(this.lastUndo)for(const [id,deadline] of this.lastUndo.clockDeadlines)this.lastUndo.clockDeadlines.set(id,paused?Math.max(0,deadline-now):now+deadline);
+  this.clockPaused=paused;return true;
  }
  /** Only the host calls this: a timed-out player cannot indefinitely block the game. */
  advanceTimeout():{handled:boolean;pending:boolean;playerId?:string}{
+  if(this.clockPaused)return {handled:false,pending:false};
   const pulse=this.clockStatus();
   if(!pulse||pulse.remainingMs>0)return {handled:false,pending:false};
   const command=timeoutCommand(this.state,pulse.playerId);
@@ -89,13 +101,14 @@ export class HostAuthority {
   if(!result.ok){this.clockDeadlines.set(pulse.playerId,this.clockNow()+ACTION_WINDOW_MS);return {handled:false,pending:false};}
   return {handled:true,pending:!!result.pending,playerId:pulse.playerId};
  }
- checkpoint():AuthorityRecovery {return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state),pendingDiscards:structuredClone(this.pendingDiscards)};}
+ checkpoint():AuthorityRecovery {this.refreshClock();const now=this.clockNow();return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state),pendingDiscards:structuredClone(this.pendingDiscards),clock:{paused:this.clockPaused,remaining:Object.fromEntries([...this.clockDeadlines].map(([id,deadline])=>[id,Math.max(0,this.clockPaused?deadline:deadline-now)]))}};}
  hasPendingDiscard(playerId:string):boolean{return this.state.phase==='discard'&&Object.hasOwn(this.pendingDiscards,playerId);}
  currentRevision():number{return this.revision;}
- snapshot(playerId:string){const result=projectState(this.state,playerId,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;return structuredClone(result);}
- spectatorSnapshot(){const result=projectSpectatorState(this.state,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;return structuredClone(result);}
+ snapshot(playerId:string){const result=projectState(this.state,playerId,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
+ spectatorSnapshot(){const result=projectSpectatorState(this.state,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
  receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number;pending?:boolean} {
   const reject=(code:string)=>({ok:false,code,revision:this.revision});
+  if(this.clockPaused)return reject('paused');
   if(typeof text!=='string'||new TextEncoder().encode(text).length>MAX_MESSAGE_BYTES)return reject('malformed');
   let message:Record<string,unknown>;try{message=JSON.parse(text);}catch{return reject('malformed');}
   if(!message||typeof message!=='object'||Array.isArray(message)||Object.keys(message).sort().join(',')!=='command,commandId,gameId,protocol,revision,sender')return reject('malformed');
@@ -129,11 +142,14 @@ export class HostAuthority {
    if(revision!==this.revision)return reject('stale');
    if(!this.lastUndo||this.lastUndo.playerId!==boundPlayer)return reject('illegal');
    this.state=structuredClone(this.lastUndo.previous);
+   this.clockDeadlines=new Map(this.lastUndo.clockDeadlines);
    this.lastUndo=null;this.pendingDiscards={};this.lastTradeSummary=null;
-   this.seen.add(dedupe);this.revision++;this.refreshClock(boundPlayer);return {ok:true,revision:this.revision};
+   this.seen.add(dedupe);this.revision++;this.refreshClock();return {ok:true,revision:this.revision};
   }
+  const resetActors=effectiveActionResetActors(this.state,command as {type:string;playerId:string});
   const reversible=reversibleTypes.has(command.type);
   const before=reversible?structuredClone(this.state):null;
+  const beforeClock=reversible?new Map(this.clockDeadlines):null;
   let pendingTrade:Omit<PublicTradeSummary,'revision'>|null=null;
   if(command.type==='accept-offer'&&this.state.offer){
    const offer=this.state.offer;
@@ -147,9 +163,9 @@ export class HostAuthority {
    else if(economyTypes.has(command.type))this.state=applyEconomyCommand(this.state,command as EconomyCommand);
    else return reject('malformed');
   }catch{return reject('illegal');}
-  this.lastUndo=before?{playerId:boundPlayer,previous:before}:null;
+  this.lastUndo=before&&beforeClock?{playerId:boundPlayer,previous:before,clockDeadlines:beforeClock}:null;
   this.seen.add(dedupe);this.revision++;
   if(this.state.phase!=='discard')this.pendingDiscards={};
-  this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;this.refreshClock(boundPlayer);return {ok:true,revision:this.revision};
+  this.lastTradeSummary=pendingTrade?{...pendingTrade,revision:this.revision}:null;this.refreshClock();for(const actor of resetActors)this.refreshClock(actor);return {ok:true,revision:this.revision};
  }
 }

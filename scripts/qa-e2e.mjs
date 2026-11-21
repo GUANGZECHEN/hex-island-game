@@ -16,7 +16,7 @@ for(const context of [hostContext,guestContext,spectatorContext])await context.a
   globalThis.__hexVisualMessageCount=0;
   const originalSend=WebSocket.prototype.send;
   WebSocket.prototype.send=function(...args){
-    // Activity pings from the 30-second clock are not gameplay commands.
+    // Clock synchronization messages are not gameplay commands.
     // Only command relay frames should count as board-state changes.
     try{
       const wire=JSON.parse(args[0]);
@@ -369,8 +369,6 @@ try{
   // Client-only layout checks keep the established reconnect test above intact.
   await actor.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
   for(const width of [320,375,900,1024,1280,1600]){
-    // Keep the active player engaged while slow screenshots/layout checks run.
-    await actor.evaluate(()=>document.querySelector('#game')?.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})));
     await actor.setViewportSize({width,height:900});
     if(await actor.locator('#hand [data-resource-icon]').count()!==5)throw new Error(`Resource icons missing at ${width}px.`);
     if(await actor.locator('#player-strip .player-summary').count()!==2)throw new Error(`Player summary missing at ${width}px.`);

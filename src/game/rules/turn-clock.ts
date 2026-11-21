@@ -3,11 +3,11 @@ import { RESOURCES, type GameState, type SetupCommand, type Hand } from './state
 import type { TurnCommand } from './turn.ts';
 import type { EconomyCommand } from './economy.ts';
 
-export const ACTION_WINDOW_MS=30_000;
-export type TurnClockSnapshot={playerId:string;remainingMs:number};
+export const ACTION_WINDOW_MS=45_000;
+export type TurnClockSnapshot={playerId:string;remainingMs:number;paused:boolean};
 
 /** Only the active player is timed, except during simultaneous seven discards,
- * when everyone with an outstanding discard has their own 30-second clock. */
+ * when everyone with an outstanding discard has their own 45-second clock. */
 export function clockParticipants(state:GameState,pendingDiscards:Record<string,Hand>={}):string[]{
  if(state.phase==='finished')return [];
  if(state.phase==='discard')return state.players.filter(p=>state.discards[p.id]&&!pendingDiscards[p.id]).map(p=>p.id);
@@ -15,8 +15,15 @@ export function clockParticipants(state:GameState,pendingDiscards:Record<string,
  return active?[active.id]:[];
 }
 
+/** Call only after the command succeeds, using the state before it was applied. */
+export function effectiveActionResetActors(before:GameState,command:{type:string;playerId:string}):string[] {
+ if(['offer','cancel-offer','reject-offer','undo'].includes(command.type))return [];
+ if(command.type==='accept-offer')return before.offer?[before.offer.proposer]:[];
+ return [command.playerId];
+}
+
 /** Deterministic, rule-validated forced progress. The caller (host authority or
- * local game) alone chooses to invoke this after an actual 30s expiry.
+ * local game) alone chooses to invoke this after an actual 45s expiry.
  * Existing reducers still validate the generated command. */
 export function timeoutCommand(state:GameState,playerId:string):SetupCommand|TurnCommand|EconomyCommand|null {
  if(state.phase==='discard'&&state.discards[playerId]){
@@ -51,5 +58,5 @@ export function timeoutCommand(state:GameState,playerId:string):SetupCommand|Tur
 }
 
 export function remainingClockSeconds(ms:number):number {
- return Math.max(0,Math.min(30,Math.ceil(ms/1000)));
+ return Math.max(0,Math.min(45,Math.ceil(ms/1000)));
 }

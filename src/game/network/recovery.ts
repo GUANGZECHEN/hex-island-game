@@ -9,6 +9,7 @@ export interface AuthorityRecovery {
   revision: number;
   state: GameState;
   pendingDiscards?: Record<string,Hand>;
+  clock?: { paused:boolean; remaining:Record<string,number> };
 }
 
 export interface RecoverySeat {

@@ -1,9 +1,46 @@
-# 30-second action inactivity timer (2026-11-20)
+# Effective action clock and host pause
 
-Every player receives 30 seconds to perform **any genuine game-screen interaction**. The countdown is shown in the **upper-right corner of the existing 3D or 2D board** and shows the player's public nickname and seconds remaining. Every click/tap in the game, keyboard interaction, or successfully committed gameplay action restarts that player's 30-second interval. A stationary pointer or passive visual animation is not an action. The countdown becomes more prominent at 10 seconds. The piece art, camera, board coordinates and resources do not change.
+Approved by the Product Owner on 2026-11-21; supersedes the 2026-11-20 interaction-based 30-second clock. Architect implementation classification: `complex` under `docs/orchestration/MODEL_ROUTING_POLICY.md`.
 
-The host's existing in-browser `HostAuthority` owns all multiplayer deadlines and the legal automatic response. Guest clocks are a display-only projection of host countdowns (remaining milliseconds plus the client's receipt time), including for spectators and reconnects; only authenticated player activity is accepted. A guest never supplies an authoritative elapsed time or an action on another player's behalf. For simultaneous discards, **each obligated player** has an independent 30-second clock; the board shows whichever pending player's deadline is nearest. Host recovery starts fresh 30-second windows rather than treating saved downtime as active time. The current host must remain connected and its browser tab alive; background throttling can delay automatic actions until it resumes.
+## Operation window
 
-When a player fails to interact for 30 seconds, the host makes a validated, deterministic legal fallback so the match cannot stall. Action phase: end turn. Roll phase: roll normally using the existing host-controlled dice mechanism. Free roads: stop. Setup: choose the first valid vertex/road under existing spacing/placement constraints. Robber: choose the first legal hex; steal: choose the first eligible opponent (the actual resource remains host-random). Simultaneous discard: the required number of cards is discarded from available resources in fixed resource order, and all players' private hands remain private. These automatic choices use exactly the same reducers and bank/resource conservation as manual commands; they never bypass game rules. A finished game has no clock.
+The active player receives **45 seconds** to complete an effective gameplay action. The countdown remains at the upper-right of the existing 3D or 2D board, showing the player's public nickname and remaining seconds. It becomes more prominent at ten seconds. Each successful effective action grants a new 45-second window to the relevant timed player, so a turn can contain multiple actions.
 
-Local hot-seat and Bot sessions use the same 30s rules without networking. The timer has no additional third-party infrastructure, paid services or server-side scheduling. It is an enforced **activity timeout**, rather than a fixed 30-second limit for the entire turn: a player can perform multiple actions, with a fresh 30 seconds after each.
+| Operation | Refreshes the clock |
+| --- | --- |
+| Successful setup placement or paid construction, including ships and trade stations | Yes |
+| Successful roll, discard, robber movement, theft or turn/phase completion | Yes for the relevant player; newly obligated players receive their own window |
+| Successful development-card purchase/use or free-road placement | Yes |
+| Completed bank or port trade | Yes |
+| Completed domestic trade accepted by another player | Yes for the active proposer, even though the accepter submitted the command |
+| Successful Harbor cargo loading or station gift | Yes |
+| Clicking/tapping the board, camera controls, scrolling or keyboard/input changes | No |
+| Choosing a construction target without placing it | No |
+| Proposing, cancelling or rejecting a trade | No |
+| Undo | No |
+| Rejected, duplicate, stale or unaffordable command | No |
+
+For simultaneous seven discards, each obligated player has an independent 45-second window. The board shows the nearest outstanding deadline. Submitting one player's valid discard does not extend another player's window. Private pending discard choices remain private.
+
+## Pause and resume
+
+The **room host** may use Pause/Resume during a game, including another player's turn or simultaneous discards. Every outstanding clock freezes at its current remaining milliseconds. Paused games reject gameplay commands and do not execute timeout fallback actions. Guests and spectators see the paused state but have no pause/resume control. Existing camera and viewing controls may remain usable because they do not affect game state or time.
+
+Resume continues the stored remaining time. Repeated pause/resume does not grant another 45 seconds. Paused state is included in synchronized public state and saved recovery metadata, so guest rejoin and restoring a paused checkpoint preserve it. The pre-existing requirement that original players reconnect before the host resumes a saved session remains in place. Starting or restarting a match clears pause and initializes fresh clocks.
+
+Local hot-seat and Bot games expose an equivalent Pause/Resume control. Both the action timer and bot execution stop while paused; pending gameplay inputs are checked again at execution time.
+
+## Authority and timeout behavior
+
+The existing in-browser `HostAuthority` owns multiplayer deadlines, effective-action validation, pause state and automatic fallback actions. Guests and spectators receive display-only remaining durations; clients never supply authoritative elapsed time. Arbitrary activity messages cannot renew a deadline. Pause belongs to the host session control path and is not a guest gameplay command.
+
+When an unpaused operation window expires, the existing validated fallback policy advances the game: end the turn in the action phase; roll with host-controlled randomness; stop unused free roads; choose the first legal setup vertex/road; choose the first legal robber hex or eligible theft target; or discard the required amount in fixed resource order. All choices use the normal reducers, resource conservation and privacy rules. A finished game has no running clock.
+
+The host browser must remain alive and connected for live authority. Background browser throttling can delay the next timeout check. This feature uses existing room transport and bounded recovery checkpoints, with no additional service or scheduling infrastructure.
+
+## Acceptance checks
+
+- Fake-time tests cover the 45-second boundary, effective actions, rejected commands, offer/cancel/reject/Undo, accepted guest trades and independent discard windows.
+- Pause tests cover exact remaining time, multiple pause/resume cycles, blocked gameplay and timeouts, host-only authorization, rejoin and saved recovery.
+- Real Chromium tests cover local and multiplayer visible countdowns, non-resetting camera/input actions, successful construction, pause/resume, guest and spectator displays, and responsive 3D/2D board controls.
+- Existing build, privacy, recovery, trade, Harbor and visual suites continue to run before the approved `game/mvp` publication.

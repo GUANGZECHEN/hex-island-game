@@ -346,6 +346,8 @@ test('seven discards do not broadcast a refreshed game until all players submit'
  const saved=started.recovery();
  saved.authority.state.phase='discard';saved.authority.state.currentSeat=0;
  saved.authority.state.discards={'Player 2':4,'Player 3':4};
+ // The synthetic discard state needs matching independent clock participants.
+ saved.authority.clock={paused:false,remaining:{'Player 2':45_000,'Player 3':45_000}};
  saved.authority.state.players[1].hand.lumber=8;
  saved.authority.state.players[2].hand.brick=8;
  saved.authority.state.bank.lumber-=8;saved.authority.state.bank.brick-=8;

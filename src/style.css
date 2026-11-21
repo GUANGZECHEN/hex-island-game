@@ -1560,7 +1560,7 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
  .room-table #game-change-map{width:100%}
 }
 
-/* Shared 30-second active-player clock, pinned over the board's top-right edge.
+/* Shared 45-second active-player clock, pinned over the board's top-right edge.
    Works in both WebGL and SVG, with no new Three meshes or hit targets. */
 .board-workspace .board-map-column{position:relative}
 .board-workspace .turn-action-clock{
@@ -1605,3 +1605,6 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
  font-size:.72rem;font-weight:700;line-height:1.35;
 }
 .trade-broadcast-status{border-left:3px solid #4d9670}
+
+.board-workspace #turn-clock-pause{pointer-events:auto;min-height:28px;margin:.15rem 0 0;padding:.18rem .48rem;font-size:.7rem;line-height:1.1}
+.board-workspace #turn-clock-pause[hidden]{display:none!important}

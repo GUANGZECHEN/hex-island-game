@@ -38,9 +38,9 @@ test('an authoritative roll and end-turn advance public revision and player',()=
 
 test('authority checkpoint round-trips full private state and revision',()=>{
  const state=createGame(17,['a','b','c']);state.phase='action';state.currentSeat=0;state.turn=5;state.players[0].hand.brick=3;state.players[1].cards=[{type:'knight',boughtTurn:2}];
- const host=new HostAuthority('recover1',state,()=>7,12);
+ const now=()=>1000,host=new HostAuthority('recover1',state,()=>7,12,now);
  const saved=host.checkpoint();
- const restored=HostAuthority.fromRecovery(saved,()=>9);
+ const restored=HostAuthority.fromRecovery(saved,()=>9,now);
  assert.equal(restored.currentRevision(),12);
  assert.deepEqual(restored.checkpoint(),saved);
  assert.equal(restored.snapshot('a').private.hand.brick,3);

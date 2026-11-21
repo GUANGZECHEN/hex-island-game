@@ -57,17 +57,33 @@ try {
   const actionTimer=page.locator('#turn-action-clock');
   assert.equal(await actionTimer.isVisible(),true,'the clock must be visible on the board');
   const startingSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
-  assert.ok(startingSeconds>=27&&startingSeconds<=30);
+  assert.ok(startingSeconds>=42&&startingSeconds<=45);
   await delay(1220);
   const laterSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
   assert.ok(laterSeconds<startingSeconds,'the clock must count down live');
   await page.locator('#board-view-reset').click();
-  const resetSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
-  assert.ok(resetSeconds>=29,'any genuine board-control click must restart 30 seconds');
+  const cameraSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  assert.ok(cameraSeconds<=laterSeconds,'camera interaction must not reset the clock');
+  await canvasPlace(page, 'Place settlement');
+  const buildSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  assert.ok(buildSeconds>=43&&buildSeconds<=45,'completed settlement must reset the clock to 45 seconds');
+  await delay(1300);
+  const beforeUndo=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  await page.getByRole('button', { name: 'Undo last action', exact: true }).click();
+  const afterUndo=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  assert.ok(afterUndo<=beforeUndo,'Undo must not reset the clock');
   const timerBounds=await actionTimer.boundingBox(),boardBounds=await page.locator('#board').boundingBox();
   assert.ok(timerBounds&&boardBounds&&timerBounds.x+timerBounds.width<=boardBounds.x+boardBounds.width+6&&timerBounds.y<=boardBounds.y+60,'timer stays in the board upper-right corner');
-  check('30-second board clock displays and resets on a valid camera interaction');
+  check('45-second clock ignores camera and Undo while a completed settlement resets it');
+  await page.locator('#turn-clock-pause').click();
+  assert.equal(await page.locator('#turn-clock-pause').getAttribute('aria-pressed'),'true');
+  const frozen=await page.locator('#turn-action-clock-seconds').textContent();
+  await delay(1500);
+  assert.equal(await page.locator('#turn-action-clock-seconds').textContent(),frozen,'paused clock must stay frozen');
+  assert.equal(await page.getByRole('button',{name:'Place settlement',exact:true}).count(),0,'game actions are unavailable while paused');
+  check('Local pause freezes the displayed time and blocks gameplay');
   let info = await inspect(page); report.renderer = info.device;
+  const picksBeforeCameraChecks=info.picks;
   assert.equal(info.hexCount, 19); assert.equal(info.portCount, 9); assert.ok(info.triangles > 3000); assert.ok(info.fullyVisible);
   const colorCount = colors(await page.locator('#board canvas').screenshot()); assert.ok(colorCount > 100);
   assert.ok(info.deserts.every(d => !d.hasToken && d.duneMeshes === 1 && d.props === 0));
@@ -117,13 +133,17 @@ try {
   check('Reduced-motion preference pauses ambient animation and keeps the canvas static');
   const startCamera = (await inspect(page)).camera;
   await drag(page, 90, -20); let rotated = await inspect(page);
-  assert.ok(moved(startCamera, rotated.camera) > .2); assert.equal(rotated.buildings.length, 0); assert.equal(rotated.picks, 0);
+  assert.ok(moved(startCamera, rotated.camera) > .2); assert.equal(rotated.buildings.length, 0); assert.equal(rotated.picks, picksBeforeCameraChecks);
   await drag(page, 20, 15, true); assert.ok(moved(rotated.target, (await inspect(page)).target) > .005);
   const canvas = await page.locator('#board canvas').boundingBox(); await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2); await page.mouse.wheel(0, -120); await settle(page);
   const zoom = (await inspect(page)).zoom; assert.ok(zoom > 1);
   const hand = await page.locator('#private-hand-card').boundingBox(); await page.mouse.move(hand.x + hand.width / 2, hand.y + 15); await page.mouse.wheel(0, 50); await settle(page); assert.equal((await inspect(page)).zoom, zoom);
   await page.locator('#board-view-reset').click(); await settle(page); assert.ok(moved(startCamera, (await inspect(page)).camera) < .001);
   check('Middle orbit, Shift pan and canvas-only wheel work without executing a move');
+  await page.locator('#turn-clock-pause').click();
+  assert.equal(await page.locator('#turn-clock-pause').getAttribute('aria-pressed'),'false');
+  await delay(1300);
+  assert.ok(Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1])<Number(frozen.split(':')[1]),'resumed clock continues from its frozen remaining time');
   await drag(page, 35, 0); const cameraBeforeBuild = (await inspect(page)).camera;
   const placed = await canvasPlace(page, 'Place settlement');
   info = await inspect(page); assert.ok(info.buildings.some(([id]) => id === placed)); assert.ok(moved(cameraBeforeBuild, info.camera) < .001);
@@ -193,6 +213,20 @@ try {
   await unsupported.goto(url.href); await unsupported.locator('#local-room-create').click(); await unsupported.locator('#start').click(); await reveal(unsupported);
   assert.equal(await unsupported.locator('#board svg.island-board').count(), 1); await unsupported.close();
   check('A device without WebGL2 starts a playable SVG game automatically');
+  // Wait for the real 45-second deadline in a separate game; no accelerated clock
+  // or synthetic activity is used, so this exercises the browser timeout path.
+  const timeoutPage=watch(await browser.newPage({viewport:{width:1280,height:900}}));
+  const timeoutUrl=new URL(url);timeoutUrl.searchParams.set('renderer','2d');
+  await timeoutPage.goto(timeoutUrl.href);
+  await timeoutPage.locator('#local-room-create').click();
+  await timeoutPage.locator('#seats').selectOption('2');
+  await timeoutPage.locator('#start').click();await reveal(timeoutPage);
+  const timeoutStart=Date.now();
+  await timeoutPage.waitForFunction(()=>document.querySelectorAll('#board [data-building-kind]').length===1,null,{timeout:55000});
+  assert.ok(Date.now()-timeoutStart>=40000,'inactivity fallback must not fire early');
+  assert.match(await timeoutPage.locator('#game-status').textContent(),/phase: setup-road/);
+  await timeoutPage.close();
+  check('A real 45-second local inactivity deadline performs the legal setup fallback');
   if (process.env.QA_SIGNALING_URL) {
     // Animated local art has already been verified above. Free SwiftShader GPU
     // budget before spinning up three independent live multiplayer windows.
@@ -219,6 +253,20 @@ try {
     assert.ok(moved(observerCamera, (await inspect(observer)).camera) < .001);
     await actor.getByRole('button', { name: 'Undo last action', exact: true }).click(); await observer.waitForFunction(() => window.__hex3D.inspect().buildings.length === 0);
     check('Live host/guest/spectator synchronize 3D building and Undo; cameras and private hands stay independent');
+    await host.locator('#turn-clock-pause').click();
+    for(const p of [host,guest,spectator])await p.waitForFunction(()=>document.querySelector('#turn-hint')?.textContent.includes('Paused'));
+    assert.equal(await guest.locator('#turn-clock-pause').isVisible(),false);
+    assert.equal(await spectator.locator('#turn-clock-pause').isVisible(),false);
+    const onlineFrozen=await host.locator('#turn-action-clock-seconds').textContent();
+    for(const p of [guest,spectator])await p.waitForFunction(value=>document.querySelector('#turn-action-clock-seconds')?.textContent===value,onlineFrozen);
+    const pieces=(await inspect(host)).buildings.length;
+    await delay(1500);
+    for(const p of [host,guest,spectator])assert.equal(await p.locator('#turn-action-clock-seconds').textContent(),onlineFrozen,'every viewer sees the same frozen remaining time');
+    assert.equal((await inspect(host)).buildings.length,pieces);
+    assert.equal(await actor.getByRole('button',{name:'Place settlement',exact:true}).count(),0);
+    await host.locator('#turn-clock-pause').click();
+    for(const p of [host,guest,spectator])await p.waitForFunction(()=>!document.querySelector('#turn-hint')?.textContent.includes('Paused'));
+    check('Only host can pause; all online viewers see the frozen clock and gameplay is blocked');
     const beforeReconnect = (await inspect(guest)).camera;
     await guest.evaluate(() => window.__hexQaDropRoomConnection());
     await guest.waitForFunction(() => !document.body.classList.contains('network-resyncing') && (window.__hexQaReconnectCount?.() || 0) > 0, null, { timeout: 30000 });

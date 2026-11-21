@@ -175,14 +175,14 @@ test('seven: public roll summary reflects only awarded cards and is copied, not 
 });
 
 test('seven: host grants exactly once and rejects replay, forged rewards and Undo; recovery never re-awards',()=>{
- const s=game(),e=entropy([2,3,0,4]),host=new HostAuthority('seven-once',s,e.random);
+ const s=game(),e=entropy([2,3,0,4]),now=()=>1000,host=new HostAuthority('seven-once',s,e.random,0,now);
  const submit=(h:HostAuthority,revision:number,key:string,command:object={type:'roll'})=>h.receive('a',JSON.stringify({protocol:1,gameId:'seven-once',revision,commandId:key,sender:'a',command:{playerId:'a',...command}}));
  assert.equal(submit(host,0,'forged',{type:'roll',gains:{a:{ore:99}}}).code,'malformed');assert.equal(e.calls(),0);
  assert.equal(submit(host,0,'roll').ok,true);assert.equal(e.calls(),4);
  const saved=host.checkpoint();assert.equal(saved.state.phase,'action');assert.deepEqual(saved.pendingDiscards,{});
  assert.equal(submit(host,1,'roll').code,'duplicate');assert.equal(submit(host,0,'stale').code,'stale');
  assert.equal(submit(host,1,'second').code,'illegal');assert.equal(submit(host,1,'undo',{type:'undo'}).code,'illegal');assert.equal(e.calls(),4);
- const restored=HostAuthority.fromRecovery(saved,()=>{throw Error('Recovery must never draw rewards');});
+ const restored=HostAuthority.fromRecovery(saved,()=>{throw Error('Recovery must never draw rewards');},now);
  assert.deepEqual(restored.snapshot('a'),host.snapshot('a'));assert.deepEqual(restored.snapshot('b'),host.snapshot('b'));
  assert.equal(submit(restored,1,'after-reconnect').code,'illegal');assert.deepEqual(restored.checkpoint(),saved);
  const next=applyTurnCommand(saved.state,{type:'end-turn',playerId:'a'});assert.equal(next.harbor!.sevenReward,undefined);assert.equal(next.phase,'roll');validateHarborState(next);

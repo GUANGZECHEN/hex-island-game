@@ -12,6 +12,7 @@ const fixture=[
  "(window as any).__tradeCameraFixture = {",
  " load(mode: 'classic'|'harbor-coop'='classic') {",
  "  clearBotTimer(); remote=null; projection=null; networkRevision=0;localBotIds=new Set();",
+ "  localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;localUndoDeadlines=null;",
  "  localUndoState=null;localUndoPlayerId='';pendingLocalUndo=null;targetMode=null;",
  "  const next=createGame(24680,['Player 1','Player 2'],()=>0,{mode});",
  "  next.phase='action';next.currentSeat=0;next.turn=7;",
@@ -25,7 +26,7 @@ const fixture=[
  "   next.roads[roads[0].id]='Player 1';next.roads[roads[1].id]='Player 2';",
  "   next.harbor!.stations={[junction.id]:{vertexId:junction.id,builtBy:'Player 1',lastSentTurns:{}}};",
  "  }",
- "  state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,mode);",
+ "  state=next;viewer='Player 1';activeLocalRoom=createLocalRoomSettings(24680,2,0,mode);syncLocalActionClock();",
  "  log=[];publicActivity='Trade camera test';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;",
  "  el('pass').hidden=true;el('game').hidden=false;enterGame();render();",
  " },",
@@ -53,6 +54,7 @@ function unchanged(a,b,label){
  assert.equal(b.height,a.height,label+' board-stage height shifted');
  assert.ok(dist(b.board,a.board)<1e-4,label+' board dimensions shifted');
 }
+const clockSeconds=async p=>Number((await p.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
 const settle=p=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 async function orbit(p){
  const b=await p.locator('#board canvas').boundingBox();
@@ -81,6 +83,8 @@ try{
  await settle(page);
  const before=await inspect(page);
  assert.ok(before.camera.manualView);
+ await delay(1500);
+ const beforeBankClock=await clockSeconds(page);assert.ok(beforeBankClock<45);
  const oldHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  await page.locator('#trade-actions [aria-label="Trade 4 lumber for 1 brick"]').click();
  await settle(page);
@@ -88,7 +92,10 @@ try{
  unchanged(before,after,'Bank trade');
  const newHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  assert.equal(newHand.lumber,oldHand.lumber-4);assert.equal(newHand.brick,oldHand.brick+1);
+ assert.ok(await clockSeconds(page)>=44,'completed bank trade resets the clock');
  console.log('PASS bank trade preserves zoom, angle, fit, map and canvas',JSON.stringify({height:after.height,scroll:after.pageScroll}));
+ await delay(1500);
+ const beforeOfferClock=await clockSeconds(page);assert.ok(beforeOfferClock<45);
  const offerBefore=await inspect(page);
  await page.locator('#trade-actions .domestic-trade-card summary').click();
  await page.locator('#trade-actions .domestic-trade-card fieldset').nth(0).getByRole('button',{name:'Add one lumber'}).click();
@@ -98,17 +105,23 @@ try{
  const offerAfter=await inspect(page);
  unchanged(offerBefore,offerAfter,'Domestic offer');
  assert.ok(await page.evaluate(()=>window.__tradeCameraFixture.offer()));
+ assert.ok(await clockSeconds(page)<=beforeOfferClock,'proposal and draft interactions do not reset the clock');
  await page.evaluate(()=>window.__tradeCameraFixture.view('Player 2'));
  await settle(page);
+ await delay(1500);
+ const beforeAcceptClock=await clockSeconds(page);assert.ok(beforeAcceptClock<45);
  const acceptBefore=await inspect(page);
  await page.getByRole('button',{name:'Accept trade'}).click();
  await settle(page);
  unchanged(acceptBefore,await inspect(page),'Domestic trade acceptance');
  assert.equal(await page.evaluate(()=>window.__tradeCameraFixture.offer()),null);
+ assert.ok(await clockSeconds(page)>=44,'other-seat acceptance resets the active proposer clock');
  console.log('PASS domestic offer and acceptance preserve the 3D view');
  await page.evaluate(()=>window.__tradeCameraFixture.load('harbor-coop'));
  await settle(page);
  await orbit(page);
+ await delay(1500);
+ assert.ok(await clockSeconds(page)<45);
  const transferBefore=await inspect(page);
  const prevHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  await page.locator('#harbor-panel [data-send-resource]').first().click();
@@ -116,6 +129,7 @@ try{
  unchanged(transferBefore,await inspect(page),'Co-op station resource transfer');
  const remaining=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  assert.equal(Object.values(prevHand).reduce((a,b)=>a+b,0)-Object.values(remaining).reduce((a,b)=>a+b,0),1);
+ assert.ok(await clockSeconds(page)>=44,'completed Harbor gift resets the clock');
  console.log('PASS co-op station gift preserves the 3D view');
  assert.deepEqual(errors,[]);
 }finally{

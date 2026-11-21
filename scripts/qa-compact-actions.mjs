@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const evidence = process.env.LABEL_EVIDENCE || 'compact-action-evidence';
 await mkdir(evidence, { recursive: true });
-let server, browser, page, qaHeartbeat;
+let server, browser, page;
 const report={checks:[],errors:[]};
 const check=(name,details={})=>{report.checks.push({name,pass:true,...details});console.log('PASS',name,JSON.stringify(details));};
 const url=new URL(process.env.QA_URL || 'http://127.0.0.1:4176/hex-island-game/');
@@ -37,17 +37,14 @@ try {
   assert.equal(await page.locator('#game-error').textContent(),'');
   check('Actual game setup uses short labels, full accessible names and unchanged safe Undo');
 
-  // This layout inspection takes longer than one activity window on slow CI.
-  // Dispatch genuine game-area interactions as a QA user would; the real timer
-  // remains enforced, but the fixture is not replaced by an inactivity timeout.
-  qaHeartbeat=setInterval(()=>{void page.evaluate(()=>{
-    const game=document.querySelector('#game');
-    if(game&&!game.hidden)game.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));
-  }).catch(()=>{});},4500);
+  // Freeze the real clock while inspecting passive layout fixtures.
+  await page.evaluate(()=>{window.__qaActionTemplate=document.querySelector('#actions button.action-button').cloneNode(true);});
+  await page.locator('#turn-clock-pause').click();
+  assert.equal(await page.locator('#turn-clock-pause').getAttribute('aria-pressed'),'true');
   // Pure layout fixtures: use actual action and hand DOM nodes, never change game state.
   // Unit contracts independently verify all paid actions call the same presentation helper.
   await page.evaluate(()=>{
-    const source=document.querySelector('#actions button.action-button');
+    const source=window.__qaActionTemplate;
     const chips=Array.from(document.querySelectorAll('#hand .resource-chip'));
     const actions=document.querySelector('#actions');actions.replaceChildren();
     const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
@@ -86,4 +83,4 @@ try {
   }
   assert.deepEqual(report.errors,[]);check('No browser errors');
 }catch(error){report.error=String(error.stack||error);console.error(report.error);process.exitCode=1;try{await page?.screenshot({path:`${evidence}/failure.png`,fullPage:true});}catch{}}
-finally{if(qaHeartbeat)clearInterval(qaHeartbeat);await writeFile(`${evidence}/report.json`,JSON.stringify(report,null,2));await browser?.close();server?.kill('SIGTERM');}
+finally{await writeFile(`${evidence}/report.json`,JSON.stringify(report,null,2));await browser?.close();server?.kill('SIGTERM');}

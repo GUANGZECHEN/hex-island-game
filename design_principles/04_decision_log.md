@@ -107,3 +107,13 @@ D026: The Product Owner changed the optional Classic Harbor Ships cost from 3 lu
 ## 2026-11-20: mandatory 30-second player inactivity clock
 
 D027: The Product Owner requires a shared 30-second per-player inactivity timer, prominently visible at the upper-right of the game board. Any genuine click/touch/keyboard interaction or accepted game command resets that player's timer. To keep the game playable when a player is inactive, the host-authoritative rules advance phases with existing valid fallback commands; the action phase passes the turn, while forced setup/discard/roll/robber stages use deterministic legal choices. Everyone sees the same host-owned timer including spectators; simultaneous discards have independent timers. Local play follows the same behavior. Existing rooms, authority, private-hand boundaries and services are unchanged.
+
+The duration and interaction-reset terms of D027 are superseded by D028.
+
+## 2026-11-21 effective action clock
+
+D028: The Product Owner increased each operation window to 45 seconds and requires a successful effective game action before the clock refreshes. Construction and an actually completed trade count; proposing a trade alone does not. UI interaction, camera movement, draft edits, cancelled or rejected offers, Undo, and illegal, stale or repeated commands grant no additional time. Existing legal phase progress, development-card actions and Harbor resource delivery also count. An accepted domestic trade refreshes the active proposer even when the accepting player sends the command. Simultaneous discard windows remain independent. The host owns online deadlines and validation; local play follows the same rules. Implementation classification: complex because timing, authority, multiple clients and recovery cross module boundaries.
+
+## 2026-11-21 host controlled pause
+
+D029: The Product Owner approved a host Pause/Resume control during a match. Pause freezes all outstanding timers at their current remaining duration and suspends gameplay, automatic fallback actions and local bots. Resume continues those durations without resetting them. All players and spectators see the paused state; guests and spectators cannot pause, resume or change the match while paused. The state is synchronized on reconnect and retained in saved checkpoints. Local hot-seat and Bot games offer the equivalent control. Starting or restarting a game initializes a running 45-second clock. Existing host authority, invitation and private-hand boundaries, temporary QA infrastructure and the restriction against an automatic main merge remain in force.

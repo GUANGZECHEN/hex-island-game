@@ -84,13 +84,13 @@ export class HostSession {
    }else{this.emitCheckpoint();this.broadcast();}
   }
  }
- /** Accept authenticated interactions only from the player being timed. */
- touchClock(playerId:string){
+ /** Host-only control; pause changes are checkpointed at the same game revision. */
+ setPaused(paused:boolean):boolean {
   if(!this.authority||this.recovering)return false;
-  this.tick();
-  const accepted=this.authority.touchClock(playerId);
-  if(accepted)this.broadcastClock();
-  return accepted;
+  if(paused)this.tick();
+  const changed=this.authority.setPaused(paused);
+  if(changed){this.emitCheckpoint(true);this.broadcast();}
+  return changed;
  }
  private restoreRecovery(value:SessionRecovery,paused:boolean){
   const currentPeers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
@@ -164,7 +164,6 @@ export class HostSession {
    this.sendClock(peer);
    return;
   }
-  if(msg.type==='activity'&&seat&&this.authority&&!this.recovering){this.touchClock(seat.id);return;}
   if(msg.type==='command' && this.authority && typeof msg.command==='string'){
    if(!seat){this.output(peer,'rejection',{ok:false,code:'spectator',revision:this.authority.currentRevision()});return;}
    if(this.recovering){this.output(peer,'rejection',{ok:false,code:'recovery-pending',revision:this.authority.currentRevision()});return;}
