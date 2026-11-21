@@ -115,7 +115,7 @@ export class ThreeBoardRenderer {
     }, { signal });
     window.addEventListener('resize', this.resize, { passive: true, signal });
     document.addEventListener('visibilitychange', this.scheduleMotion, { signal });
-    this.reducedMotion.addEventListener('change', this.scheduleMotion, { signal });
+    this.reducedMotion.addEventListener('change', this.onMotionPreferenceChange, { signal });
     this.observer = new ResizeObserver(this.resize); this.observer.observe(this.host);
     if (typeof IntersectionObserver !== 'undefined') {
       this.visibilityObserver = new IntersectionObserver(entries => {
@@ -355,6 +355,17 @@ export class ThreeBoardRenderer {
   private motionEnabled(): boolean {
     return !this.disposed && !this.reducedMotion.matches && !document.hidden && this.withinViewport && this.width > 0 && this.height > 0;
   }
+  private onMotionPreferenceChange = (): void => {
+    // A media-query transition can occur while the page is restoring from a
+    // full-page capture or background tab. Re-evaluate the host's actual
+    // viewport intersection before restarting the animation loop.
+    const rect = this.host.getBoundingClientRect();
+    this.withinViewport = rect.width > 0 && rect.height > 0 &&
+      rect.bottom > 0 && rect.right > 0 &&
+      rect.top < window.innerHeight && rect.left < window.innerWidth;
+    this.resize();
+    this.scheduleMotion();
+  };
   private scheduleMotion = (): void => {
     if (!this.motionEnabled()) {
       if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
