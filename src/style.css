@@ -1631,3 +1631,13 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
  opacity:.8;
  cursor:not-allowed;
 }
+
+/* Persistent beginner reference cards: only these four build/development actions
+   remain visible when unavailable; all other controls retain actionable-only UI. */
+.learn-action-panel{margin:.55rem 0 .75rem;padding:.65rem;background:#f8faf4;border:1px solid #d6e0d1;border-radius:.7rem}
+.learn-action-panel>h2{margin:0 0 .45rem;font-size:.82rem;color:#526a5d}
+.learn-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem}
+.learn-action-grid .action-button{min-width:0;min-height:62px;flex-wrap:wrap}
+.learn-action-grid .action-button:disabled{opacity:.48;filter:grayscale(.65);background:#f0f1ed}
+.learn-action-grid .action-cost{flex-basis:100%;padding-left:1.8rem}
+@media(max-width:400px){.learn-action-grid{grid-template-columns:minmax(0,1fr)}.learn-action-grid .action-cost{padding-left:0}}
