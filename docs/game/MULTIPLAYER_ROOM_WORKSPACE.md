@@ -24,3 +24,7 @@ Known limitation: the current recovery system persists started games, not unstar
 - Previous checkpoints cannot resurrect an explicitly aborted game; spectators continue to receive only public projections.
 - Classic, Harbor Co-op, local rooms, quick restart, mobile layouts and current-game recovery stay functional.
 - CI validation covers room session transitions, the strict checkpoint control and two-browser end-to-end room setup, abort and reconfiguration.
+
+## Layout consistency follow-up
+
+The waiting lobby must remain the same board workspace before and after Start: player/ready cards in the left column, the selected board preview in the center, and all room configuration, invitation, readiness and host controls in the right command column. On tablet/mobile the same content stacks in the same order (players → board → room controls); the room form spans the full command column and must never fall back to a separate narrow page or overflow horizontally. Host and guest views are checked at desktop and phone widths in the real Chromium room E2E test.
