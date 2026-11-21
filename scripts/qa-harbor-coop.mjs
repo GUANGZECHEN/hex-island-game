@@ -8,7 +8,7 @@ const evidence=process.env.HARBOR_EVIDENCE||'harbor-evidence';await mkdir(eviden
 const report={scope:process.env.HARBOR_ALLOW_2D==='1'?'Fallback accepted for local functional checks':'3D required',checks:[],errors:[]};const check=(name)=>{report.checks.push({name,pass:true});console.log('PASS',name);};
 const html='__harbor-fixture.html',source='src/__harbor-fixture.ts';
 const fixture=`
-(window as any).__harborFixture={load(outcome:'playing'|'win'|'lose'|'station'|'road-support'|'own-shipping'|'seven'='playing'){
+(window as any).__harborFixture={load(outcome:'playing'|'win'|'lose'|'station'|'road-support'|'own-shipping'|'seven'|'development'='playing'){
  clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;lastWinnerAlert='';
  localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
  let s=createGame(24680,['Player 1','Player 2'],undefined,{mode:'harbor-coop'});
@@ -37,6 +37,7 @@ const fixture=`
   const junction=mine.vertexIds.find(v=>theirs.vertexIds.includes(v))!;
   s.harbor!.stations={[junction]:{vertexId:junction,builtBy:'Player 1',lastSentTurns:{}}};
  }
+ if(outcome==='development')s.players[0].cards=[{type:'knight',boughtTurn:0},{type:'road-building',boughtTurn:0}];
  if(outcome==='seven'){
   s.phase='roll';s.dice=null;s.discards={};s.victims=[];s.resumePhase=null;
   const hands=[{lumber:9,brick:0,wool:0,grain:1,ore:0},{lumber:0,brick:0,wool:8,grain:0,ore:1}];
@@ -73,6 +74,19 @@ async function setupPair(p){
  await p.getByRole('button',{name:'Place settlement',exact:true}).click();await clickBoardTarget(p);
  for(let n=0;n<2;n++){await p.getByRole('button',{name:'Place road',exact:true}).click();await clickBoardTarget(p);}
 }
+async function setupHumanBot(p){
+ for(let n=0;n<2;n++){
+  await p.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes("Player 1's turn; phase: setup-city"),null,{timeout:30000});
+  assert.equal(await p.locator('#pass').isVisible(),false);
+  assert.equal(await p.getByRole('button',{name:'Place settlement',exact:true}).count(),0);
+  await p.getByRole('button',{name:'Place city',exact:true}).click();await clickBoardTarget(p);
+ }
+ await p.waitForFunction(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.length===4:document.querySelectorAll('#board [data-building-kind]').length===4,null,{timeout:30000});
+ const buildings=await p.evaluate(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.map(([,b])=>b):Array.from(document.querySelectorAll('#board [data-building-kind]')).map(n=>({kind:n.getAttribute('data-building-kind'),playerId:n.querySelector('title')?.textContent.startsWith('Bot ')?'Bot':'Player 1'})));
+ assert.equal(buildings.filter(b=>b.playerId==='Player 1'&&b.kind==='city').length,2);
+ assert.equal(buildings.filter(b=>b.playerId==='Bot'&&b.kind==='settlement').length,2);
+ assert.equal(await p.locator('#pass').isVisible(),false);
+}
 async function local(p,bot=false){await p.goto(base.href,{waitUntil:'networkidle'});await p.locator('#local-room-create').click();await p.locator('#local-game-mode').selectOption('harbor-coop');if(bot)await p.locator('#local-bot-count').selectOption('1');await p.locator('#start').click();await reveal(p);await ready(p);}
 try{
  if(!process.env.QA_URL){
@@ -89,8 +103,9 @@ try{
  for(const [width,height] of [[1280,900],[375,812]]){await page.setViewportSize({width,height});await delay(150);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.locator('#harbor-panel').scrollIntoViewIfNeeded();await page.screenshot({path:`${evidence}/harbor-${width}.png`,fullPage:true});}check('Co-op orders fit desktop and mobile without horizontal overflow');
  page.once('dialog',d=>d.accept());await page.locator('#local-restart').click();await reveal(page);assert.match(await page.locator('#turn-banner').textContent(),/Harbor Co-op/);assert.equal(await page.locator('.harbor-order').count(),1);check('Same-room local restart retains cooperative mode and starts the first scheduled order');
  await page.setViewportSize({width:1280,height:900});await local(page,true);
- for(let n=0;n<2;n++){await page.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});await setupPair(page);}
- await page.waitForFunction(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.length===4:document.querySelectorAll('#board [data-building-kind]').length===4,null,{timeout:30000});assert.ok(await page.evaluate(()=>window.__hex3D.inspect().mode==='3d'?window.__hex3D.inspect().buildings.some(([,b])=>b.playerId==='Bot'):Array.from(document.querySelectorAll('#board [data-building-kind] title')).some(n=>n.textContent.startsWith('Bot '))));check('One-human plus one teammate Bot completes actual snake setup without hot-seat prompts');
+ await setupHumanBot(page);check('Human places two cities and teammate Bot places two settlements without hot-seat prompts');
+ page.once('dialog',d=>d.accept());await page.locator('#local-restart').click();
+ await setupHumanBot(page);check('Restart retains human city and Bot settlement roles');
  if(!process.env.QA_URL){
   const fixtureURL=new URL('__harbor-fixture.html?qa3d=1',base);await page.goto(fixtureURL.href,{waitUntil:'networkidle'});await page.evaluate(()=>window.__harborFixture.load());await ready(page);
   const id=await page.locator('.harbor-order').first().getAttribute('data-order-id');const card=page.locator(`.harbor-order[data-order-id="${id}"]`);
@@ -108,9 +123,19 @@ try{
    await page.goto(u.href,{waitUntil:'networkidle'});await page.evaluate(()=>window.__harborFixture.load('station'));
    if(renderer==='3d')await ready(page);
    const before=renderer==='3d'?await page.evaluate(()=>window.__hex3D.inspect()):null;
-   await page.getByRole('button',{name:'Build trade station',exact:true}).click();
+   const beforeStation=await page.evaluate(()=>window.__harborFixture.snapshot());
+   assert.equal(beforeStation.harbor.version,3);
+   const stationButton=page.getByRole('button',{name:'Build trade station',exact:true});
+   assert.equal(await stationButton.getAttribute('aria-description'),'Cost: 1 wool, 1 grain, 1 ore');
+   await stationButton.click();
    assert.equal(await page.locator('#targets select').count(),0);
    const id=await clickBoardTarget(page);assert.equal(await page.locator('.harbor-station').count(),1);
+   const afterStation=await page.evaluate(()=>window.__harborFixture.snapshot());
+   for(const resource of ['lumber','brick','wool','grain','ore']){
+    const cost=['wool','grain','ore'].includes(resource)?1:0;
+    assert.equal(afterStation.players[0].hand[resource],beforeStation.players[0].hand[resource]-cost);
+    assert.equal(afterStation.bank[resource],beforeStation.bank[resource]+cost);
+   }
    if(renderer==='3d'){
     const after=await page.evaluate(()=>window.__hex3D.inspect());assert.ok(after.stations.includes(id));assert.equal(after.instanceId,before.instanceId);assert.equal(after.mapBuilds,before.mapBuilds);assert.deepEqual(after.camera,before.camera);
    }else assert.equal(await page.locator('#board [data-station-id]').count(),1);
@@ -144,6 +169,12 @@ try{
    assert.equal(await page.locator('#game-error').textContent(),'');
    assert.equal(Object.values((await page.evaluate(()=>window.__harborFixture.snapshot())).harbor.orders[0].loaded).reduce((a,b)=>a+b,0),1);
    check(renderer+': a trade station never unlocks a mixed-road Load; an owned detour enables a real Load button');
+   await page.evaluate(()=>window.__harborFixture.load('development'));
+   assert.equal(await page.getByRole('button',{name:/Buy development card/i}).count(),0);
+   assert.equal(await page.locator('.development-action-button, .development-actions-inline').count(),0);
+   assert.equal(await page.locator('#cards').isVisible(),false);
+   assert.equal(await page.locator('.player-dev-count, .player-knight-count').count(),0);
+   check(renderer+': v3 exposes no development card purchase, play or hand controls');
    await page.evaluate(()=>window.__harborFixture.load('seven'));
    const beforeSeven=await page.evaluate(()=>window.__harborFixture.snapshot());
    await page.getByRole('button',{name:'Roll dice',exact:true}).click();
@@ -151,25 +182,41 @@ try{
    assert.equal(seven.dice[0]+seven.dice[1],7);assert.equal(seven.phase,'action');
    assert.deepEqual(seven.discards,{});assert.deepEqual(seven.victims,[]);
    assert.equal(seven.board.robberHexId,beforeSeven.board.robberHexId);
-   for(let i=0;i<2;i++)assert.equal(Object.values(seven.players[i].hand).reduce((a,b)=>a+b,0),Object.values(beforeSeven.players[i].hand).reduce((a,b)=>a+b,0)+1);
+   for(let i=0;i<2;i++){
+    const gains=seven.harbor.sevenReward.gains[seven.players[i].id];
+    assert.equal(Object.values(gains).reduce((a,b)=>a+b,0),2);
+    assert.equal(Object.values(gains).filter(n=>n===1).length,2);
+    for(const resource of ['lumber','brick','wool','grain','ore'])assert.equal(seven.players[i].hand[resource]-beforeSeven.players[i].hand[resource],gains[resource]);
+   }
    assert.equal(await page.getByRole('button',{name:'Move robber',exact:true}).count(),0);
-   const expectedLabels=Object.values(seven.harbor.sevenReward.gains).map(hand=>Object.entries(hand).find(([,n])=>n===1)[0]+': 1').sort();
+   const expectedLabels=Object.values(seven.harbor.sevenReward.gains).flatMap(hand=>Object.entries(hand).filter(([,n])=>n===1).map(([resource])=>resource+': 1')).sort();
    let labels;
    if(renderer==='3d'){
     await page.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:7000});
     const effect=await page.evaluate(()=>window.__hex3D.inspect().rollEffect);
     assert.equal(effect.dice[0]+effect.dice[1],7);
     labels=effect.gainLabels.flatMap(label=>label.gains.map(g=>g.resource+': '+g.count)).sort();
+    for(const player of seven.players){
+     const shown=effect.gainLabels.filter(label=>label.playerId===player.id).flatMap(label=>label.gains.map(g=>g.resource+': '+g.count)).sort();
+     const expected=Object.entries(seven.harbor.sevenReward.gains[player.id]).filter(([,n])=>n).map(([r,n])=>r+': '+n).sort();
+     assert.deepEqual(shown,expected);
+    }
    }else{
-    await page.waitForFunction(()=>document.querySelectorAll('.board-roll-gain-resource').length===2,null,{timeout:7000});
+    await page.waitForFunction(()=>document.querySelectorAll('.board-roll-gain-resource').length===4,null,{timeout:7000});
     labels=await page.locator('.board-roll-gain-resource').evaluateAll(ns=>ns.map(n=>n.getAttribute('data-resource')+': '+n.textContent.trim().slice(1))).then(ns=>ns.sort());
+    for(const player of seven.players){
+     const home=Object.entries(beforeSeven.buildings).find(([,building])=>building.playerId===player.id)[0];
+     const shown=await page.locator(`[data-roll-building="${home}"] .board-roll-gain-resource`).evaluateAll(ns=>ns.map(n=>n.getAttribute('data-resource')+': '+n.textContent.trim().slice(1)).sort());
+     const expected=Object.entries(seven.harbor.sevenReward.gains[player.id]).filter(([,n])=>n).map(([r,n])=>r+': '+n).sort();
+     assert.deepEqual(shown,expected);
+    }
    }
    assert.deepEqual(labels,expectedLabels);
    assert.equal(await page.locator('.activity-production-summary').count(),0,'seven displays reward above each home');
    await page.evaluate(()=>{window.__harborFixture.redraw();window.__harborFixture.redraw();});
    assert.deepEqual((await page.evaluate(()=>window.__harborFixture.snapshot())).players,seven.players);
    await page.screenshot({path:`${evidence}/seven-${renderer}.png`,fullPage:true});
-   check(renderer+': real Roll 7 keeps large hands, awards one resource each with exact icons, leaves robber unchanged and redraw grants nothing');
+   check(renderer+': real Roll 7 keeps large hands, awards two distinct resources each with exact icons, leaves robber unchanged and redraw grants nothing');
 
 
   }

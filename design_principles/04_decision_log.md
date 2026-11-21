@@ -117,3 +117,13 @@ D028: The Product Owner increased each operation window to 45 seconds and requir
 ## 2026-11-21 host controlled pause
 
 D029: The Product Owner approved a host Pause/Resume control during a match. Pause freezes all outstanding timers at their current remaining duration and suspends gameplay, automatic fallback actions and local bots. Resume continues those durations without resetting them. All players and spectators see the paused state; guests and spectators cannot pause, resume or change the match while paused. The state is synchronized on reconnect and retained in saved checkpoints. Local hot-seat and Bot games offer the equivalent control. Starting or restarting a game initializes a running 45-second clock. Existing host authority, invitation and private-hand boundaries, temporary QA infrastructure and the restriction against an automatic main merge remain in force.
+
+## 2026-11-21 Harbor cooperative revision 3
+
+D030: The Product Owner removed development cards from Co-op and changed the trade-station cost to the Classic development-card cost: one wool, one grain and one ore. New Co-op games contain no development deck, cannot buy or play development cards, and show no card controls. The trade-station junction rule and one-card gift per station per player's own turn remain unchanged. Reducer validation, UI costs and Bot affordability use the same version-aware cost.
+
+D031: In local human-plus-Bot Co-op, the human always occupies the city-start side (seat 1) and the Bot the settlement-plus-two-roads side (seat 0). This assignment is independent of the random first mover and is retained on restart. The human keeps their own private-hand view and controls. Online human seating, hotseat and Classic Bot setup are unchanged.
+
+D032: Rolling seven in Co-op grants each partner two different random resource types, one card of each. The host owns online entropy; local play uses its persisted random stream. Select only stocked types not yet awarded to that player, deduct the bank cards and preserve the roller-first shortage order. If two distinct types cannot be supplied, award only eligible stock. There are no discards, robber movement, theft or station-quota changes. Public reward metadata reveals the new awards only; rendering, duplicate commands and recovery cannot award them again.
+
+Architect implementation classification: complex, because rules, versioned state, recovery, Bot seating and multi-client presentation cross core modules. New games use Harbor rule version 3; archived v1/v2 saves retain their recorded rules until restart. Classic, approved architecture and infrastructure permissions remain unchanged. Publish through the existing game/mvp workflow after validation; no automatic merge into main.

@@ -12,6 +12,9 @@ export type EconomyCommand =
  | { type:'free-road'; playerId:string; edgeId:string }
  | { type:'stop-free-roads'; playerId:string }
  | { type:'claim-victory'; playerId:string };
+export function usesDevelopmentCards(state: Pick<GameState,'mode'|'harbor'>): boolean {
+ return !(state.mode==='harbor-coop' && state.harbor?.version===3);
+}
 const validResource = (x: unknown): x is Resource => typeof x === 'string' && RESOURCES.includes(x as Resource);
 const validHand = (x: Hand) => !!x && Object.keys(x).sort().join(',') === [...RESOURCES].sort().join(',') && RESOURCES.every(r => Number.isInteger(x[r]) && x[r] >= 0);
 const handSize = (x: Hand) => RESOURCES.reduce((n,r)=>n+x[r],0);
@@ -28,6 +31,7 @@ function updateArmy(state:GameState) {
 export function applyEconomyCommand(original:GameState, command:EconomyCommand):GameState {
  let state=structuredClone(original);const player=state.players.find(p=>p.id===command.playerId),active=state.players[state.currentSeat];
  if(!player || state.phase==='finished')throw new Error('Unknown player or finished game.');
+ if(!usesDevelopmentCards(state)&&['buy-card','play-card','free-road','stop-free-roads'].includes(command.type))throw new Error('Development cards are unavailable in this game.');
  if(usesTradeStations(state)&&['offer','accept-offer'].includes(command.type))throw new Error('Use a trade station: one resource per partner per turn.');
  if(command.type==='accept-offer' || command.type==='reject-offer') {
   const offer=state.offer;

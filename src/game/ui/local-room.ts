@@ -10,6 +10,8 @@ export interface LocalRoomSettings {
  readonly botCount: number;
  readonly boardLayout: BoardLayout;
  readonly ids: readonly string[];
+ readonly humanId: string | null;
+ readonly botIds: readonly string[];
 }
 
 /** Validate once in the local lobby; reuse these immutable selections when restarting a round. */
@@ -23,6 +25,8 @@ export function createLocalRoomSettings(seed:number,selectedPlayers:number,botCo
  if(!Number.isSafeInteger(botCount)||botCount<0||botCount>5)throw new Error('Choose between 0 and 5 bots.');
  const totalPlayers=botCount>0?botCount+1:selectedPlayers;
  const boardLayout:BoardLayout=totalPlayers>=5?'expanded-5-6':'standard';
- const ids=botCount>0?['Player 1',...Array.from({length:botCount},(_,index)=>botCount===1?'Bot':`Bot ${index+1}`)]:Array.from({length:totalPlayers},(_,index)=>`Player ${index+1}`);
- return {mode,rules:selectedRules,seed,totalPlayers,botCount,boardLayout,ids};
+ const humanId=botCount>0?'Player 1':null;
+ const botIds=Array.from({length:botCount},(_,index)=>botCount===1?'Bot':`Bot ${index+1}`);
+ const ids=humanId?(mode==='harbor-coop'?[...botIds,humanId]:[humanId,...botIds]):Array.from({length:totalPlayers},(_,index)=>`Player ${index+1}`);
+ return {mode,rules:selectedRules,seed,totalPlayers,botCount,boardLayout,ids,humanId,botIds};
 }

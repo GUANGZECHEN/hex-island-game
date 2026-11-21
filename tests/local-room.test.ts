@@ -39,3 +39,14 @@ test('new local round can recreate clean initial state on same map with identica
  assert.deepEqual(next.buildings,{});
  assert.equal(next.players[0].hand.brick,0);
 });
+
+test('co-op bot game assigns the human the city seat while hotseat keeps its identities',()=>{
+ const bot=createLocalRoomSettings(10,2,1,'harbor-coop');
+ assert.deepEqual(bot.ids,['Bot','Player 1']);
+ assert.equal(bot.humanId,'Player 1');
+ assert.deepEqual(bot.botIds,['Bot']);
+ const hotseat=createLocalRoomSettings(10,2,0,'harbor-coop');
+ assert.deepEqual(hotseat.ids,['Player 1','Player 2']);
+ assert.equal(hotseat.humanId,null);
+ assert.deepEqual(hotseat.botIds,[]);
+});

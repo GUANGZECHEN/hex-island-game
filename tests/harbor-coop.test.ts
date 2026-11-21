@@ -30,7 +30,7 @@ test('Harbor mode is explicitly two-player standard only; Classic and older loca
  for(const n of [2,3,4])assert.equal(createGame(7,Array.from({length:n},(_,i)=>String(i))).players.length,n);
  const coop=createGame(7,['a','b'],undefined,{mode:'harbor-coop'});assert.equal(coop.harbor!.goal,10);assert.equal(coop.harbor!.orders.length,1);assert.equal(coop.deck.includes('victory-point'),false);conserved(coop);
  assert.throws(()=>createGame(7,['a','b','c'],undefined,{mode:'harbor-coop'}));assert.throws(()=>createGame(7,['a','b'],undefined,{mode:'harbor-coop',boardLayout:'expanded-5-6'}));
- assert.equal(createLocalRoomSettings(1,2,1,'harbor-coop').ids[1],'Bot');assert.equal(createLocalRoomSettings(1,2,0,'harbor-coop').totalPlayers,2);assert.throws(()=>createLocalRoomSettings(1,3,2,'harbor-coop'));
+ assert.deepEqual(createLocalRoomSettings(1,2,1,'harbor-coop').ids,['Bot','Player 1']);assert.equal(createLocalRoomSettings(1,2,0,'harbor-coop').totalPlayers,2);assert.throws(()=>createLocalRoomSettings(1,3,2,'harbor-coop'));
 });
 test('new order is visible at game start and setup does not advance its deadline',()=>{
  let state=createGame(21,['a','b'],undefined,{mode:'harbor-coop'});

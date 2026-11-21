@@ -72,7 +72,7 @@ test('partner building blocks continuation at that endpoint but another own endp
  assert.equal(build(s).roads[edges[1].id],'a');
 });
 test('Road Building applies the same owned connection test to both consecutive free roads',()=>{
- const s=fixture();s.phase='free-road';s.resumePhase='action';s.freeRoads=2;s.roads[edges[0].id]='b';
+ const s=fixture();s.harbor!.version=2;s.phase='free-road';s.resumePhase='action';s.freeRoads=2;s.roads[edges[0].id]='b';
  assert.throws(()=>applyEconomyCommand(s,{type:'free-road',playerId:'a',edgeId:edges[1].id}),/own road or building/);
  assert.ok(!legalTargetIds(s,'a','road').includes(edges[1].id));s.roads[edges[0].id]='a';
  const before=structuredClone(s.players[0].hand);
@@ -101,7 +101,7 @@ test('host refuses a forged partner-supported road with no revision or private r
  assert.equal(result.code,'illegal');assert.equal(result.revision,0);assert.deepEqual(host.snapshot('a'),before);
 });
 test('teammate Bot uses owned-road legal targets and cannot exploit a partner city',()=>{
- const s=fixture();s.phase='free-road';s.resumePhase='action';s.freeRoads=2;s.buildings[junction.id]={playerId:'b',kind:'city'};
+ const s=fixture();s.harbor!.version=2;s.phase='free-road';s.resumePhase='action';s.freeRoads=2;s.buildings[junction.id]={playerId:'b',kind:'city'};
  assert.equal(chooseBotCommand(s,'a')?.type,'stop-free-roads');
  s.buildings[junction.id]={playerId:'a',kind:'city'};
  const command=chooseBotCommand(s,'a');assert.equal(command?.type,'free-road');

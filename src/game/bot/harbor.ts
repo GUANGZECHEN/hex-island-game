@@ -1,4 +1,4 @@
-import { availableTradeStations, tradeStationIds, usesTradeStations, STATION_COST } from '../rules/trade-stations.ts';
+import { availableTradeStations, tradeStationIds, usesTradeStations, stationCost } from '../rules/trade-stations.ts';
 import { createIslandBoard } from '../board/geometry.ts';
 import { RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 import { canShip, shippingRoute, emptyCargo } from '../rules/harbor.ts';
@@ -46,7 +46,7 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
    const spare=RESOURCES.find(r=>self.hand[r]>2&&!routes.some(x=>x.order.demand[r]>x.order.loaded[r]));
    if(spare)return {type:'harbor-send',playerId:id,recipient:partner.id,stationId:station.vertexId,cards:{...emptyCargo(),[spare]:1}};
   }
-  if(!Object.keys(h.stations??{}).length&&RESOURCES.every(r=>self.hand[r]>=STATION_COST[r])){
+  if(!Object.keys(h.stations??{}).length&&RESOURCES.every(r=>self.hand[r]>=stationCost(state)[r])){
    const vertexId=tradeStationIds(state)[0];if(vertexId)return {type:'harbor-build-station',playerId:id,vertexId};
   }
  }

@@ -59,8 +59,7 @@ export function createGame(seed: number, ids: readonly string[], secureRandom?: 
   if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(boardLayout==='expanded-5-6'?'The 5–6 player board requires five or six distinct player IDs.':'The standard board requires two to four distinct player IDs.');
   const board = generateBoardSetup(seed,boardLayout);
   let randomState = seed;
-  const deck: Development[] = [...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
-  if(mode==='harbor-coop')for(let i=0;i<deck.length;i++)if(deck[i]==='victory-point')deck[i]='invention';
+  const deck: Development[] = mode==='harbor-coop'?[]:[...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
   for (let i = deck.length - 1; i > 0; i--) {
     const draw = secureRandom ? secureIndex(secureRandom, i + 1) : drawIndex(randomState, i + 1); randomState = draw.state ?? randomState;
     [deck[i], deck[draw.index]] = [deck[draw.index], deck[i]];

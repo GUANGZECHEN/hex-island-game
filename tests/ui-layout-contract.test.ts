@@ -141,9 +141,12 @@ test('local test bot selector supports one through five bots and expands the boa
  const local=readFileSync('src/game/ui/local-room.ts','utf8');
  assert.ok(local.includes('export function createLocalRoomSettings'));
  assert.ok(local.includes("botCount===1?'Bot'"));
- assert.ok(local.includes("botCount>0?['Player 1',...Array.from"));
+ assert.ok(local.includes("const humanId=botCount>0?'Player 1':null"));
+ assert.ok(local.includes("mode==='harbor-coop'?[...botIds,humanId]:[humanId,...botIds]"));
  assert.ok(local.includes("totalPlayers>=5?'expanded-5-6':'standard'"));
- assert.ok(ui.includes("localBotIds=new Set(settings.botCount?settings.ids.slice(1):[])"));
+ assert.ok(ui.includes("localBotIds=new Set(settings.botIds)"));
+ assert.ok(ui.includes("if(settings.humanId){viewer=settings.humanId;"));
+ assert.ok(readFileSync('src/style.css','utf8').includes('.development-row[hidden]{display:none}'));
  assert.ok(ui.includes('state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules})'));
  assert.ok(html.includes('id="local-room-create"'));
  assert.ok(html.includes('id="local-room-lobby"'));

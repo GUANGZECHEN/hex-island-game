@@ -8,7 +8,7 @@
 - After a multiplayer game starts, a valid room invitation may join as a live spectator with public-only game information and no gameplay controls.
 - Classic base-game Catan-inspired mechanics: a hexagonal map, dice, resource production, construction, trading, development cards, the robber, and victory conditions.
 - No account registration required.
-- No ranking system. Remote multiplayer has no AI opponents; local play may optionally use one to five deterministic test bots, with Player 1 as the only human viewer. Bot count determines total local player count as one human plus the selected bots; five or six total local players use the expanded 5–6 player board automatically.
+- No ranking system. Remote multiplayer has no AI opponents; local play may optionally use one to five deterministic test bots, with Player 1 as the only human viewer. Bot count determines total local player count as one human plus the selected bots; five or six total local players use the expanded 5–6 player board automatically. In two-player Harbor Co-op, the human occupies the city-start seat and the single teammate Bot occupies the settlement-and-roads seat.
 - Prefer free or low-cost deployment.
 - Use original project branding and visual assets.
 
@@ -46,3 +46,9 @@ The Product Owner approved two independent, host-selected **Classic** rule switc
 All local and multiplayer game turns use a 45-second window for completing an effective gameplay action. Successful construction, phase progress, card use, resource delivery and completed trades refresh the relevant timed player's window. Clicking, camera movement, editing controls, proposing/cancelling/rejecting a trade, Undo and rejected commands do not refresh it. When another player accepts the active player's trade and the exchange succeeds, the active player's clock refreshes. The top-right board timer is visible to all connected participants and spectators. Each outstanding simultaneous discard has its own independent clock; timeout choices keep private hands private.
 
 The room host may pause and resume an ongoing match. Pausing freezes every outstanding clock at its remaining duration, blocks gameplay commands and automatic timeout actions, and is visible to all clients. Resume continues the remaining duration without granting a fresh window. Reconnection and saved-game recovery retain an explicitly paused match. Local hot-seat and Bot games offer the same pause control and suspend bot actions. The existing host authority, legal timeout fallback commands, private-hand boundaries and deployment infrastructure continue unchanged.
+
+## Harbor cooperative revision 3 (2026-11-21)
+
+Approved: remove development cards from Co-op; change the trade-station construction cost to one wool, one grain and one ore; assign the human to the city-start side in local human-plus-Bot Co-op; and grant both players two different randomly selected resource types, one card each, on seven. The award uses stocked bank types, skips any unavailable second distinct type and preserves the existing roller-first shortage order. Seven still causes no discards, robber movement or theft. Trade-station junction and one-card-per-own-turn allowances, owner-only shipping, asymmetric setup and the twelve-order campaign remain unchanged.
+
+New Co-op games use rule version 3. Saved v1/v2 games retain their recorded rules until restart. Classic development cards, local Classic Bot counts, online human seating, private hands, host authority and existing deployment permissions are unchanged. See docs/harbor-coop.md for current rules and archived versions.

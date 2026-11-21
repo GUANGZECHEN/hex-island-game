@@ -39,10 +39,10 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
     }
   };
   if (total === 7) {
-    // Harbor v2 gives each teammate one public random bank resource on a seven,
+    // Harbor gives each teammate public random bank resources on a seven,
     // without hex production. Display the actual awarded resource above their
     // own home; do not infer it from private inventory.
-    const reward=after?.mode==='harbor-coop'&&after.harbor?.version===2&&after.harbor.sevenReward?.turn===after.turn
+    const reward=after?.mode==='harbor-coop'&&(after.harbor?.version===2||after.harbor?.version===3)&&after.harbor.sevenReward?.turn===after.turn
       ? after.harbor.sevenReward : null;
     const gains:BuildingRollGain[]=[];
     if(reward) for(const player of before.players){

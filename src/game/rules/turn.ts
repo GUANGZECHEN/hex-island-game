@@ -52,7 +52,7 @@ export function diceProductionSummary(
 ):Record<string,Hand> {
  const total=after.dice?after.dice[0]+after.dice[1]:0;
  const reward=after.harbor?.sevenReward;
- if(total===7&&after.mode==='harbor-coop'&&after.harbor?.version===2&&reward?.turn===after.turn){
+ if(total===7&&after.mode==='harbor-coop'&&(after.harbor?.version===2||after.harbor?.version===3)&&reward?.turn===after.turn){
   return structuredClone(reward.gains);
  }
  return calculateDiceProduction(before,total);
@@ -89,6 +89,7 @@ export function produce(state:GameState,total:number):void {
 }
 export function applyTurnCommand(original: GameState, command: TurnCommand, secureRandom?: () => number): GameState {
   const state = structuredClone(original), active = state.players[state.currentSeat];
+  if(state.mode==='harbor-coop'&&state.harbor?.version===3&&['discard','move-robber','steal'].includes(command?.type))throw new Error('Discard and robber actions are unavailable in Harbor v3.');
   if (!command || (!state.discards[command.playerId] && active.id !== command.playerId)) throw new Error('Not an authorized player.');
   if (command.type === 'roll' && state.phase === 'roll' && active.id === command.playerId) {
     const first = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(state.randomState, 6), second = secureRandom ? secureIndex(secureRandom, 6) : drawIndex(first.state!, 6);

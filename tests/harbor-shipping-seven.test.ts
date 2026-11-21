@@ -11,6 +11,7 @@ import { HostAuthority } from '../src/game/network/authority.ts';
 const size=(hand:Hand)=>RESOURCES.reduce((n,r)=>n+hand[r],0);
 function game(mode:'classic'|'harbor-coop'='harbor-coop'):GameState {
  const s=createGame(24680,['a','b'],undefined,{mode});
+ if(s.harbor)s.harbor.version=2; // These are archived v2 regression scenarios.
  s.startingSeat=s.currentSeat=0;s.turn=1;s.phase='roll';s.setupStep=4;
  s.pendingSettlement=null;return s;
 }

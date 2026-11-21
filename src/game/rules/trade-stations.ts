@@ -7,9 +7,13 @@ export interface TradeStation {
   /** Global authoritative turn number of each partner's most recent send. */
   lastSentTurns: Record<string, number>;
 }
-export const STATION_COST: Readonly<Hand> = Object.freeze({lumber:1,brick:1,wool:1,grain:1,ore:0});
+export const STATION_COST: Readonly<Hand> = Object.freeze({lumber:0,brick:0,wool:1,grain:1,ore:1});
+const LEGACY_STATION_COST: Readonly<Hand> = Object.freeze({lumber:1,brick:1,wool:1,grain:1,ore:0});
+export function stationCost(state: Pick<GameState,'mode'|'harbor'>): Readonly<Hand> {
+  return state.mode === 'harbor-coop' && state.harbor?.version === 2 ? LEGACY_STATION_COST : STATION_COST;
+}
 export function usesTradeStations(state: Pick<GameState,'mode'|'harbor'>): boolean {
-  return state.mode === 'harbor-coop' && state.harbor?.version === 2;
+  return state.mode === 'harbor-coop' && (state.harbor?.version === 2 || state.harbor?.version === 3);
 }
 /** A station is attached to a shared junction, not a producing/VP building. */
 export function isTradeJunction(state: Pick<GameState,'board'|'players'|'roads'>, vertexId: string): boolean {
@@ -32,8 +36,9 @@ export function buildTradeStation(state: GameState, playerId: string, vertexId: 
     throw new Error('Build a trade station where one road from each partner meets.');
   }
   const player = state.players.find(p=>p.id===playerId)!;
-  if (RESOURCES.some(r=>player.hand[r]<STATION_COST[r])) throw new Error('A station costs one lumber, brick, wool and grain.');
-  for (const r of RESOURCES) {player.hand[r]-=STATION_COST[r];state.bank[r]+=STATION_COST[r];}
+  const cost=stationCost(state);
+  if (RESOURCES.some(r=>player.hand[r]<cost[r])) throw new Error(state.harbor?.version===2?'A station costs one lumber, brick, wool and grain.':'A station costs one wool, grain and ore.');
+  for (const r of RESOURCES) {player.hand[r]-=cost[r];state.bank[r]+=cost[r];}
   state.harbor!.stations ??= {};
   state.harbor!.stations[vertexId] = {vertexId,builtBy:playerId,lastSentTurns:{}};
 }

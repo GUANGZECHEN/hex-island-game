@@ -1,4 +1,4 @@
-import { usesTradeStations, STATION_COST } from './game/rules/trade-stations';
+import { usesTradeStations, stationCost } from './game/rules/trade-stations';
 import './style.css';
 import { renderHarborPanel } from './game/ui/harbor';
 import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type GameMode, type HarborCommand } from './game/rules/harbor';
@@ -28,7 +28,7 @@ import { applySetupCommand as localSetup } from './game/rules/state';
 import { applyTurnCommand as localTurn } from './game/rules/turn';
 import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
 import { derivePublicActivity, turnAnnouncement, type PublicActivityState } from './game/ui/activity';
-import { applyEconomyCommand as localEconomy } from './game/rules/economy';
+import { usesDevelopmentCards, applyEconomyCommand as localEconomy } from './game/rules/economy';
 import { chooseBotCommand } from './game/bot/policy';
 import { applyBotCommand } from './game/bot/runner';
 
@@ -397,7 +397,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
   const card=document.createElement('div');
   card.className=`player-summary player-${player.seat+1}${player.id===activeId?' active-player':''}${player.id===viewer?' local-player':''}`;
   card.dataset.seat=String(player.seat+1);
-  card.setAttribute('aria-label',`${playerName(player.id)}${player.id===viewer?', you':''}: ${handCount} resource cards, ${developmentCount} development cards, ${player.knights} knights played, ${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${s.armyHolder===player.id?', largest army holder':''}${player.id===activeId?', current turn':''}`);
+  card.setAttribute('aria-label',`${playerName(player.id)}${player.id===viewer?', you':''}: ${handCount} resource cards, ${usesDevelopmentCards(s)?`${developmentCount} development cards, ${player.knights} knights played, `:''}${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${usesDevelopmentCards(s)&&s.armyHolder===player.id?', largest army holder':''}${player.id===activeId?', current turn':''}`);
 
   const header=document.createElement('div');header.className='player-summary-header';
   const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(player.seat+1);marker.setAttribute('aria-hidden','true');
@@ -408,11 +408,9 @@ function renderPlayerStrip(s:GameState,activeId:string){
   const publicStats=document.createElement('div');publicStats.className='player-public-stats';
   publicStats.append(
    playerStat(ACTION_PATHS.victory,publicVp,'Public victory points','player-vp-count','VP'),
-   playerStat(ACTION_PATHS.hand,handCount,'Resource cards','player-hand-count'),
-   playerStat(ACTION_PATHS.card,developmentCount,'Development cards','player-dev-count'),
-   playerStat(DEVELOPMENT_PATHS.knight,player.knights,'Knights played','player-knight-count','K')
+   playerStat(ACTION_PATHS.hand,handCount,'Resource cards','player-hand-count')
   );
-  if(s.armyHolder===player.id)publicStats.lastElementChild?.classList.add('largest-army-holder');
+  if(usesDevelopmentCards(s)){publicStats.append(playerStat(ACTION_PATHS.card,developmentCount,'Development cards','player-dev-count'),playerStat(DEVELOPMENT_PATHS.knight,player.knights,'Knights played','player-knight-count','K'));if(s.armyHolder===player.id)publicStats.lastElementChild?.classList.add('largest-army-holder');}
 
   const pieces=document.createElement('div');pieces.className='player-piece-stats';
   pieces.append(
@@ -425,7 +423,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
   if(s.rules?.ships)pieces.append(playerStat(ACTION_PATHS.ship,shipsRemaining(s,player.id),'Ships remaining (max 2)','player-ship-count','Ship'));
   const awards=document.createElement('div');awards.className='player-awards';
   if(s.longestHolder===player.id)awards.append(playerAward('Longest Road',ACTION_PATHS.road,'award-road'));
-  if(s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
+  if(usesDevelopmentCards(s)&&s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
   card.append(header,publicStats,pieces);if(awards.childElementCount)card.append(awards);strip.append(card);
  }
 }
@@ -509,14 +507,15 @@ function drawSvgBoard(){
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
+ el('classic-how-to-play').hidden=isHarbor(s);
  renderHarborPanel(el('harbor-panel'),s,viewer,c=>attempt(()=>commit(applyHarborCommand(s,c),'Supplies delivered.')),playerName);
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
  const handCard=el('private-hand-card');handCard.hidden=spectating;handCard.classList.toggle('active-hand',!spectating&&viewer===active.id);
  if(actor)renderPieceSupply(actor);else el('piece-supply').replaceChildren();
- el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`).join(' | ');
- const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}.`;
- if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));renderDevelopmentCards(el('cards'),actor.cards,s.turn);}else{el('hand').replaceChildren();el('cards').replaceChildren();}
+ el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${usesDevelopmentCards(s)&&p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}${usesDevelopmentCards(s)?`, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}`:''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources${usesDevelopmentCards(s)?`, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`:''}`).join(' | ');
+ const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),...(usesDevelopmentCards(s)?[document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`)]:[]));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}${usesDevelopmentCards(s)?`; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}`:''}.`;el('cards').hidden=!usesDevelopmentCards(s);
+ if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));if(usesDevelopmentCards(s))renderDevelopmentCards(el('cards'),actor.cards,s.turn);else el('cards').replaceChildren();}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=isPaused()?(remote?'Paused by host.':'Game paused.'):spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(!isPaused()&&usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
@@ -581,7 +580,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(s.phase==='robber')action(grid,'Move robber','settlement',()=>mode('robber'));
  if(s.phase==='steal'){const victim=playerSelect(actions,'Choose victim',s.victims);action(grid,'Steal','trade',()=>commit(applyTurnCommand(s,{type:'steal',playerId:viewer,victimId:victim.value}),`${viewer} stole a resource.`));}
  if(s.phase==='action'){
-  if(usesTradeStations(s)&&affordable(actor.hand,STATION_COST)&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),STATION_COST,actor.hand);
+  if(usesTradeStations(s)&&affordable(actor.hand,stationCost(s))&&legalTargetIds(s,viewer,'station').length)action(grid,'Build trade station','trade',()=>mode('station'),stationCost(s),actor.hand);
   // A lack of port ownership, legal harbor space, or supply must not make
   // a ship action mysteriously disappear from the Actions panel.
   if(!isHarbor(s)&&s.rules?.ships){
@@ -620,9 +619,9 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   }
  }
  if(s.phase==='action'){
-  if((projection?.public.deckCount ?? s.deck.length)>0&&affordable(actor.hand,{wool:1,grain:1,ore:1}))action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
+  if(usesDevelopmentCards(s)&&(projection?.public.deckCount ?? s.deck.length)>0&&affordable(actor.hand,{wool:1,grain:1,ore:1}))action(grid,'Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),{wool:1,grain:1,ore:1},actor.hand);
  }
- if(s.phase==='action'||s.phase==='roll'){
+ if(usesDevelopmentCards(s)&&(s.phase==='action'||s.phase==='roll')){
   const playable=playableDevelopmentTypes(s,viewer),play=(card:Exclude<Development,'victory-point'>,extra:Partial<{resource:Resource;resources:Resource[]}>= {})=>{commit(applyEconomyCommand(s,{type:'play-card',playerId:viewer,card,...extra}),`${viewer} played ${DEVELOPMENT_LABELS[card]}.`);};
   if(playable.length){
    const cardSection=document.createElement('section');cardSection.className='development-actions-inline';const heading=document.createElement('h2');heading.textContent='Development cards';const cardGrid=document.createElement('div');cardGrid.className='action-grid development-action-grid';cardSection.append(heading,cardGrid);actions.append(cardSection);
@@ -654,7 +653,7 @@ function startLocalRound(settings:LocalRoomSettings){
  clearBotTimer();remote=null;projection=null;networkRevision=0;localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
  localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;
  renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';
- localBotIds=new Set(settings.botCount?settings.ids.slice(1):[]);
+ localBotIds=new Set(settings.botIds);
  botTurnKey='';botActionCount=0;viewer='';
  state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
  remoteActionClock=null;syncLocalActionClock();
@@ -664,7 +663,7 @@ function startLocalRound(settings:LocalRoomSettings){
  for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
  el('switch-player').hidden=settings.botCount>0;
  enterGame();
- if(settings.botCount>0){viewer='Player 1';el('pass').hidden=true;el('game').hidden=false;render();}
+ if(settings.humanId){viewer=settings.humanId;el('pass').hidden=true;el('game').hidden=false;render();}
  else{handoff(state.players[state.currentSeat].id);render();}
 }
 el('local-room-create').onclick=()=>{

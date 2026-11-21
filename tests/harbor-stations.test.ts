@@ -5,7 +5,7 @@ import {applyTurnCommand} from '../src/game/rules/turn.ts';
 import {applyEconomyCommand} from '../src/game/rules/economy.ts';
 import {applyBuildCommand} from '../src/game/rules/build.ts';
 import {applyHarborCommand,advanceHarbor,emptyCargo,harborOrderDifficulty,validateHarborState,shippingRoute} from '../src/game/rules/harbor.ts';
-import {STATION_COST,tradeStationIds,availableTradeStations} from '../src/game/rules/trade-stations.ts';
+import {stationCost,tradeStationIds,availableTradeStations} from '../src/game/rules/trade-stations.ts';
 import {legalTargetIds} from '../src/game/rules/legal.ts';
 import {createIslandBoard} from '../src/game/board/geometry.ts';
 import {chooseBotCommand} from '../src/game/bot/policy.ts';
@@ -17,7 +17,7 @@ function add(s:GameState,id:string,hand:Partial<Hand>){const p=s.players.find(p=
 function game(seed=19){return createGame(seed,['a','b'],()=>0,{mode:'harbor-coop'});}
 function finishSetup(s:GameState){for(let i=0;s.phase.startsWith('setup')&&i<20;i++){const c=chooseBotCommand(s,s.players[s.currentSeat].id);assert.ok(c);s=applyBotCommand(s,c);conserved(s);}return s;}
 function junctions(){const b=createIslandBoard();return b.vertices.filter(v=>b.edges.filter(e=>e.vertexIds.includes(v.id)).length===3).slice(0,2);}
-function stationFixture(){const s=game();s.phase='action';s.turn=1;s.currentSeat=0;const b=createIslandBoard();
+function stationFixture(){const s=game();s.harbor!.version=2;s.phase='action';s.turn=1;s.currentSeat=0;const b=createIslandBoard();
  for(const v of junctions()){const edges=b.edges.filter(e=>e.vertexIds.includes(v.id));s.roads[edges[0].id]='a';s.roads[edges[1].id]='b';s.buildings[edges[0].vertexIds.find(id=>id!==v.id)!]={playerId:'a',kind:'settlement'};s.buildings[edges[1].vertexIds.find(id=>id!==v.id)!]={playerId:'b',kind:'city'};}
  add(s,'a',{lumber:3,brick:3,wool:3,grain:3});return s;
 }
@@ -46,7 +46,7 @@ test('a station requires both road colors at the exact vertex, costs settlement 
  const bad=createIslandBoard().vertices.find(x=>!tradeStationIds(s).includes(x.id))!.id;
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-build-station',playerId:'a',vertexId:bad}));
  s.buildings[v]={playerId:'a',kind:'settlement'};const before=structuredClone(s);s=applyHarborCommand(s,{type:'harbor-build-station',playerId:'a',vertexId:v});
- for(const r of RESOURCES)assert.equal(s.players[0].hand[r],before.players[0].hand[r]-STATION_COST[r]);
+ for(const r of RESOURCES)assert.equal(s.players[0].hand[r],before.players[0].hand[r]-stationCost(before)[r]);
  assert.deepEqual(s.buildings,before.buildings);assert.equal(s.players[0].settlements,before.players[0].settlements);assert.ok(s.harbor!.stations![v]);conserved(s);
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-build-station',playerId:'a',vertexId:v}));
  assert.throws(()=>applyHarborCommand(s,{type:'harbor-build-station',playerId:'b',vertexId:junctions()[1].id}));

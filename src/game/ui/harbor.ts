@@ -1,4 +1,5 @@
-import { usesTradeStations, availableTradeStations } from '../rules/trade-stations.ts';
+import { usesTradeStations, availableTradeStations, stationCost } from '../rules/trade-stations.ts';
+import { usesDevelopmentCards } from '../rules/economy.ts';
 import { RESOURCES, type GameState } from '../rules/state.ts';
 import { canShip, shippingRoute, partnersConnected, portName, emptyCargo, harborOrderDifficulty, type HarborCommand } from '../rules/harbor.ts';
 import { resourceIcon } from './icons.ts';
@@ -7,7 +8,8 @@ import '../../harbor.css';
 /** Public order board; controls can spend only this viewer's own private resources. */
 export function renderHarborPanel(host:HTMLElement,state:GameState,viewer:string,send:(c:HarborCommand)=>void,name:(id:string)=>string):void {
  host.replaceChildren();host.hidden=state.mode!=='harbor-coop';if(host.hidden||!state.harbor)return;
- const h=state.harbor,modern=usesTradeStations(state),player=state.players.find(p=>p.id===viewer);
+ const h=state.harbor,modern=usesTradeStations(state),cardsEnabled=usesDevelopmentCards(state),player=state.players.find(p=>p.id===viewer);
+ const cost=modern?RESOURCES.filter(r=>stationCost(state)[r]).map(r=>`${stationCost(state)[r]} ${r}`).join(' + '):'';
  const canAct=!!player&&state.players[state.currentSeat].id===viewer&&state.phase==='action'&&h.outcome==='playing';
  const add=(tag:string,text:string,parent:HTMLElement=host)=>{const e=document.createElement(tag);e.textContent=text;parent.append(e);return e;};
  add('h3','Harbor orders · Co-op');
@@ -15,7 +17,7 @@ export function renderHarborPanel(host:HTMLElement,state:GameState,viewer:string
  host.dataset.outcome=h.outcome;host.dataset.completed=String(h.completed);host.dataset.round=String(h.round);
  if(h.outcome!=='playing'){const result=add('p',h.outcome==='won'?`TEAM VICTORY — ${h.completed} ships supplied!`:'The fleet has left — try again together.');result.className='harbor-result';result.setAttribute('role','alert');}
  if(modern){
-  if(state.phase.startsWith('setup'))add('p','Player 1: settlement + 2 roads, twice. Player 2: city only, twice. Deadlines wait until setup is complete.');
+  if(state.phase.startsWith('setup'))add('p',`${name(state.players[0].id)}: settlement + 2 roads, twice. ${name(state.players[1].id)}: city only, twice. Deadlines wait until setup is complete.`);
   if(h.outcome==='playing')add('p',h.nextOrder<12?`Next order: round ${harborOrderDifficulty(h.nextOrder).arrivalRound}. Complete 10 of 12 to win.`:'All 12 orders have arrived. Deliver the remaining cargo.');
  }
  if(!modern&&!h.orders.length&&state.phase.startsWith('setup'))add('p','Ships arrive after both players finish their starting settlements.');
@@ -39,7 +41,7 @@ export function renderHarborPanel(host:HTMLElement,state:GameState,viewer:string
  const partner=state.players.find(p=>p.id!==viewer);
  if(modern){
   const stations=Object.values(h.stations??{});add('h4',`Trade stations · ${stations.length}`);
-  if(!stations.length)add('p','Connect one road of each color at a junction, then build Station in Actions (1 wood + 1 brick + 1 wool + 1 grain).');
+  if(!stations.length)add('p',`Connect one road of each color at a junction, then build Station in Actions (${cost}).`);
   const available=new Set(availableTradeStations(state,viewer).map(s=>s.vertexId));
   for(const [index,station] of stations.entries()){
    const row=document.createElement('section');row.className='harbor-station';row.dataset.stationId=station.vertexId;host.append(row);
@@ -65,8 +67,8 @@ export function renderHarborPanel(host:HTMLElement,state:GameState,viewer:string
  const rules=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Co-op rules';rules.append(summary);host.append(rules);
  if(modern){
   add('p','Deliver 10 of 12 orders. Order 1 arrives during setup: two resource types, one card each, seven team rounds to deliver. New orders arrive on rounds 1, 4, 7, …, 34. Total cards rise from 2 to 13. Deadlines decrease 7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 3, 3 rounds; setup is untimed. A round is one turn per partner. Three misses make victory impossible.',rules);
-  add('p','A trade station costs 1 lumber, brick, wool and grain, and must sit at a vertex with roads from both players. Either player may pay to build it. It does not produce resources or award points and can coexist with a home. Each station lets each player send one resource card during their own action turn. Ordinary offers cannot bypass this limit. Load requires an unbroken route from your own settlement/city using only your roads. A trade station transfers cards, not access to your partner’s roads.',rules);
+  add('p',`A trade station costs ${cost}, and must sit at a vertex with roads from both players. Either player may pay to build it. It does not produce resources or award points and can coexist with a home. Each station lets each player send one resource card during their own action turn. Ordinary offers cannot bypass this limit. Load requires an unbroken route from your own settlement/city using only your roads. A trade station transfers cards, not access to your partner’s roads.`,rules);
  }else add('p','Legacy campaign: supply 6 ships before missing 3. Two ships wait nine rounds each. Connected partners may send resources freely. Restart to use trade stations and the twelve-order campaign.',rules);
- if(modern)add('p','Roll 7: no discards, even with more than 7 cards. Each partner receives one random resource from the bank and play continues in the action phase. Do not move the robber or steal. The two rewards may match. Empty bank stock cannot be awarded. Knight does not grant this bonus.',rules);
- add('p','Keep your own hand and buildings. Seven and Knight never steal from your partner. Monopoly takes up to 2 chosen resources from the bank. Construction may be safely undone; sent or loaded cargo cannot.',rules);
+ if(modern)add('p',cardsEnabled?'Roll 7: no discards, even with more than 7 cards. Each partner receives one random resource from the bank and play continues in the action phase. Do not move the robber or steal. The two rewards may match. Empty bank stock cannot be awarded. Knight does not grant this bonus.':'Roll 7: no discards, even with more than 7 cards. Each partner receives up to two cards from available bank stock, one each of two distinct random resource types; the current player receives first if stock is short. Play continues in the action phase; do not move the robber or steal.',rules);
+ add('p',cardsEnabled?'Keep your own hand and buildings. Seven and Knight never steal from your partner. Monopoly takes up to 2 chosen resources from the bank. Construction may be safely undone; sent or loaded cargo cannot.':'Keep your own hand and buildings. Construction may be safely undone; sent or loaded cargo cannot.',rules);
 }

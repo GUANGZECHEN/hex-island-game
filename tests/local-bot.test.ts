@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame } from '../src/game/rules/state.ts';
+import { createGame, applySetupCommand } from '../src/game/rules/state.ts';
 import { chooseBotCommand } from '../src/game/bot/policy.ts';
 import { applyBotCommand } from '../src/game/bot/runner.ts';
 import { monopolyResource, rankExpansionTargets, settlementScore } from '../src/game/bot/strategy.ts';
+import { createLocalRoomSettings } from '../src/game/ui/local-room.ts';
+import { legalTargetIds } from '../src/game/rules/legal.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('local bot deterministically completes the full snake setup through normal reducers',()=>{
@@ -235,4 +237,32 @@ test('expansion planner drops a blocked target and switches to the next ranked c
  assert.ok(after.length>0);
  assert.notEqual(after[0].vertexId,blocked);
  assert.ok(!after.some(target=>target.vertexId===blocked));
+});
+
+
+test('co-op human receives both cities and the bot receives both settlements and four roads for either starting seat',()=>{
+ const seen=new Set<number>();
+ for(let seed=1;seed<100&&seen.size<2;seed++){
+  const settings=createLocalRoomSettings(seed,2,1,'harbor-coop');
+  let state=createGame(seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode});
+  if(seen.has(state.startingSeat))continue;
+  seen.add(state.startingSeat);
+  let steps=0;
+  while(state.phase.startsWith('setup')&&steps++<20){
+   const actor=state.players[state.currentSeat].id;
+   if(settings.botIds.includes(actor)){
+    const command=chooseBotCommand(state,actor);assert.ok(command);state=applyBotCommand(state,command);
+   }else{
+    assert.equal(actor,settings.humanId);assert.equal(state.phase,'setup-city');
+    const target=legalTargetIds(state,actor,'city')[0];assert.ok(target);
+    state=applySetupCommand(state,{type:'place-city',playerId:actor,vertexId:target});
+   }
+  }
+  assert.equal(state.phase,'roll');
+  assert.equal(Object.values(state.buildings).filter(b=>b.playerId===settings.humanId&&b.kind==='city').length,2);
+  assert.equal(Object.values(state.buildings).filter(b=>b.playerId===settings.botIds[0]&&b.kind==='settlement').length,2);
+  assert.equal(Object.values(state.roads).filter(id=>id===settings.botIds[0]).length,4);
+  assert.equal(Object.values(state.roads).filter(id=>id===settings.humanId).length,0);
+ }
+ assert.deepEqual([...seen].sort(),[0,1]);
 });
