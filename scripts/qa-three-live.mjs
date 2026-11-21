@@ -64,7 +64,7 @@ try {
   await page.locator('#board-view-reset').click();
   const cameraSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
   assert.ok(cameraSeconds<=laterSeconds,'camera interaction must not reset the clock');
-  await canvasPlace(page, 'Place settlement');
+  await canvasPlace(page, 'Build settlement');
   const buildSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
   assert.ok(buildSeconds>=43&&buildSeconds<=45,'completed settlement must reset the clock to 45 seconds');
   await delay(1300);
@@ -80,7 +80,7 @@ try {
   const frozen=await page.locator('#turn-action-clock-seconds').textContent();
   await delay(1500);
   assert.equal(await page.locator('#turn-action-clock-seconds').textContent(),frozen,'paused clock must stay frozen');
-  assert.equal(await page.getByRole('button',{name:'Place settlement',exact:true}).isDisabled(),true,'game actions are unavailable while paused');
+  assert.equal(await page.getByRole('button',{name:'Build settlement',exact:true}).isDisabled(),true,'game actions are unavailable while paused');
   check('Local pause freezes the displayed time and blocks gameplay');
   let info = await inspect(page); report.renderer = info.device;
   const picksBeforeCameraChecks=info.picks;
@@ -154,7 +154,7 @@ try {
   await delay(1300);
   assert.ok(Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1])<Number(frozen.split(':')[1]),'resumed clock continues from its frozen remaining time');
   await drag(page, 35, 0); const cameraBeforeBuild = (await inspect(page)).camera;
-  const placed = await canvasPlace(page, 'Place settlement');
+  const placed = await canvasPlace(page, 'Build settlement');
   info = await inspect(page); assert.ok(info.buildings.some(([id]) => id === placed)); assert.ok(moved(cameraBeforeBuild, info.camera) < .001);
   const buttons = await page.locator('#actions button').allTextContents(); assert.match(buttons.at(-1), /Undo last action/);
   const viewBeforeUndo=await inspect(page);
@@ -163,7 +163,7 @@ try {
   assertCameraUnchanged(viewBeforeUndo,await inspect(page),'Undo');
   check('Rotated 3D ray picking executes a real settlement command; safe Undo removes it');
   await page.locator('#board-view-reset').click();
-  for (let i = 0; i < 6; i++) { await reveal(page); await canvasPlace(page, 'Place settlement'); await canvasPlace(page, 'Place road'); }
+  for (let i = 0; i < 6; i++) { await reveal(page); await canvasPlace(page, 'Build settlement'); await canvasPlace(page, 'Place road'); }
   await reveal(page); info = await inspect(page);
   assert.equal(info.buildings.length, 6); assert.equal(info.roads.length, 6);
   await drag(page,35,-14);
@@ -195,7 +195,7 @@ try {
   page.once('dialog', dialog => dialog.accept()); await page.locator('#local-restart').click(); await reveal(page); await ready(page);
   assert.equal((await inspect(page)).buildings.length, 0); assert.equal((await inspect(page)).roads.length, 0);
   check('Same-room local restart clears 3D pieces');
-  await page.getByRole('button', { name: 'Place settlement', exact: true }).click();
+  await page.getByRole('button', { name: 'Build settlement', exact: true }).click();
   await assertDirectTargets(page);
   await page.evaluate(() => window.__targetNode = document.querySelector('#targets .target-cancel'));
   const selected = await boardTargetIds(page); await drag(page, 30, -8);
@@ -252,11 +252,11 @@ try {
     await guest.locator('#room-ready').click(); await host.locator('#room-ready').click(); await host.waitForFunction(() => !document.querySelector('#room-start')?.disabled); await host.locator('#room-start').click();
     await ready(host); await ready(guest); await spectator.goto(invite); await ready(spectator);
     assert.equal(await spectator.locator('#private-hand-card').isVisible(), false); assert.equal((await inspect(spectator)).targets.length, 0);
-    const actor = (await host.getByRole('button', { name: 'Place settlement', exact: true }).isEnabled()) ? host : guest;
+    const actor = (await host.getByRole('button', { name: 'Build settlement', exact: true }).isEnabled()) ? host : guest;
     const observer = actor === host ? guest : host;
     const observerCamera = (await inspect(observer)).camera;
     await drag(actor, 40, 0); assert.ok(moved(observerCamera, (await inspect(observer)).camera) < .001);
-    const id = await canvasPlace(actor, 'Place settlement');
+    const id = await canvasPlace(actor, 'Build settlement');
     await observer.waitForFunction(id => window.__hex3D.inspect().buildings.some(([key]) => key === id), id);
     await spectator.waitForFunction(id => window.__hex3D.inspect().buildings.some(([key]) => key === id), id);
     assert.ok(moved(observerCamera, (await inspect(observer)).camera) < .001);
@@ -272,7 +272,7 @@ try {
     await delay(1500);
     for(const p of [host,guest,spectator])assert.equal(await p.locator('#turn-action-clock-seconds').textContent(),onlineFrozen,'every viewer sees the same frozen remaining time');
     assert.equal((await inspect(host)).buildings.length,pieces);
-    assert.equal(await actor.getByRole('button',{name:'Place settlement',exact:true}).isDisabled(),true);
+    assert.equal(await actor.getByRole('button',{name:'Build settlement',exact:true}).isDisabled(),true);
     await host.locator('#turn-clock-pause').click();
     for(const p of [host,guest,spectator])await p.waitForFunction(()=>!document.querySelector('#turn-hint')?.textContent.includes('Paused'));
     check('Only host can pause; all online viewers see the frozen clock and gameplay is blocked');
