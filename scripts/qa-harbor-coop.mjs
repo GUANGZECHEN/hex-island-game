@@ -202,10 +202,11 @@ try{
   await guest.evaluate(()=>window.__hexQaDropRoomConnection());
   const autoRejoined=await guest.waitForFunction(()=>!document.body.classList.contains('network-resyncing')&&(window.__hexQaReconnectCount?.()||0)>0,null,{timeout:10000}).then(()=>true).catch(()=>false);
   if(!autoRejoined){
-   // A full-page rejoin uses the persisted seat credential. The main multiplayer
-   // E2E separately asserts automatic reconnect; this Harbor Co-op path verifies
-   // that its order state survives a genuine disconnected guest rejoining.
-   await guest.reload();
+   // A full-page rejoin uses the persisted seat credential. Leave the invite URL
+   // first so the returning player sees the explicit Rejoin previous room control.
+   // The main multiplayer E2E separately asserts automatic reconnect.
+   await guest.goto(base.href,{waitUntil:'domcontentloaded'});
+   await guest.getByRole('button',{name:'Rejoin previous room'}).click();
   }
   await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2')&&!document.body.classList.contains('network-resyncing'),null,{timeout:30000});
   await guest.waitForFunction(()=>document.querySelectorAll('.harbor-order').length===1,null,{timeout:15000});
