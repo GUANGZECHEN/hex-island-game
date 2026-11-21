@@ -54,3 +54,33 @@ test('preauth, malformed, oversized and expired heartbeats are rejected',async()
   await room.webSocketMessage(expired as any,JSON.stringify({type:'ping',id:1}));
   assert.deepEqual(expired.closed,{code:1008,reason:'expired'});assert.deepEqual(expired.messages,[]);
 });
+
+test('host close acknowledges the handshake, closes guests and permits only a subsequent host',async()=>{
+  const {room,sockets}=await setup();
+  const host=new Socket(),guest1=new Socket(),guest2=new Socket();sockets.push(host,guest1,guest2);
+  await authenticate(room,host,'host');await authenticate(room,guest1,'guest');await authenticate(room,guest2,'guest');
+  const competing=new Socket();sockets.push(competing);
+  await authenticate(room,competing,'host');
+  assert.deepEqual(competing.messages,[{type:'error',code:'host-unavailable'}]);
+  await room.webSocketClose(host,4000,'qa-reconnect');
+  assert.deepEqual(host.closed,{code:4000,reason:'qa-reconnect'});
+  assert.equal(host.attachment,null);
+  for(const guest of [guest1,guest2]){
+    assert.deepEqual(guest.messages.at(-1),{type:'error',code:'host-unavailable'});
+    assert.deepEqual(guest.closed,{code:1000,reason:'host-unavailable'});
+  }
+  const replacement=new Socket();sockets.push(replacement);
+  await authenticate(room,replacement,'host');
+  assert.equal(replacement.messages[0].type,'ready');
+});
+
+test('reserved close codes are not echoed and repeated close cleans up only once',async()=>{
+  const {room,sockets}=await setup();
+  const host=new Socket(),guest=new Socket();sockets.push(host,guest);
+  await authenticate(room,host,'host');await authenticate(room,guest,'guest');
+  await room.webSocketClose(host,1006,'');
+  assert.deepEqual(host.closed,{code:undefined,reason:undefined});
+  const count=guest.messages.length;
+  await room.webSocketClose(host,1006,'');
+  assert.equal(guest.messages.length,count);
+});

@@ -229,7 +229,7 @@ export class Room {
     }
   }
 
-  async webSocketClose(ws:WebSocket):Promise<void> {
+  private removeMember(ws:WebSocket):void {
     const m=ws.deserializeAttachment() as Member|null;
     ws.serializeAttachment(null);
     if(!m)return;
@@ -245,8 +245,21 @@ export class Room {
     }
   }
 
+  async webSocketClose(ws:WebSocket,code:number,reason:string):Promise<void> {
+    try {
+      this.removeMember(ws);
+    } finally {
+      // Compatibility dates before 2026-04-07 require an explicit close reply.
+      // Reserved and abnormal codes cannot be sent in a Close frame.
+      try {
+        if(code>=1000 && code<5000 && ![1004,1005,1006,1015].includes(code)) ws.close(code,reason);
+        else ws.close();
+      } catch {}
+    }
+  }
+
   async webSocketError(ws:WebSocket):Promise<void> {
-    await this.webSocketClose(ws);
+    this.removeMember(ws);
   }
 
   async alarm():Promise<void> {

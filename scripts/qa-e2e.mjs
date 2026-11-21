@@ -15,14 +15,40 @@ const spectatorContext=await browser.newContext();
 for(const context of [hostContext,guestContext,spectatorContext])await context.addInitScript(()=>{
   globalThis.__hexVisualMessageCount=0;
   globalThis.__hexHeartbeat={sent:[],received:[]};
+  // Record only protocol categories and lifecycle metadata, never URLs,
+  // message payloads, capabilities, peer IDs, or close reasons.
+  const trace={events:[],nextSocket:0};
+  globalThis.__hexSocketTrace=trace;
+  const sockets=new Map(),endpoints=new Map();
+  globalThis.__hexSocketSnapshot=()=>[...sockets].map(([socket,ws])=>({socket,readyState:ws.readyState}));
+  const record=(socket,event,detail={})=>{
+    if(trace.events.length>=100)trace.events.shift();
+    trace.events.push({socket,event,...detail});
+  };
+  const frameType=value=>['authenticate','auth','ready','error','ping','pong','join','leave','relay','checkpoint-list','checkpoint-data','checkpoint-saved','checkpoint-cleared','checkpoint-error'].includes(value)?value:'other';
+  const errorCode=value=>['invalid','expired','room-full','host-unavailable'].includes(value)?value:'other';
   const NativeWebSocket=WebSocket;
   globalThis.WebSocket=class extends NativeWebSocket{
     constructor(...args){
       super(...args);
+      const socket=++trace.nextSocket;
+      this.__hexTraceSocket=socket;
+      sockets.set(socket,this);
+      let endpoint=0;
+      try{const origin=new URL(String(args[0])).origin;if(!endpoints.has(origin))endpoints.set(origin,endpoints.size+1);endpoint=endpoints.get(origin);}catch{}
+      record(socket,'constructed',{endpoint});
+      this.addEventListener('open',()=>record(socket,'open'));
+      this.addEventListener('error',()=>record(socket,'error'));
+      this.addEventListener('close',event=>record(socket,'closed',{code:event.code,clean:event.wasClean}));
       this.addEventListener('message',event=>{
-        try{const frame=JSON.parse(String(event.data));if(frame?.type==='pong')globalThis.__hexHeartbeat.received.push(frame.id);}catch{}
+        try{
+          const frame=JSON.parse(String(event.data));
+          record(socket,'received',{type:frameType(frame?.type),...(frame?.type==='error'?{code:errorCode(frame.code)}:{})});
+          if(frame?.type==='pong')globalThis.__hexHeartbeat.received.push(frame.id);
+        }catch{record(socket,'received',{type:'non-json'});}
       });
     }
+    close(code,reason){record(this.__hexTraceSocket,'close-requested',{code:typeof code==='number'?code:null});return super.close(code,reason);}
   };
   const originalSend=WebSocket.prototype.send;
   WebSocket.prototype.send=function(...args){
@@ -30,6 +56,7 @@ for(const context of [hostContext,guestContext,spectatorContext])await context.a
     // Only command relay frames should count as board-state changes.
     try{
       const wire=JSON.parse(args[0]);
+      record(this.__hexTraceSocket,'sent',{type:frameType(wire?.type)});
       if(wire?.type==='ping')globalThis.__hexHeartbeat.sent.push(wire.id);
       if(wire?.type==='relay'){
         const inner=JSON.parse(wire.data);
@@ -275,9 +302,10 @@ try{
   // before reconnection. Both original seat credentials must still work.
   const reliabilityErrors=[];
   const reliabilityPages=[host,guest,spectator];
+  const sanitizeDiagnostic=value=>String(value).replace(/(?:https?|wss?):\/\/[^\s)]+/gi,'[url]').replace(/[A-Za-z0-9_-]{20,}/g,'[redacted]').slice(0,300);
   const errorListeners=reliabilityPages.map((page,index)=>{
-    const pageError=error=>reliabilityErrors.push(`${index}: pageerror: ${error.message}`);
-    const consoleError=message=>{if(message.type()==='error')reliabilityErrors.push(`${index}: console: ${message.text()}`);};
+    const pageError=error=>reliabilityErrors.push(`${index}: pageerror: ${sanitizeDiagnostic(error.message)}`);
+    const consoleError=message=>{if(message.type()==='error')reliabilityErrors.push(`${index}: console: ${sanitizeDiagnostic(message.text())}`);};
     page.on('pageerror',pageError);page.on('console',consoleError);
     return {page,pageError,consoleError};
   });
@@ -287,8 +315,18 @@ try{
   if(credentials.some(value=>typeof value!=='string'||!value))throw new Error('Could not capture both original guest seat credentials.');
   const hostReconnectCount=await host.evaluate(()=>globalThis.__hexQaReconnectCount?.());
   if(!Number.isInteger(hostReconnectCount))throw new Error('Host QA reconnect hook was unavailable.');
-  await host.evaluate(()=>globalThis.__hexQaDropRoomConnection());
-  await host.waitForFunction(count=>globalThis.__hexQaReconnectCount?.()>count,hostReconnectCount,{timeout:30000});
+  const immediatelyAfterDrop=await host.evaluate(()=>{globalThis.__hexQaDropRoomConnection();return globalThis.__hexSocketSnapshot();});
+  try{
+    await host.waitForFunction(count=>globalThis.__hexQaReconnectCount?.()>count,hostReconnectCount,{timeout:30000});
+  }catch{
+    const clients=await Promise.all(reliabilityPages.map(async(page,index)=>{
+      try{
+        const result=await page.evaluate(()=>({status:document.querySelector('#network-status')?.textContent??'',reconnects:globalThis.__hexQaReconnectCount?.()??null,sockets:globalThis.__hexSocketSnapshot(),trace:globalThis.__hexSocketTrace}));
+        return {client:index,...result,status:sanitizeDiagnostic(result.status)};
+      }catch{return {client:index,unavailable:true};}
+    }));
+    throw new Error(`Host reconnect timed out: ${JSON.stringify({initialHostReconnectCount:hostReconnectCount,immediatelyAfterDrop,clients,errors:reliabilityErrors})}`);
+  }
   for(const page of reliabilityPages){
     await page.waitForFunction(()=>{
       const lobby=document.querySelector('#lobby')?.textContent??'';
