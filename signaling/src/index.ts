@@ -1,4 +1,4 @@
-import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, MAX_ROOM_CONNECTIONS, ROOM_TTL_MS, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
+import { allowedOrigin, authorize, canRoute, hash, MAX_MESSAGE, MAX_ROOM_CONNECTIONS, ROOM_TTL_MS, parseHeartbeat, parseRoomControl, parseRoutedMessage, randomToken, validToken, type Role } from './protocol';
 
 interface Env { ROOMS: DurableObjectNamespace }
 type Member = { id: string; role: Role };
@@ -53,7 +53,8 @@ export default {
 };
 
 export class Room {
-  constructor(private state: DurableObjectState) {}
+  private state: DurableObjectState;
+  constructor(state: DurableObjectState) { this.state=state; }
 
   async fetch(req: Request): Promise<Response> {
     const path=new URL(req.url).pathname;
@@ -127,7 +128,7 @@ export class Room {
 
         member={id:role==='host'?'host':randomToken(),role};
         ws.serializeAttachment(member);
-        ws.send(JSON.stringify({type:'ready',id:member.id,role,expires:info.expires}));
+        ws.send(JSON.stringify({type:'ready',id:member.id,role,expires:info.expires,heartbeat:true}));
         if(role==='guest') this.sendTo('host',{type:'join',id:member.id});
       });
       return;
@@ -138,6 +139,9 @@ export class Room {
       ws.close(1008,'expired');
       return;
     }
+
+    const heartbeat=parseHeartbeat(message);
+    if(heartbeat){ws.send(JSON.stringify({type:'pong',id:heartbeat.id}));return;}
 
     const control=parseRoomControl(message);
     if(control){

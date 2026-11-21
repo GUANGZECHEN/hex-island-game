@@ -56,6 +56,17 @@ export function canRoute(role: Role, target: string, guestIds: string[]): boolea
   return role === 'guest' ? target === 'host' : guestIds.includes(target);
 }
 
+export function parseHeartbeat(input: string): {type:'ping';id:number} | null {
+  if (new TextEncoder().encode(input).length > MAX_MESSAGE) return null;
+  let x: unknown;
+  try { x = JSON.parse(input); } catch { return null; }
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  const value = x as Record<string, unknown>;
+  if (Object.keys(value).sort().join(',') !== 'id,type' || value.type !== 'ping' ||
+      !Number.isSafeInteger(value.id) || Number(value.id) < 0) return null;
+  return {type:'ping',id:Number(value.id)};
+}
+
 export type RoutedMessage = {
   type: 'relay';
   to: string;

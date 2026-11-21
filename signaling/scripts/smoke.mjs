@@ -56,6 +56,7 @@ function connectSocket(url, token, role, Socket, timeoutMs) {
       if (
         sentAuth &&
         message.type === 'ready' &&
+        message.heartbeat === true &&
         message.role === role &&
         ((role === 'host' && message.id === 'host') || (role === 'guest' && TOKEN.test(message.id)))
       ) {
@@ -228,6 +229,15 @@ export async function smokeSignaling(origin, {
     guestSocket=await connectSocket(wsUrl.toString(),body.guest,'guest',Socket,timeoutMs);
     const join=await joinPromise;
     const guestId=join.id;
+    const seenHost=[],seenGuest=[];
+    hostSocket.on('message',(data,binary)=>seenHost.push(parseSocketMessage(data,binary)));
+    guestSocket.on('message',(data,binary)=>seenGuest.push(parseSocketMessage(data,binary)));
+    const hostPong=waitMessage(hostSocket,m=>m.type==='pong'&&m.id===101,timeoutMs);
+    hostSocket.send(JSON.stringify({type:'ping',id:101}));
+    await hostPong;
+    const guestPong=waitMessage(guestSocket,m=>m.type==='pong'&&m.id===202,timeoutMs);
+    guestSocket.send(JSON.stringify({type:'ping',id:202}));
+    await guestPong;
 
     const guestToHost=waitMessage(
       hostSocket,
@@ -273,6 +283,16 @@ export async function smokeSignaling(origin, {
     const emptyPromise=waitMessage(hostSocket,m=>m.type==='checkpoint-list'&&Array.isArray(m.checkpoints),timeoutMs);
     hostSocket.send(JSON.stringify({type:'checkpoint-list'}));
     if((await emptyPromise).checkpoints.length!==0)throw new SmokeError('Aborted game checkpoints were not cleared.');
+    // Heartbeats are local transport messages: no ping, foreign pong, relay,
+    // or checkpoint event may appear beyond the operations above.
+    const expectedHost=['pong','relay',...Array(5).fill('checkpoint-saved'),'checkpoint-list','checkpoint-data','checkpoint-cleared','checkpoint-list'];
+    const expectedGuest=['pong','relay'];
+    if(seenHost.map(m=>m?.type).join(',')!==expectedHost.join(',') ||
+       seenGuest.map(m=>m?.type).join(',')!==expectedGuest.join(',') ||
+       JSON.stringify(seenHost[0])!==JSON.stringify({type:'pong',id:101}) ||
+       JSON.stringify(seenGuest[0])!==JSON.stringify({type:'pong',id:202})) {
+      throw new SmokeError('Room heartbeat isolation failed.');
+    }
   } finally {
     for(const socket of [guestSocket,hostSocket]){
       try{if(socket?.readyState===1)socket.close(1000);else if(socket?.readyState===0)socket.terminate();}catch{}
@@ -287,7 +307,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       retryDelayMs:3000,
       onRetry:()=>console.log('Signaling smoke: endpoint not ready; retrying.'),
     });
-    console.log('Signaling smoke passed: HTTP 201, CORS, host+guest WebSockets, bidirectional relay and checkpoint persistence ready.');
+    console.log('Signaling smoke passed: HTTP 201, CORS, host+guest WebSockets, bidirectional relay, heartbeat isolation and checkpoint persistence ready.');
   } catch(error) {
     console.error(`::error::${error instanceof SmokeError?error.message:'Signaling smoke failed.'}`);
     process.exitCode=1;

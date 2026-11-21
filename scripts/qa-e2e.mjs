@@ -14,12 +14,23 @@ const guestContext=await browser.newContext();
 const spectatorContext=await browser.newContext();
 for(const context of [hostContext,guestContext,spectatorContext])await context.addInitScript(()=>{
   globalThis.__hexVisualMessageCount=0;
+  globalThis.__hexHeartbeat={sent:[],received:[]};
+  const NativeWebSocket=WebSocket;
+  globalThis.WebSocket=class extends NativeWebSocket{
+    constructor(...args){
+      super(...args);
+      this.addEventListener('message',event=>{
+        try{const frame=JSON.parse(String(event.data));if(frame?.type==='pong')globalThis.__hexHeartbeat.received.push(frame.id);}catch{}
+      });
+    }
+  };
   const originalSend=WebSocket.prototype.send;
   WebSocket.prototype.send=function(...args){
     // Clock synchronization messages are not gameplay commands.
     // Only command relay frames should count as board-state changes.
     try{
       const wire=JSON.parse(args[0]);
+      if(wire?.type==='ping')globalThis.__hexHeartbeat.sent.push(wire.id);
       if(wire?.type==='relay'){
         const inner=JSON.parse(wire.data);
         if(inner?.type==='command')globalThis.__hexVisualMessageCount++;
@@ -259,6 +270,82 @@ try{
   if(await guest.locator('#room-map-preview [data-hex-id]').count()!==19)throw new Error('Guest did not receive a shared map preview.');
   await spectator.goto(invite,{waitUntil:'domcontentloaded'});
   await spectator.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Player 3: connected'),null,{timeout:15000});
+
+  // A host transport loss with two actual guests used to interrupt cleanup
+  // before reconnection. Both original seat credentials must still work.
+  const reliabilityErrors=[];
+  const reliabilityPages=[host,guest,spectator];
+  const errorListeners=reliabilityPages.map((page,index)=>{
+    const pageError=error=>reliabilityErrors.push(`${index}: pageerror: ${error.message}`);
+    const consoleError=message=>{if(message.type()==='error')reliabilityErrors.push(`${index}: console: ${message.text()}`);};
+    page.on('pageerror',pageError);page.on('console',consoleError);
+    return {page,pageError,consoleError};
+  });
+  const activeRoom=await host.evaluate(()=>JSON.parse(localStorage.getItem('hex-room-recovery-v1')??'null')?.room);
+  if(typeof activeRoom!=='string')throw new Error('Could not identify the active room for seat verification.');
+  const credentials=await Promise.all([guest,spectator].map(page=>page.evaluate(room=>localStorage.getItem(`hex-seat:${room}`),activeRoom)));
+  if(credentials.some(value=>typeof value!=='string'||!value))throw new Error('Could not capture both original guest seat credentials.');
+  const hostReconnectCount=await host.evaluate(()=>globalThis.__hexQaReconnectCount?.());
+  if(!Number.isInteger(hostReconnectCount))throw new Error('Host QA reconnect hook was unavailable.');
+  await host.evaluate(()=>globalThis.__hexQaDropRoomConnection());
+  await host.waitForFunction(count=>globalThis.__hexQaReconnectCount?.()>count,hostReconnectCount,{timeout:30000});
+  for(const page of reliabilityPages){
+    await page.waitForFunction(()=>{
+      const lobby=document.querySelector('#lobby')?.textContent??'';
+      return ['Player 1: connected','Player 2: connected','Player 3: connected'].every(value=>lobby.includes(value));
+    },null,{timeout:30000});
+  }
+  await guest.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 2'),null,{timeout:20000});
+  await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('Connected as Player 3'),null,{timeout:20000});
+  const restoredCredentials=await Promise.all([guest,spectator].map(page=>page.evaluate(room=>localStorage.getItem(`hex-seat:${room}`),activeRoom)));
+  if(JSON.stringify(restoredCredentials)!==JSON.stringify(credentials))throw new Error('Host reconnect changed an original guest seat credential.');
+  await host.locator('#room-seed').fill('24681');
+  await host.locator('#room-seed').dispatchEvent('change');
+  for(const page of [guest,spectator])await page.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24681',null,{timeout:15000});
+  await host.locator('#room-seed').fill('24680');
+  await host.locator('#room-seed').dispatchEvent('change');
+  for(const page of [guest,spectator])await page.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24680',null,{timeout:15000});
+
+  // Pause immediately so the real 25-second heartbeat can be observed without
+  // gameplay commands or the 45-second action deadline advancing the game.
+  for(const page of reliabilityPages)await page.locator('#room-ready').click();
+  await host.waitForFunction(()=>!document.querySelector('#room-start')?.disabled,null,{timeout:15000});
+  await host.locator('#room-start').click();
+  for(const page of reliabilityPages)await page.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});
+  await host.locator('#turn-clock-pause').click();
+  for(const page of reliabilityPages)await page.waitForFunction(()=>document.querySelector('#turn-action-clock-player')?.textContent?.includes('Paused'),null,{timeout:15000});
+  const paused=await Promise.all(reliabilityPages.map(page=>page.evaluate(()=>({
+    seconds:document.querySelector('#turn-action-clock-seconds')?.textContent,
+    status:document.querySelector('#game-status')?.textContent,
+    commands:globalThis.__hexVisualMessageCount,
+    sent:globalThis.__hexHeartbeat.sent.length,
+    received:globalThis.__hexHeartbeat.received.length
+  }))));
+  await Promise.all(reliabilityPages.map((page,index)=>page.waitForFunction(before=>{
+    const heartbeat=globalThis.__hexHeartbeat;
+    return heartbeat.sent.slice(before.sent).some(id=>Number.isSafeInteger(id)&&id>=0&&heartbeat.received.slice(before.received).includes(id));
+  },paused[index],{timeout:35000})));
+  for(let index=0;index<reliabilityPages.length;index++){
+    const after=await reliabilityPages[index].evaluate(()=>({seconds:document.querySelector('#turn-action-clock-seconds')?.textContent,status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount}));
+    if(after.seconds!==paused[index].seconds||after.status!==paused[index].status||after.commands!==paused[index].commands)throw new Error(`Heartbeat changed paused game state on client ${index}: ${JSON.stringify({before:paused[index],after})}`);
+  }
+  await host.locator('#turn-clock-pause').click();
+  await host.waitForFunction(()=>!document.querySelector('#turn-action-clock-player')?.textContent?.includes('Paused'),null,{timeout:15000});
+  const running=await host.evaluate(()=>({
+    at:performance.now(),seconds:Number(document.querySelector('#turn-action-clock-seconds')?.textContent?.slice(-2)),
+    status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount,
+    sent:globalThis.__hexHeartbeat.sent.length,received:globalThis.__hexHeartbeat.received.length
+  }));
+  await host.waitForFunction(before=>performance.now()-before.at>=5000&&globalThis.__hexHeartbeat.sent.slice(before.sent).some(id=>globalThis.__hexHeartbeat.received.slice(before.received).includes(id)),running,{timeout:35000});
+  const runningAfter=await host.evaluate(()=>({at:performance.now(),seconds:Number(document.querySelector('#turn-action-clock-seconds')?.textContent?.slice(-2)),status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount}));
+  const elapsed=(runningAfter.at-running.at)/1000;
+  if(!Number.isFinite(running.seconds)||!Number.isFinite(runningAfter.seconds)||runningAfter.seconds>running.seconds-elapsed+2||runningAfter.status!==running.status||runningAfter.commands!==running.commands)throw new Error(`Heartbeat refreshed the running action clock or changed the game: ${JSON.stringify({before:running,after:runningAfter})}`);
+  if(reliabilityErrors.length)throw new Error(`Browser errors during host reconnect/heartbeat: ${reliabilityErrors.join(' | ')}`);
+  for(const {page,pageError,consoleError} of errorListeners){page.off('pageerror',pageError);page.off('console',consoleError);}
+  host.once('dialog',dialog=>dialog.accept());
+  await host.locator('#game-change-map').click();
+  for(const page of reliabilityPages)await page.waitForFunction(()=>document.body.classList.contains('room-configuring')&&document.querySelector('#room-map-lobby')?.getClientRects().length>0,null,{timeout:15000});
+
   await spectator.locator('#room-role').selectOption('spectator');
   await spectator.waitForFunction(()=>document.querySelector('#network-status')?.textContent?.includes('In the lobby as spectator.'),null,{timeout:15000});
   await host.waitForFunction(()=>document.querySelector('#lobby')?.textContent?.includes('Spectators: 1'),null,{timeout:15000});

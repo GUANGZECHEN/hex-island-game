@@ -214,6 +214,10 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    }
    if(role==='host'&&!isOpen)host?.disconnect(id);
   },
+  removeMany:ids=>{
+   if(role==='host')host?.disconnectMany(ids);
+   else if(ids.includes('host')){open=false;clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}
+  },
   remove:id=>{
    if(role==='host')host?.disconnect(id);
    else if(id==='host'){open=false;clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}

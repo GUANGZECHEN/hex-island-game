@@ -104,9 +104,13 @@ export class HostSession {
   this.seats[0].connected=true;this.seats[0].peer=null;
   this.recovering=paused;
  }
- disconnect(peer:string){
-  if(this.spectators.delete(peer)){this.announce();return;}
-  const seat=this.seats.find(s=>s.peer===peer);if(seat){seat.peer=null;seat.connected=false;seat.ready=false;this.announce();}
+ disconnect(peer:string){this.disconnectMany([peer]);}
+ /** Remove every lost transport before announcing, so no message targets a dead relay. */
+ disconnectMany(peers:readonly string[]){
+  const lost=new Set(peers);let changed=false;
+  for(const peer of lost)if(this.spectators.delete(peer))changed=true;
+  for(const seat of this.seats)if(seat.peer&&lost.has(seat.peer)){seat.peer=null;seat.connected=false;seat.ready=false;changed=true;}
+  if(changed)this.announce();
  }
  receive(peer:string,text:string){
   if(typeof text!=='string'||new TextEncoder().encode(text).length>16384)return;

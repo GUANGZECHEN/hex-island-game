@@ -28,7 +28,7 @@ class GoodSocket extends EventEmitter {
     if(message.type==='auth'){
       this.role=message.role;
       assert.equal(message.token,message.role==='host'?host:guest);
-      const ready={type:'ready',role:message.role,id:message.role==='host'?'host':guestId};
+      const ready={type:'ready',role:message.role,id:message.role==='host'?'host':guestId,heartbeat:true};
       queueMicrotask(()=>{
         this.emit('message',Buffer.from(JSON.stringify(ready)),false);
         if(message.role==='guest'){
@@ -39,6 +39,10 @@ class GoodSocket extends EventEmitter {
       return;
     }
 
+    if(message.type==='ping'){
+      queueMicrotask(()=>this.emit('message',Buffer.from(JSON.stringify({type:'pong',id:message.id})),false));
+      return;
+    }
     if(message.type==='relay'){
       if(this.role==='guest'){
         assert.equal(message.to,'host');
@@ -81,6 +85,17 @@ class GoodSocket extends EventEmitter {
   terminate(){this.readyState=3;}
 }
 
+class LeakySocket extends GoodSocket {
+  send(payload:string){
+    const message=JSON.parse(payload);
+    super.send(payload);
+    if(message.type==='ping'){
+      const target=GoodSocket.sockets.find(x=>x!==this);
+      queueMicrotask(()=>target?.emit('message',Buffer.from(JSON.stringify({type:'relay',from:this.role==='host'?'host':guestId,data:payload})),false));
+    }
+  }
+}
+
 class BadSocket extends EventEmitter {
   readyState=0;
   constructor(){super();queueMicrotask(()=>this.emit('error',new Error(secret)));}
@@ -102,6 +117,13 @@ test('smoke creates a room, authenticates host+guest and relays both directions'
     return ok();
   };
   await smokeSignaling('https://hex-island-signaling.example.workers.dev',{fetchImpl:fetcher,Socket:GoodSocket});
+});
+
+test('smoke rejects heartbeat leakage to the other peer',async()=>{
+  GoodSocket.sockets=[];
+  await assert.rejects(smokeSignaling('https://hex-island-signaling.example.workers.dev',{
+    fetchImpl:async(_url:any,options:any)=>options.method==='OPTIONS'?preflight():ok(),Socket:LeakySocket,
+  }),/heartbeat isolation/);
 });
 
 test('smoke reports HTTP failures with fixed safe errors and rejects malformed room data',async()=>{

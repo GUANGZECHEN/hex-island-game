@@ -10,12 +10,16 @@ type Events = {
   error: (s:string)=>void;
   peer: (id:string, status:string, open:boolean)=>void;
   remove: (id:string)=>void;
+  removeMany?: (ids:string[])=>void;
   message: (id:string,text:string)=>void;
   checkpoints?: (items:CheckpointMeta[])=>void;
   checkpoint?: (item:StoredCheckpoint)=>void;
 };
 type Connection = { room:string; token:string; role:Role; endpointIndex:number };
 
+const HEARTBEAT_INTERVAL = 25_000;
+const HEARTBEAT_TIMEOUT = 20_000;
+const HANDSHAKE_TIMEOUT = 15_000;
 const MAX_RELAY_DATA = 16384;
 const MAX_CHECKPOINT_DATA = 49152;
 const validPeerId = (value:unknown): value is string =>
@@ -44,6 +48,37 @@ export class RoomClient {
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private qaReconnectCount = 0;
+  private cancelOpen: (()=>void) | null = null;
+  private wakeConnection: (()=>void) | null = null;
+  private listening = false;
+  private cancelJoinDelay: (()=>void) | null = null;
+  private createAbort: AbortController | null = null;
+  private readonly wake = ()=>{
+    if(!this.connection || document.visibilityState==='hidden')return;
+    if(this.wakeConnection){this.wakeConnection();return;}
+    if(this.reconnectTimer!==null){this.clearReconnect();this.reconnectAttempt=Math.max(0,this.reconnectAttempt-1);this.scheduleReconnect(this.generation,0);}
+  };
+  private listen():void {
+    if(this.listening)return;
+    this.listening=true;
+    window.addEventListener('online',this.wake);
+    window.addEventListener('pageshow',this.wake);
+    document.addEventListener('visibilitychange',this.wake);
+  }
+  private unlisten():void {
+    if(!this.listening)return;
+    this.listening=false;
+    window.removeEventListener('online',this.wake);
+    window.removeEventListener('pageshow',this.wake);
+    document.removeEventListener('visibilitychange',this.wake);
+  }
+  private reportCallbackFailure():void {try{this.events.error('A room connection update could not be displayed.');}catch{}}
+  private removeAll():void {
+    const ids=[...this.peers];this.peers.clear();
+    if(!ids.length)return;
+    if(this.events.removeMany){try{this.events.removeMany(ids);}catch{this.reportCallbackFailure();}return;}
+    for(const id of ids){try{this.events.remove(id);}catch{this.reportCallbackFailure();}}
+  }
 
   constructor(private endpoints:string[],private events:Events) {
     if(endpoints.length===0)throw new RoomError('Signaling service is unreachable.');
@@ -52,19 +87,23 @@ export class RoomClient {
   async create(): Promise<string> {
     this.reset();
     const generation=this.generation;
+    const abort=new AbortController();this.createAbort=abort;
     let roomData: Awaited<ReturnType<typeof requestRoom>> | null=null;
     let usedIndex=0;
     let lastError:unknown;
 
     for(let i=0;i<this.endpoints.length;i++){
       try{
-        roomData=await requestRoom(this.endpoints[i]);
+        roomData=await requestRoom(this.endpoints[i],fetch,abort.signal);
         usedIndex=i;
         break;
       }catch(error){
         lastError=error;
+        if(generation!==this.generation)break;
       }
     }
+    if(this.createAbort===abort)this.createAbort=null;
+    if(generation!==this.generation)throw Error('Session cancelled.');
 
     if(!roomData)throw lastError instanceof Error?lastError:new RoomError('Signaling service is unreachable.');
     if(generation!==this.generation)throw Error('Session cancelled.');
@@ -89,12 +128,16 @@ export class RoomClient {
         return;
       }catch(error){
         lastError=error;
+        if(generation!==this.generation)throw new RoomError('Room join was cancelled.');
         if(error instanceof RoomAttemptError && !error.retryable)throw error;
         attempt++;
         if(attempt>=10)break;
         const delay=reconnectDelay(attempt);
         this.events.status(`Room connection is temporarily unavailable. Retrying in ${Math.ceil(delay/1000)}s…`);
-        await new Promise(resolve=>window.setTimeout(resolve,delay));
+        await new Promise<void>(resolve=>{
+          const timer=window.setTimeout(()=>{this.cancelJoinDelay=null;resolve();},delay);
+          this.cancelJoinDelay=()=>{window.clearTimeout(timer);this.cancelJoinDelay=null;resolve();};
+        });
       }
     }
     if(generation!==this.generation)throw new RoomError('Room join was cancelled.');
@@ -118,11 +161,13 @@ export class RoomClient {
     let lastError:unknown;
     const start=connection.endpointIndex;
     for(let offset=0;offset<this.endpoints.length;offset++){
+      if(generation!==this.generation)throw new RoomError('Session cancelled.');
       connection.endpointIndex=(start+offset)%this.endpoints.length;
       try{
         await this.open(connection,generation,false);
         return;
       }catch(error){
+        if(generation!==this.generation)throw new RoomError('Session cancelled.');
         lastError=error;
       }
     }
@@ -142,17 +187,17 @@ export class RoomClient {
     }
   }
 
-  private scheduleReconnect(generation:number):void {
+  private scheduleReconnect(generation:number,overrideDelay?:number):void {
     if(generation!==this.generation || !this.connection || this.reconnectTimer!==null)return;
 
     this.reconnectAttempt=Math.min(this.reconnectAttempt+1,Number.MAX_SAFE_INTEGER);
     const attempt=this.reconnectAttempt;
-    const delay=reconnectDelay(attempt);
+    const delay=overrideDelay??reconnectDelay(attempt);
     const connection=this.connection;
     connection.endpointIndex=(connection.endpointIndex+1)%this.endpoints.length;
     const seconds=Math.ceil(delay/1000);
     const phase=attempt<=10?`fast retry ${attempt}/10`:attempt<=30?'background retry':'long-term retry';
-    this.events.status(`Connection interrupted. Automatic ${phase} in ${seconds}s…`);
+    try{this.events.status(`Connection interrupted. Automatic ${phase} in ${seconds}s…`);}catch{}
 
     this.reconnectTimer=window.setTimeout(()=>{
       this.reconnectTimer=null;
@@ -164,17 +209,56 @@ export class RoomClient {
   }
 
   private open(connection:Connection,generation:number,reconnecting:boolean):Promise<void> {
-    this.events.status(reconnecting?'Reconnecting to Cloudflare room…':'Connecting to Cloudflare room…');
+    this.listen();
+    try{this.events.status(reconnecting?'Reconnecting to Cloudflare room…':'Connecting to Cloudflare room…');}catch{this.reportCallbackFailure();}
     const endpoint=this.endpoints[connection.endpointIndex];
     const url=new URL(`${endpoint}/rooms/${connection.room}/socket`);
     url.protocol=url.protocol==='https:'?'wss:':'ws:';
 
-    const ws=new WebSocket(url);
+    let ws:WebSocket;
+    try{ws=new WebSocket(url);}catch{return Promise.reject(new RoomAttemptError('Room WebSocket connection or authentication failed.',true));}
     this.ws=ws;
 
     return new Promise((resolve,reject)=>{
       let settled=false;
       let authenticated=false;
+      let heartbeat=false, nextPing=0, pendingPing:number|null=null;
+      let handshakeTimer:number|null=null, heartbeatTimer:number|null=null;
+      const clearTimers=()=>{
+        if(handshakeTimer!==null)window.clearTimeout(handshakeTimer);
+        if(heartbeatTimer!==null)window.clearTimeout(heartbeatTimer);
+        handshakeTimer=null;heartbeatTimer=null;
+      };
+      const active=()=>this.ws===ws && generation===this.generation;
+      const finish=(retry:boolean)=>{
+        if(!active())return;
+        this.ws=null;clearTimers();this.cancelOpen=null;this.wakeConnection=null;
+        try{ws.close();}catch{}
+        try{this.removeAll();}finally{
+          if(!authenticated)rejectInitial('Room WebSocket connection or authentication failed.');
+          else if(retry)this.scheduleReconnect(generation);
+        }
+      };
+      this.cancelOpen=()=>finish(false);
+      const ping=()=>{
+        if(!active()||!authenticated||!heartbeat)return;
+        if(heartbeatTimer!==null)window.clearTimeout(heartbeatTimer);
+        const id=nextPing;nextPing=(nextPing+1)%Number.MAX_SAFE_INTEGER;pendingPing=id;
+        try{ws.send(JSON.stringify({type:'ping',id}));}catch{finish(true);return;}
+        heartbeatTimer=window.setTimeout(()=>{
+          if(document.visibilityState==='hidden'){pendingPing=null;heartbeatTimer=window.setTimeout(ping,HEARTBEAT_INTERVAL);return;}
+          if(pendingPing===id)finish(true);
+        },HEARTBEAT_TIMEOUT);
+      };
+      const startHandshakeTimer=()=>{
+        if(handshakeTimer!==null)window.clearTimeout(handshakeTimer);
+        handshakeTimer=window.setTimeout(()=>{
+          if(document.visibilityState==='hidden'){startHandshakeTimer();return;}
+          finish(true);
+        },HANDSHAKE_TIMEOUT);
+      };
+      this.wakeConnection=()=>{if(!authenticated)startHandshakeTimer();else if(heartbeat){pendingPing=null;ping();}};
+      startHandshakeTimer();
 
       const rejectInitial=(message:string,retryable=true)=>{
         if(settled)return;
@@ -182,12 +266,12 @@ export class RoomClient {
         reject(new RoomAttemptError(message,retryable));
       };
       const closeForRetry=()=>{
-        try{ws.close();}catch{}
+        finish(true);
       };
 
       ws.onmessage=(event)=>{
         if(this.ws!==ws || generation!==this.generation)return;
-        let msg:{type?:unknown;id?:unknown;from?:unknown;role?:unknown;code?:unknown;data?:unknown;checkpoints?:unknown;checkpoint?:unknown};
+        let msg:{type?:unknown;id?:unknown;from?:unknown;role?:unknown;code?:unknown;data?:unknown;checkpoints?:unknown;checkpoint?:unknown;heartbeat?:unknown};
         try{msg=JSON.parse(String(event.data));}
         catch{
           if(!authenticated)rejectInitial('Room WebSocket returned an invalid message.');
@@ -205,15 +289,26 @@ export class RoomClient {
           return;
         }
 
-        if(msg.type==='ready'){
+        if(msg.type==='ready' && !authenticated){
           authenticated=true;
+          if(handshakeTimer!==null)window.clearTimeout(handshakeTimer);
+          handshakeTimer=null;
+          heartbeat=msg.heartbeat===true;
+          if(heartbeat)heartbeatTimer=window.setTimeout(ping,HEARTBEAT_INTERVAL);
           settled=true;
           this.reconnectAttempt=0;
           if(reconnecting)this.qaReconnectCount++;
           this.clearReconnect();
-          if(connection.role==='guest')this.ensurePeer('host');
-          this.events.status(reconnecting?'Cloudflare room reconnected.':'Cloudflare room connected.');
           resolve();
+          try{
+            if(connection.role==='guest')this.ensurePeer('host');
+            this.events.status(reconnecting?'Cloudflare room reconnected.':'Cloudflare room connected.');
+          }catch{this.reportCallbackFailure();}
+          return;
+        }
+
+        if(msg.type==='pong' && authenticated && heartbeat && Number.isSafeInteger(msg.id) && Number(msg.id)>=0){
+          if(msg.id===pendingPing){pendingPing=null;if(heartbeatTimer!==null)window.clearTimeout(heartbeatTimer);heartbeatTimer=window.setTimeout(ping,HEARTBEAT_INTERVAL);}
           return;
         }
 
@@ -280,21 +375,8 @@ export class RoomClient {
         closeForRetry();
       };
 
-      ws.onerror=()=>{
-        if(this.ws!==ws || generation!==this.generation)return;
-        if(!authenticated)rejectInitial('Room WebSocket connection or authentication failed.');
-      };
-
-      ws.onclose=()=>{
-        if(this.ws!==ws || generation!==this.generation)return;
-        this.ws=null;
-        for(const id of [...this.peers])this.remove(id);
-        if(!authenticated){
-          rejectInitial('Room WebSocket connection or authentication failed.');
-          return;
-        }
-        this.scheduleReconnect(generation);
-      };
+      ws.onerror=()=>{if(active())finish(true);};
+      ws.onclose=()=>{if(active())finish(true);};
     });
   }
 
@@ -342,14 +424,18 @@ export class RoomClient {
   }
 
   reset():void {
+    this.cancelOpen?.();
+    this.cancelJoinDelay?.();
+    this.createAbort?.abort();this.createAbort=null;
     this.generation++;
     this.clearReconnect();
+    this.unlisten();
     this.reconnectAttempt=0;
     this.qaReconnectCount=0;
     this.connection=null;
     const ws=this.ws;
     this.ws=null;
     ws?.close();
-    for(const id of [...this.peers])this.remove(id);
+    this.removeAll();
   }
 }
