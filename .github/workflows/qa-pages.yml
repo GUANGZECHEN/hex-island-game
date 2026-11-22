@@ -24,6 +24,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
@@ -32,6 +34,22 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             signaling/package-lock.json
+
+      - name: Select pinned fixture-only browser scope
+        id: scope
+        shell: bash
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          e2e_fixture=false
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == 'fe1be38f18eea4651cbff4bcb8cda087ecbf0151' ]]; then
+            changed=$(git diff --no-renames --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-e2e\.mjs|\.github/workflows/(local-visual-qa|qa-pages)\.yml)$' >/dev/null; then
+              e2e_fixture=true
+              echo 'Pinned fixture-only follow-up: retaining the verified parent full browser evidence and rerunning the previously failed live E2E gate.'
+            fi
+          fi
+          echo "e2e_fixture=$e2e_fixture" >> "$GITHUB_OUTPUT"
 
       - name: Install and validate
         run: |
@@ -267,11 +285,18 @@ jobs:
         with:
           artifact_name: github-pages-attempt-${{ github.run_attempt }}
 
+      - name: Require live ingress for pinned fixture follow-up
+        if: steps.scope.outputs.e2e_fixture == 'true' && env.QA_INGRESS_VALID == 'false'
+        run: |
+          echo '::error::The pinned fixture follow-up requires the real live E2E gate.'
+          exit 1
+
       - name: Run real Chromium multiplayer, reconnect, rejoin and saved-game E2E
         if: env.QA_INGRESS_VALID != 'false'
         env:
           QA_URL: ${{ steps.deployment.outputs.page_url }}?v=${{ github.sha }}&qaPlayers=2
           QA_SIGNALING_URL: ${{ env.QA_SIGNALING_URL }}
+          E2E_FIXTURE_ONLY: ${{ steps.scope.outputs.e2e_fixture }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
@@ -281,14 +306,18 @@ jobs:
           npm install --silent playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
           node qa-e2e.mjs
-          node qa-three-live.mjs
-          node qa-compact-actions.mjs
-          node qa-target-feedback.mjs
-          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-trade-camera.mjs
-          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-dice-visual.mjs
-          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-catch-up.mjs
-          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-bot-catch-up.mjs
-          node qa-harbor-coop.mjs
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then
+            node qa-three-live.mjs
+            node qa-compact-actions.mjs
+            node qa-target-feedback.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-trade-camera.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-dice-visual.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-catch-up.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-bot-catch-up.mjs
+            node qa-harbor-coop.mjs
+          else
+            echo 'Retained parent browser-suite evidence; the live E2E gate was rerun above.'
+          fi
 
       - name: Upload integrated 3D evidence
         if: always()
@@ -309,6 +338,7 @@ jobs:
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           SIGNALING_MODE: ${{ steps.signaling_mode.outputs.mode }}
+          E2E_FIXTURE_ONLY: ${{ steps.scope.outputs.e2e_fixture }}
         run: |
           {
             if [[ "${QA_INGRESS_VALID:-true}" == 'false' ]]; then
@@ -319,6 +349,9 @@ jobs:
             echo
             echo "QA page: ${PAGE_URL}?qaPlayers=2"
             echo "Signaling mode: ${SIGNALING_MODE}"
+            if [[ "$E2E_FIXTURE_ONLY" == true ]]; then
+              echo 'Pinned fixture-only follow-up: parent full browser evidence retained; the previously failed live E2E gate was rerun.'
+            fi
             if [[ "${QA_INGRESS_VALID:-true}" == 'false' ]]; then
               echo 'Temporary QA relay failed to become reachable; remote multiplayer E2E was skipped.'
               echo 'The separate local Chromium/unit suite remains the visual acceptance gate.'

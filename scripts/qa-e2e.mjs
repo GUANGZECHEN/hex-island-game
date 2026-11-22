@@ -215,7 +215,28 @@ try{
   // Complete Player 1's second setup pair, then exercise a real authoritative dice roll.
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
   await placeHumanSetupPair();
-  await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: roll"),null,{timeout:30000});
+  // Nine bot actions follow this seeded setup. Each waits 3 seconds and
+  // visible rolls add presentation time, so a fixed 30-second wait is short.
+  // Require observable game progress and retain an absolute upper bound.
+  const botWait=await host.evaluate(()=>new Promise(resolve=>{
+    const start=Date.now(),deadline=start+75000,stallLimit=12000;
+    let lastProgress=start,lastKey='';
+    const check=()=>{
+      const text=selector=>document.querySelector(selector)?.textContent?.trim()??'';
+      const snapshot={status:text('#game-status'),hint:text('#turn-hint'),error:text('#game-error'),
+        roads:document.querySelectorAll('#board .game-road-piece').length,
+        buildings:document.querySelectorAll('#board [data-building-kind]').length,
+        log:text('#log'),rollVisible:!!document.querySelector('#board .board-roll-overlay'),
+        supplementVisible:!!document.querySelector('#board .supplement-alert'),documentHidden:document.hidden};
+      const key=JSON.stringify([snapshot.status,snapshot.roads,snapshot.buildings,snapshot.log]);
+      const now=Date.now();if(key!==lastKey){lastKey=key;lastProgress=now;}
+      if(snapshot.status.includes("Player 1's turn; phase: roll"))return resolve({ok:true});
+      if(now>=deadline||now-lastProgress>=stallLimit)return resolve({ok:false,elapsedMs:now-start,stalledMs:now-lastProgress,...snapshot});
+      setTimeout(check,250);
+    };
+    check();
+  }));
+  if(!botWait.ok)throw new Error('Local bots did not reach Player 1 roll: '+JSON.stringify(botWait));
   await host.getByRole('button',{name:'Roll dice'}).click();
   const diceOverlay=host.locator('#board .board-roll-overlay');
   await diceOverlay.waitFor({state:'visible',timeout:7000});
