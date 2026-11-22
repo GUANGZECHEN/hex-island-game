@@ -625,6 +625,79 @@ try{
   if(!(await hostRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered host did not restore the selected map.');
   if(!(await guestRecovered.locator('#game-status').textContent())?.includes('Seed 24680'))throw new Error('Recovered guest did not restore the selected map.');
 
+  // Finish the recovered match's setup to exercise a real multiplayer trade draft.
+  const recoveredPages=[hostRecovered,guestRecovered];
+  const readTurn=async()=>{
+    const status=await hostRecovered.locator('#game-status').textContent();
+    const match=status?.match(/Revision (\d+)\. Player ([12])'s turn; phase: ([\w-]+)/);
+    if(!match)throw new Error('Could not identify the recovered game turn.');
+    return {revision:Number(match[1]),page:recoveredPages[Number(match[2])-1],phase:match[3]};
+  };
+  const waitForRevision=revision=>Promise.all(recoveredPages.map(page=>page.waitForFunction(rev=>
+    document.querySelector('#game-status')?.textContent?.includes('Revision '+rev+'.'),revision,{timeout:15000})));
+  let turn=await readTurn();
+  for(let placements=0;turn.phase.startsWith('setup-')&&placements<8;placements++){
+    const settlement=turn.phase==='setup-settlement';
+    await turn.page.getByRole('button',{name:settlement?'Build settlement':'Build road',exact:true}).click();
+    // A resource-producing second settlement guarantees cards to offer on the first turn.
+    const target=settlement?await turn.page.evaluate(()=>{
+      const corners=Array.from(document.querySelectorAll('#board [data-resource]:not([data-resource="none"]) .island-cell'))
+        .flatMap(tile=>tile.getAttribute('points').split(' ').map(point=>point.split(',').map(Number)));
+      const targets=Array.from(document.querySelectorAll('#board [data-legal-target="settlement"]'));
+      return targets.find(node=>corners.some(([x,y])=>
+        Math.hypot(Number(node.getAttribute('cx'))-x,Number(node.getAttribute('cy'))-y)<.001))?.dataset.targetId;
+    }):undefined;
+    if(settlement&&!target)throw new Error('No producing settlement target was available.');
+    await clickBoardTarget(turn.page,target);
+    await waitForRevision(turn.revision+1);
+    turn=await readTurn();
+  }
+  if(turn.phase!=='roll')throw new Error('Classic setup did not reach the first roll.');
+  await turn.page.getByRole('button',{name:'Roll dice'}).click();
+  await waitForRevision(turn.revision+1);
+  turn=await readTurn();
+  if(turn.phase==='robber'){
+    await turn.page.getByRole('button',{name:'Move robber'}).click();
+    await clickBoardTarget(turn.page);
+    await waitForRevision(turn.revision+1);
+    turn=await readTurn();
+  }
+  if(turn.phase==='steal'){
+    await turn.page.getByRole('button',{name:'Steal',exact:true}).click();
+    await waitForRevision(turn.revision+1);
+    turn=await readTurn();
+  }
+  if(turn.phase!=='action')throw new Error('First Classic roll did not reach the action phase.');
+
+  const tradeOwner=turn.page;
+  const tradeDraft=tradeOwner.locator('.domestic-trade-card');
+  await tradeDraft.locator('summary').click();
+  const recipient=tradeDraft.getByRole('combobox',{name:'Trade recipient'});
+  await recipient.selectOption({label:tradeOwner===hostRecovered?'Player 2':'Player 1'});
+  const recipientId=await recipient.inputValue();
+  const give=tradeDraft.getByRole('group',{name:'Offer these cards'});
+  const request=tradeDraft.getByRole('group',{name:'Request these cards'});
+  const availableCard=give.locator('button[aria-label^="Add one "]:enabled').first();
+  const giveLabel=await availableCard.getAttribute('aria-label');
+  if(!giveLabel)throw new Error('The offered resource control has no label.');
+  const requestLabel=giveLabel==='Add one brick'?'Add one lumber':'Add one brick';
+  await availableCard.click();
+  await request.getByRole('button',{name:requestLabel,exact:true}).click();
+
+  // Host pause and resume deliver authoritative snapshots without advancing the revision.
+  const pause=hostRecovered.locator('#turn-clock-pause');
+  await pause.click();
+  await tradeDraft.waitFor({state:'hidden',timeout:15000});
+  await pause.click();
+  await tradeDraft.waitFor({state:'visible',timeout:15000});
+  await waitForRevision(turn.revision);
+  if(await tradeDraft.getAttribute('open')===null)throw new Error('Resuming closed the unsent trade composer.');
+  if(await recipient.inputValue()!==recipientId)throw new Error('Resuming cleared the draft trade recipient.');
+  for(const [group,label] of [[give,giveLabel],[request,requestLabel]]){
+    const row=group.locator('.resource-stepper').filter({has:tradeOwner.getByRole('button',{name:label,exact:true})});
+    if(await row.locator('.stepper-count').textContent()!=='1')throw new Error('Resuming cleared the trade draft selection: '+label);
+  }
+
   hostRecovered.once('dialog',dialog=>dialog.accept());
   await hostRecovered.locator('#game-restart').click();
   await hostRecovered.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes('Revision 0'),null,{timeout:15000});

@@ -18,7 +18,7 @@ export class BoardRendererController {
   private reason = '';
   private abort = new AbortController();
   private preview = new TargetFeedback();
-  constructor(private host: HTMLElement, private drawSVG: () => void, private choose: (id: string) => void, previousCamera: BoardCameraView | null = null) {
+  constructor(private host: HTMLElement, private drawSVG: (legalTargets: readonly string[]) => void, private choose: (id: string) => void, previousCamera: BoardCameraView | null = null) {
     this.rememberedCamera = previousCamera;
     const toggle = document.getElementById('board-render-toggle') as HTMLButtonElement;
     const reset = document.getElementById('board-view-reset') as HTMLButtonElement;
@@ -80,7 +80,7 @@ export class BoardRendererController {
     }
     if (this.explicit2D || this.fallback) {
       if (this.instance) this.rememberedCamera = this.instance.captureView();
-      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG(); this.paintSVG();
+      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG(view.legalTargets); this.paintSVG();
       this.rollOverlay?.update(view);
       if(resumeAfterFallback)this.resumeRoll();
     }

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { TargetFeedback, TARGET_COLORS } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain } from './art.ts';
+import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain, PORT_SAIL } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 import { AMBIENT_FRAME_MS, OceanMotion, boatPose, decorationReaction, type DecorationKind } from './motion.ts';
@@ -242,7 +242,10 @@ export class ThreeBoardRenderer {
     }
     this.harborLabels.visible=!!view.harborPorts;
     if(view.harborPorts&&!this.harborLabels.children.length)for(const [index,port] of view.board.ports.entries()){
-      const plan=portBoatPlan(port,this.geometry);this.assets.sprite(this.harborLabels,this.assets.label(`P${index+1}`,'token'),plan.center.x,.93,plan.center.z,.28);
+      const plan = portBoatPlan(port, this.geometry);
+      const badge = this.assets.sprite(this.harborLabels, this.assets.label(`P${index + 1}`, 'token'), plan.center.x, PORT_SAIL.centerY, plan.center.z, .28);
+      // Keep the badge above the camera-facing sail even in the overhead view.
+      badge.center.y = -(PORT_SAIL.size / 2 + .06) / badge.scale.y;
     }
     this.paintTargets(); this.resize(); this.invalidate(); this.scheduleMotion();
   }

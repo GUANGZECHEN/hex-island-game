@@ -24,9 +24,12 @@ const blank=():Hand=>({lumber:0,brick:0,wool:0,grain:0,ore:0});
  * Never execute random commands or inspect another player's hand/cards here.
  */
 export type AvailabilityDraft = Pick<AvailabilityContext,'discard'|'offer'|'invention'|'victimId'>;
+export type ActionAvailabilityReader = ((draft?:AvailabilityDraft)=>ActionAvailability) & {
+ targetIds(mode:TargetMode):readonly string[];
+};
 
 /** Create one reader per immutable state/render; draft updates reuse board legality. */
-export function createActionAvailabilityReader(state:GameState, playerId:string, context:AvailabilityContext={}): (draft?:AvailabilityDraft)=>ActionAvailability {
+export function createActionAvailabilityReader(state:GameState, playerId:string, context:AvailabilityContext={}):ActionAvailabilityReader {
  const player=state.players.find(p=>p.id===playerId);
  const active=!!player&&state.players[state.currentSeat]?.id===playerId;
  const ready=!!player&&!context.paused&&state.phase!=='finished';
@@ -38,17 +41,26 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
  // Reducer-based target queries receive a public-only copy of other players, never their hands/cards.
  const safeState:GameState={...state,players:state.players.map(p=>p.id===playerId?p:{id:p.id,seat:p.seat,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights,hand:blank(),cards:[]})};
  const canPay=(cost:Partial<Hand>)=>!!player&&RESOURCES.every(r=>player.hand[r]>=(cost[r]??0));
- const targets=(mode:TargetMode)=>{
-  if(!turn||!player)return false;
+ const cachedTargets=new Map<TargetMode,readonly string[]>();
+ const targetIds=(mode:TargetMode):readonly string[]=>{
+  const cached=cachedTargets.get(mode);
+  if(cached)return cached;
+  if(!turn||!player)return [];
   // Skip expensive reducer/geometry scans when the phase, pieces or cost alone
   // already rule out every target. Geometry remains the reducer's decision.
-  if(mode==='road'&&(!['setup-road','free-road','action'].includes(state.phase)||!player.roads||(state.phase==='action'&&!canPay({lumber:1,brick:1}))))return false;
-  if(mode==='settlement'&&(!['setup-settlement','action'].includes(state.phase)||!player.settlements||(state.phase==='action'&&!canPay({lumber:1,brick:1,wool:1,grain:1}))))return false;
-  if(mode==='city'&&(!['setup-city','action'].includes(state.phase)||!player.cities||(state.phase==='action'&&!canPay({grain:2,ore:3}))))return false;
-  if(mode==='station'&&(state.phase!=='action'||!canPay(stationCost(state))))return false;
-  if(mode==='ship'&&(state.phase!=='action'||!shipsRemaining(state,playerId)||!canPay(SHIP_COST)))return false;
-  return legalTargetIds(safeState,playerId,mode).length>0;
+  if(mode==='road'&&(!['setup-road','free-road','action'].includes(state.phase)||!player.roads||(state.phase==='action'&&!canPay({lumber:1,brick:1}))))return [];
+  if(mode==='settlement'&&(!['setup-settlement','action'].includes(state.phase)||!player.settlements||(state.phase==='action'&&!canPay({lumber:1,brick:1,wool:1,grain:1}))))return [];
+  if(mode==='city'&&(!['setup-city','action'].includes(state.phase)||!player.cities||(state.phase==='action'&&!canPay({grain:2,ore:3}))))return [];
+  if(mode==='station'&&(!stations||state.phase!=='action'||!canPay(stationCost(state))))return [];
+  if(mode==='ship'&&(!classic||!state.rules?.ships||state.phase!=='action'||!shipsRemaining(state,playerId)||!canPay(SHIP_COST)))return [];
+  if(mode==='robber'&&(!seven||state.phase!=='robber'))return [];
+  const ids=mode==='robber'
+   ?createIslandBoard(state.board.layout).hexes.filter(hex=>hex.id!==state.board.robberHexId).map(hex=>hex.id)
+   :legalTargetIds(safeState,playerId,mode);
+  cachedTargets.set(mode,ids);
+  return ids;
  };
+ const targets=(mode:TargetMode)=>targetIds(mode).length>0;
  const card=(type:'knight'|'road-building'|'monopoly'|'invention')=>dev&&turn&&(state.phase==='roll'||state.phase==='action')&&!state.playedDevelopment&&!!player?.cards.some(c=>c.type===type&&c.boughtTurn<state.turn);
  const incoming=!!state.offer&&state.phase==='action'&&state.offer.proposer===state.players[state.currentSeat]?.id&&state.offer.targets.includes(playerId)&&(!isHarbor(state)||partnersConnected(safeState,playerId,state.offer.proposer));
  const result={
@@ -60,7 +72,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   ship:availability(classic&&!!state.rules?.ships,classic&&!!state.rules?.ships&&targets('ship')),
   endTurn:availability(true,action), undo:availability(true,ready&&!!context.canUndo),
   discard:availability(seven,false),
-  robber:availability(seven,turn&&state.phase==='robber'&&createIslandBoard(state.board.layout).hexes.some(h=>h.id!==state.board.robberHexId)),
+  robber:availability(seven,targets('robber')),
   steal:availability(classic,false),
   finishFreeRoads:availability(dev,turn&&state.phase==='free-road'),
   claimVictory:availability(classic,turn&&state.phase!=='setup-settlement'&&state.phase!=='setup-road'&&!!player&&publicVictoryPoints(state,playerId)+player.cards.filter(c=>c.type==='victory-point').length>=10),
@@ -78,7 +90,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   result.bankTrades[`${give}:${receive}`]=availability(true,action&&!!player&&player.hand[give]>=rate&&state.bank[receive]>0);
  }
  const inventionCard=card('invention');
- return (draft:AvailabilityDraft={})=>{
+ const read=(draft:AvailabilityDraft={}):ActionAvailability=>{
   const selection={...context,...draft};
   const invention=selection.invention;
   const inventionValid=Array.isArray(invention)&&invention.length===2&&invention.every(r=>RESOURCES.includes(r))&&RESOURCES.every(r=>invention.filter(x=>x===r).length<=state.bank[r]);
@@ -92,6 +104,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
    offer:availability(!stations,action&&!stations&&offerValid),
   };
  };
+ return Object.assign(read,{targetIds});
 }
 
 /** Convenience wrapper for one-off queries, including draft values in context. */

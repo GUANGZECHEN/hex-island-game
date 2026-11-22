@@ -4,6 +4,8 @@ import type { Resource } from '../../rules/state.ts';
 import type { HexSetup, PortType } from '../setup.ts';
 import { duneHeight, type GroundPoint, type PortBoatPlan } from './model.ts';
 
+export const PORT_SAIL = { centerY: .61, size: .90 } as const;
+
 /** Shared GPU resources have one owner and a bounded lifetime. */
 export class ArtAssets {
   private geometries = new Map<string, THREE.BufferGeometry>();
@@ -42,11 +44,21 @@ export class ArtAssets {
       }
     } else {
       ctx.fillStyle = '#fff1cb'; ctx.strokeStyle = '#8d6a40'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(28, 25); ctx.lineTo(226, 38); ctx.quadraticCurveTo(205, 125, 226, 220); ctx.lineTo(28, 227); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#423b2f'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '900 91px system-ui, sans-serif'; ctx.fillText(text, 128, resource ? 96 : 130);
+      ctx.beginPath(); ctx.moveTo(20, 23); ctx.lineTo(236, 37); ctx.quadraticCurveTo(213, 125, 236, 225); ctx.lineTo(20, 233); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#423b2f';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `900 ${resource ? 100 : 108}px system-ui, sans-serif`;
+      ctx.fillText(text, 128, resource ? 75 : 128);
       if (resource) {
-        ctx.save(); ctx.translate(94, 151); ctx.scale(2.85, 2.85); ctx.lineWidth = 1.9; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = ({ lumber: '#25553c', brick: '#9c4735', wool: '#6f7a47', grain: '#9c711c', ore: '#4b5b68' })[resource];
+        const iconScale = 4.6;
+        ctx.save();
+        ctx.translate(128 - 12 * iconScale, 116);
+        ctx.scale(iconScale, iconScale);
+        ctx.lineWidth = 2.1;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = ({ lumber: '#25553c', brick: '#9c4735', wool: '#4d7845', grain: '#806017', ore: '#4b5b68' })[resource];
         ctx.stroke(new Path2D(RESOURCE_PATHS[resource])); ctx.restore();
       }
     }
@@ -135,9 +147,12 @@ export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPl
   assets.box(boat, '#ceb37c', [.86, .028, .36], -.06, .10, 0);
   assets.box(boat, '#906642', [.88, .07, .045], -.04, .14, -.215); assets.box(boat, '#906642', [.88, .07, .045], -.04, .14, .215);
   for (const x of [-.35, .18]) assets.box(boat, '#b39667', [.06, .035, .34], x, .135, 0);
-  assets.box(boat, '#715039', [.035, .60, .035], -.06, .40, .04);
-  const sail = assets.sprite(boat, assets.label(type === 'generic' ? '3:1' : '2:1', 'sail', type === 'generic' ? null : type), .03, .54, 0, .60);
-  sail.name = 'boat-ratio'; sail.userData = { ratio: type === 'generic' ? '3:1' : '2:1', resource: type === 'generic' ? null : type };
+  assets.box(boat, '#715039', [.035, .84, .035], -.06, .56, .04);
+  const resource = type === 'generic' ? null : type;
+  const ratio = resource ? '2:1' : '3:1';
+  const sail = assets.sprite(boat, assets.label(ratio, 'sail', resource), .03, PORT_SAIL.centerY, 0, PORT_SAIL.size);
+  sail.name = 'boat-ratio';
+  sail.userData = { ratio, resource };
   root.add(boat); return root;
 }
 /** Distinct tabletop silhouettes: a cottage settlement and a fortified, two-level city.

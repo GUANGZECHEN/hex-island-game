@@ -148,7 +148,10 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
         assert.ok(!all.some(child=>child.attributes.get('class')==='port-anchor-icon'));
         assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='3:1'));
       }else{
-        assert.ok(all.some(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type));
+        const symbol=all.find(child=>child.tag==='svg'&&child.attributes.get('data-resource-icon')===port.type);
+        assert.ok(symbol);
+        assert.ok(Number(symbol.attributes.get('width')) >= .56);
+        assert.ok(Number(symbol.attributes.get('height')) >= .56);
         assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='2:1'));
         assert.ok(!all.some(child=>child.tag==='text'&&child.textContent?.startsWith(port.type[0].toUpperCase())));
       }

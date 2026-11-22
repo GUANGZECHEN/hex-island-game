@@ -8,13 +8,12 @@ import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
-import { shipActionAvailability } from './game/ui/ship-action.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
-import { legalTargetIds, type TargetMode } from './game/ui/targets';
-import { ALL_OTHER_PLAYERS, incomingTradeView, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
+import type { TargetMode } from './game/ui/targets';
+import { ALL_OTHER_PLAYERS, incomingTradeView, missingTradeResources, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate } from './game/ui/interactions';
 import { createActionAvailabilityReader, type ActionAvailability } from './game/ui/action-availability';
 import { initializeNetwork, type BrowserGame, type RoomTableLobby } from './game/network/browser';
@@ -189,7 +188,7 @@ function button(parent:HTMLElement,label:string,action:()=>void){const b=documen
 function select(parent:HTMLElement,label:string,options:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const value of options){const option=document.createElement('option');option.value=value;option.textContent=value;input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
 function playerSelect(parent:HTMLElement,label:string,ids:readonly string[]):HTMLSelectElement{const wrapper=document.createElement('label');wrapper.textContent=label;const input=document.createElement('select');for(const id of ids){const option=document.createElement('option');option.value=id;option.textContent=playerName(id);input.append(option);}wrapper.append(input);parent.append(wrapper);return input;}
 const draftCounts=new Map<string,Hand>(),draftChoices=new Map<string,Resource>();
-let draftRecipient=ALL_OTHER_PLAYERS,tradeComposerOpen=false;
+const tradeDrafts=new Map<string,{recipient:string;open:boolean}>();
 function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURCES[0],onChange:()=>void=()=>{}):()=>Resource{
  const field=document.createElement('fieldset');field.className='resource-choice-group';const legend=document.createElement('legend');legend.textContent=label;field.append(legend);const key=`${viewer}:${label}`;let selected=draftChoices.get(key)??initial;
  const buttons=new Map<Resource,HTMLButtonElement>();
@@ -219,22 +218,29 @@ function setAvailability(button:HTMLButtonElement,availability:{enabled:boolean}
 
 function resourceAmounts(parent:HTMLElement,amounts:readonly TradeAmount[]){for(const amount of amounts)parent.append(resourceChip(amount.resource,amount.count));}
 function domesticTradeMessage(offer:NonNullable<GameState['offer']>,accepter:string){const give=RESOURCES.reduce((sum,r)=>sum+offer.give[r],0),receive=RESOURCES.reduce((sum,r)=>sum+offer.receive[r],0);return `${playerName(offer.proposer)} traded ${give} card${give===1?'':'s'} for ${receive} card${receive===1?'':'s'} with ${playerName(accepter)}.`;}
-function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer']>){
+function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer']>,hand:Hand){
  const view=incomingTradeView(offer,viewer);if(!view)return;
  const card=document.createElement('section');card.className='incoming-trade';card.setAttribute('aria-label',`${view.isBroadcast?'Broadcast trade':'Trade offer'} from ${view.proposer}`);
  const title=document.createElement('h2');title.textContent=`${view.isBroadcast?'Open trade':'Trade offer'} from ${playerName(view.proposer)}`;card.append(title);
  if(view.isBroadcast){const note=document.createElement('p');note.className='trade-broadcast-note';note.textContent=`Sent to ${view.recipientCount} players · first to accept completes the trade.`;card.append(note);}
  const receive=document.createElement('div');receive.className='trade-offer-row';const receiveLabel=document.createElement('strong');receiveLabel.textContent='You receive';const receiveResources=document.createElement('span');receiveResources.className='trade-offer-resources';resourceAmounts(receiveResources,view.receive);receive.append(receiveLabel,receiveResources);
  const give=document.createElement('div');give.className='trade-offer-row';const giveLabel=document.createElement('strong');giveLabel.textContent='You give';const giveResources=document.createElement('span');giveResources.className='trade-offer-resources';resourceAmounts(giveResources,view.give);give.append(giveLabel,giveResources);
- card.append(receive,give);parent.append(card);
+ card.append(receive,give);
+ const missing=missingTradeResources(hand,offer.receive);
+ if(missing.length){
+  const note=document.createElement('p');note.className='trade-insufficient';
+  note.textContent=`To accept, you still need ${missing.map(({resource,count})=>`${count} ${resource}`).join(', ')}.`;
+  card.append(note);
+ }
+ parent.append(card);
 }
 function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:Partial<Record<Resource,number>>){
  const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';setCompactActionLabel(b,text,label);b.append(icon(ACTION_PATHS[symbol]),text);
  if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);}
  return b;
 }
-function enterGame(){
- draftCounts.clear();draftChoices.clear();draftRecipient=ALL_OTHER_PLAYERS;tradeComposerOpen=false;
+function enterGame(newMatch:boolean){
+ if(newMatch){draftCounts.clear();draftChoices.clear();tradeDrafts.clear();}
  const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
  document.body.classList.remove('room-configuring');
@@ -484,16 +490,16 @@ function renderPlayerStrip(s:GameState,activeId:string){
  }
 }
 let boardRenderer:BoardRendererController|null=null,rememberedBoardCamera:BoardCameraView|null=null;
-function drawBoard(){
+function drawBoard(legalTargets:readonly string[]){
  if(!state)return;
  if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)),rememberedBoardCamera);
  boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
   players:state.players.map(p=>({id:p.id,name:playerName(p.id),color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
-  stations:state.harbor?.stations,harborPorts:isHarbor(state),targetMode,legalTargets:targetMode?legalTargetIds(state,viewer,targetMode):[]});
+  stations:state.harbor?.stations,harborPorts:isHarbor(state),targetMode,legalTargets});
 }
-function drawSvgBoard(){
+function drawSvgBoard(legalTargets:readonly string[]){
  const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
- const legal=targetMode?new Set(legalTargetIds(s,viewer,targetMode)):new Set<string>();
+ const legal=new Set(legalTargets);
  for(const edge of view.edges){
   const owner=s.roads[edge.id];
   if(owner){
@@ -579,7 +585,8 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const context={paused:isPaused(),canUndo,deckCount:projection?.public.deckCount ?? s.deck.length,discardSubmitted};
  const availability=actor?createActionAvailabilityReader(s,viewer,context):null,base=availability?.();
  if(targetMode&&(!base||!base[targetMode].enabled))targetMode=null;
- drawBoard();actionClockDisplay();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
+ const legalTargets=targetMode&&availability?availability.targetIds(targetMode):[];
+ drawBoard(legalTargets);actionClockDisplay();if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);
  if(pendingRollPresentation&&!el('game').hidden){
   if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
   el('board').querySelector('.turn-alert')?.remove();
@@ -593,11 +600,10 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(spectating||!actor||!availability||!base)return;
  const reason=isPaused()?'Game paused':s.phase==='finished'?'Game over':viewer!==active.id?'Waiting for your turn':'Unavailable in this phase or with current resources';
  const apply=(b:HTMLButtonElement,a:{enabled:boolean},why=reason)=>setAvailability(b,a,why);
- if(targetMode&&!base[targetMode].enabled)targetMode=null;
  if(targetMode){
   const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
   const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
-  if(!legalTargetIds(s,viewer,targetMode).length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
+  if(!legalTargets.length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
  }
  const mode=(value:typeof targetMode)=>{targetMode=value;render();};
  const grid=document.createElement('div');grid.className='action-grid';actions.append(grid);
@@ -613,7 +619,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   learningAction('Upgrade house to city','city',()=>mode('city'),base.city,{grain:2,ore:3},'Need your turn, an eligible settlement, 2 grain + 3 ore');
   if(usesDevelopmentCards(s))learningAction('Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),base.buyDevelopment,{wool:1,grain:1,ore:1},'Need your turn, a card in the deck, 1 wool + 1 grain + 1 ore');
  add('Build trade station','trade',()=>mode('station'),base.station,stationCost(s));
- if(base.ship.visible){const ship=shipActionAvailability(s,viewer);const b=add(`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 2 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b){b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked';if(!base.ship.enabled&&ship.reason&&viewer===active.id&&!isPaused()&&s.phase==='action')apply(b,base.ship,ship.reason);}}
+ if(base.ship.enabled){const b=add(`Build ship · ${shipsRemaining(s,viewer)}/2 left · 1 VP · 2 wood + 2 brick + 2 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b)b.dataset.shipAvailability='ready';}
  add('End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`),base.endTurn);
  add('Move robber','settlement',()=>mode('robber'),base.robber);
  add('Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'),base.finishFreeRoads);
@@ -641,7 +647,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(localUndoDeadlines){localActionDeadlines.clear();for(const [id,deadline] of localUndoDeadlines)localActionDeadlines.set(id,deadline);}localUndoDeadlines=null;
   commit(previous,`${playerName(viewer)} undid the last action.`);
  });apply(undo,base.undo,'Nothing available to undo');}};
- if(s.offer?.targets.includes(viewer))incomingTradeCard(trade,s.offer);
+ if(s.offer?.targets.includes(viewer))incomingTradeCard(trade,s.offer,actor.hand);
  if(base.acceptOffer.enabled||base.rejectOffer.enabled){const response=document.createElement('div');response.className='action-grid trade-response-grid';trade.append(response);
   if(base.acceptOffer.enabled){const b=action(response,'Accept trade','trade',()=>{const message=domesticTradeMessage(s.offer!,viewer);commit(applyEconomyCommand(s,{type:'accept-offer',playerId:viewer,id:s.offer!.id}),message);});apply(b,base.acceptOffer,'Cannot accept this offer');}
   if(base.rejectOffer.enabled){const b=action(response,'Reject trade','trade',()=>commit(applyEconomyCommand(s,{type:'reject-offer',playerId:viewer,id:s.offer!.id}),`${viewer} rejected a trade.`));apply(b,base.rejectOffer);}
@@ -650,12 +656,14 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const eligibleTradePlayers=s.players.filter(p=>p.id!==viewer&&(!isHarbor(s)||partnersConnected(s,viewer,p.id)));
  const tradePlayerIds=[viewer,...eligibleTradePlayers.map(p=>p.id)];
  if(base.offer.visible&&!isPaused()&&s.phase==='action'&&viewer===active.id&&eligibleTradePlayers.length>0&&RESOURCES.some(r=>actor.hand[r]>0)){
-  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);domestic.open=tradeComposerOpen;domestic.ontoggle=()=>{tradeComposerOpen=domestic.open;};trade.append(domestic);
+  const draft=tradeDrafts.get(viewer)??{recipient:ALL_OTHER_PLAYERS,open:false};
+  tradeDrafts.set(viewer,draft);
+  const domestic=document.createElement('details'),summary=document.createElement('summary');domestic.className='domestic-trade-card';summary.textContent='Offer trade';domestic.append(summary);domestic.open=draft.open;domestic.ontoggle=()=>{if(domestic.isConnected)draft.open=domestic.open;};trade.append(domestic);
   const recipientLabel=document.createElement('label');recipientLabel.textContent='Offer trade to';const opponent=document.createElement('select');opponent.className='trade-recipient-select';opponent.setAttribute('aria-label','Trade recipient');opponent.dataset.tradeRecipient='true';
   const allPlayers=document.createElement('option');allPlayers.value=ALL_OTHER_PLAYERS;allPlayers.textContent='All other players';opponent.append(allPlayers);
-  for(const player of eligibleTradePlayers){const option=document.createElement('option');option.value=player.id;option.textContent=playerName(player.id);opponent.append(option);}opponent.value=draftRecipient;if(!opponent.value)opponent.value=ALL_OTHER_PLAYERS;const canDraftOffer=!isPaused()&&s.phase==='action'&&viewer===active.id;const draftReason=canDraftOffer?'':isPaused()?'Game paused':'Trade during your action phase';opponent.disabled=!canDraftOffer;if(draftReason){opponent.title=draftReason;opponent.setAttribute('aria-description',draftReason);}recipientLabel.append(opponent);domestic.append(recipientLabel);
+  for(const player of eligibleTradePlayers){const option=document.createElement('option');option.value=player.id;option.textContent=playerName(player.id);opponent.append(option);}opponent.value=draft.recipient;if(!opponent.value)opponent.value=ALL_OTHER_PLAYERS;const canDraftOffer=!isPaused()&&s.phase==='action'&&viewer===active.id;const draftReason=canDraftOffer?'':isPaused()?'Game paused':'Trade during your action phase';opponent.disabled=!canDraftOffer;if(draftReason){opponent.title=draftReason;opponent.setAttribute('aria-description',draftReason);}recipientLabel.append(opponent);domestic.append(recipientLabel);
   let offerButton:HTMLButtonElement;const refreshOffer=()=>{if(offerButton)apply(offerButton,availability({offer:{targets:tradeTargetsForSelection(opponent.value,tradePlayerIds,viewer),give:offered(),receive:wanted()}}).offer,'Select a valid recipient and cards to offer and request');};
-  const offered=counts(domestic,'Offer these cards',actor.hand,refreshOffer,draftReason),wanted=counts(domestic,'Request these cards',undefined,refreshOffer,draftReason);opponent.onchange=()=>{draftRecipient=opponent.value;refreshOffer();};
+  const offered=counts(domestic,'Offer these cards',actor.hand,refreshOffer,draftReason),wanted=counts(domestic,'Request these cards',undefined,refreshOffer,draftReason);opponent.onchange=()=>{draft.recipient=opponent.value;refreshOffer();};
   offerButton=action(domestic,'Make offer','trade',()=>{const selected=tradeTargetsForSelection(opponent.value,tradePlayerIds,viewer);const broadcast=opponent.value===ALL_OTHER_PLAYERS;commit(applyEconomyCommand(s,{type:'offer',playerId:viewer,id:`${s.turn}-${log.length}`,targets:selected,give:offered(),receive:wanted()}),broadcast?`${viewer} offered a trade to all other players.`:`${viewer} offered a trade to ${playerName(selected[0])}.`);});refreshOffer();
  }
  if(s.offer?.proposer===viewer&&s.offer.targets.length>1){const note=document.createElement('p');note.className='trade-broadcast-status';note.textContent=`Offer sent to ${s.offer.targets.length} players · first valid acceptance wins.`;trade.append(note);}
@@ -698,7 +706,7 @@ function startLocalRound(settings:LocalRoomSettings){
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
  for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
  el('switch-player').hidden=settings.botCount>0;
- enterGame();
+ enterGame(true);
  if(settings.humanId){viewer=settings.humanId;el('pass').hidden=true;el('game').hidden=false;render();}
  else{handoff(state.players[state.currentSeat].id);render();}
 }
@@ -773,7 +781,7 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   const pub=value.public;
   const privateView=value.private;
   state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
-  el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame();render();
+  el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame(!sameGame);render();
 }});
 
 el('turn-clock-pause').onclick=()=>attempt(()=>{

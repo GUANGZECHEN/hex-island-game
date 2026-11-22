@@ -99,3 +99,19 @@ test('reader matches one-off queries through draft transitions and new readers s
  const next=structuredClone(s);next.phase='roll';const nextRead=createActionAvailabilityReader(next,'a');
  assert.equal(read().endTurn.enabled,true);assert.equal(nextRead().endTurn.enabled,false);assert.equal(nextRead().roll.enabled,true);
 });
+
+test('the reader reuses legal target IDs for availability and board highlights',()=>{
+ const s=game();s.phase='setup-settlement';
+ const read=createActionAvailabilityReader(s,'a');
+ const ids=read.targetIds('settlement');
+ assert.ok(ids.length>0);
+ assert.deepEqual(ids,legalTargetIds(s,'a','settlement'));
+ assert.equal(read().settlement.enabled,true);
+ assert.strictEqual(read.targetIds('settlement'),ids);
+ assert.deepEqual(createActionAvailabilityReader(s,'a',{paused:true}).targetIds('settlement'),[]);
+ assert.deepEqual(createActionAvailabilityReader(s,'b').targetIds('settlement'),[]);
+ const next=structuredClone(s);next.phase='robber';
+ const nextRead=createActionAvailabilityReader(next,'a');
+ assert.deepEqual(nextRead.targetIds('settlement'),[]);
+ assert.deepEqual(nextRead.targetIds('robber'),legalTargetIds(next,'a','robber'));
+});

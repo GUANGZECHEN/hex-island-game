@@ -175,7 +175,13 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     if(port.type==='generic'){
       label.setAttribute('y','.02');label.textContent='3:1';label.classList.add('port-label-generic');face.append(label);
     }else{
-      const symbol=resourceIcon(port.type as Resource);symbol.setAttribute('x','-.20');symbol.setAttribute('y','-.31');symbol.setAttribute('width','.40');symbol.setAttribute('height','.40');symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);face.append(symbol);
+      const symbol=resourceIcon(port.type as Resource);
+      symbol.setAttribute('x','-.28');
+      symbol.setAttribute('y','-.40');
+      symbol.setAttribute('width','.56');
+      symbol.setAttribute('height','.56');
+      symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);
+      face.append(symbol);
       label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
     }
     group.append(face);

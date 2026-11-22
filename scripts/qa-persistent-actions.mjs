@@ -156,7 +156,11 @@ try{
  await page.evaluate(()=>window.__persistentFixture.offer(false));
  assert.equal(await button(page,'Accept trade').count(),0,'unaffordable incoming offer hides Accept');
  assert.equal(await button(page,'Reject trade').isEnabled(),true,'unaffordable incoming offer can still be rejected');
+ const shortfall=page.locator('.incoming-trade .trade-insufficient');
+ assert.equal(await shortfall.isVisible(),true,'unaffordable incoming offer shows a shortfall');
+ assert.match(await shortfall.innerText(),/\b1 brick\b/i,'shortfall identifies the missing resource and amount');
  await page.evaluate(()=>window.__persistentFixture.offer());
+ assert.equal(await shortfall.count(),0,'affordable incoming offer shows no shortfall');
  assert.equal(await button(page,'Accept trade').isEnabled(),true,'incoming trade can still be accepted off turn');
  assert.equal(await button(page,'Reject trade').isEnabled(),true,'incoming trade can still be rejected off turn');
  await page.evaluate(()=>window.__persistentFixture.view('Player 1'));

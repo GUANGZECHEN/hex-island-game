@@ -81,13 +81,18 @@ test('new repeated props release their per-instance GPU resources', () => {
   roots.forEach(disposeArtInstances); assert.ok(instances > 0); assert.equal(released, instances); assets.dispose();
 });
 
-test('accepted boat ports keep their two independent deck origins and sail ratios', () => {
+test('boat ports keep their deck origins and display trade information on larger sails', () => {
   const assets = new GeometryAssets(), board = generateBoardSetup(24680), geometry = worldGeometry('standard');
   for (const port of board.ports) {
     const plan = portBoatPlan(port, geometry), boat = makeBoatPort(assets, port.type, plan);
     assert.equal(boat.children.filter(c => c.name.startsWith('deck:')).length, 2);
     assert.deepEqual(plan.decks.map(d => d.vertexId), port.vertexIds);
-    assert.equal(boat.getObjectByName('boat-ratio')!.userData.ratio, port.type === 'generic' ? '3:1' : '2:1');
+    const sail = boat.getObjectByName('boat-ratio')!;
+    assert.deepEqual(sail.userData, {
+      ratio: port.type === 'generic' ? '3:1' : '2:1',
+      resource: port.type === 'generic' ? null : port.type,
+    });
+    assert.ok(sail.scale.x >= .9 && sail.scale.y >= .9);
   }
   assets.dispose();
 });
