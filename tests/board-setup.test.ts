@@ -144,6 +144,9 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
       assert.notEqual(`${legs[0].attributes.get('x2')},${legs[0].attributes.get('y2')}`,`${legs[1].attributes.get('x2')},${legs[1].attributes.get('y2')}`);
       assert.equal(all.filter(child=>child.attributes.get('class')==='port-pier-stem').length,0);
       assert.equal(all.filter(child=>child.tag==='rect'&&child.attributes.get('class')==='port-dock-board').length,1);
+      const boatIndex=group.children.findIndex(child=>child.attributes.get('class')==='port-boat-decor');
+      const faceIndex=group.children.findIndex(child=>child.attributes.get('class')==='port-face');
+      assert.ok(boatIndex>=0&&faceIndex>boatIndex,'Port markings paint above the decorative boat');
       if(port.type==='generic'){
         assert.ok(!all.some(child=>child.attributes.get('class')==='port-anchor-icon'));
         assert.ok(all.some(child=>child.tag==='text'&&child.textContent==='3:1'));

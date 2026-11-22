@@ -184,11 +184,11 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
       face.append(symbol);
       label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
     }
-    group.append(face);
 
     // One tiny boat silhouette gives desktop ports a coastal landmark; hidden on phones.
     const boatX=px+ux*.40,boatY=py+uy*.40,boat=node('g',{class:'port-boat-decor',transform:`translate(${boatX} ${boatY}) rotate(${angle})`});
-    path(boat,'M-.16 .04h.32l-.06.09h-.2Z','port-boat-hull');line(boat,0,.04,0,-.13,'port-boat-mast');path(boat,'M.01-.12v.12h.11Z','port-boat-sail');group.append(boat);
+    path(boat,'M-.16 .04h.32l-.06.09h-.2Z','port-boat-hull');line(boat,0,.04,0,-.13,'port-boat-mast');path(boat,'M.01-.12v.12h.11Z','port-boat-sail');
+    group.append(boat,face);
 
     svg.append(group);
     const item=document.createElement('li');item.textContent=port.type==='generic'?`Any resource 3:1 port at ${port.vertexIds.join(' and ')}`:`${port.type} 2:1 port at ${port.vertexIds.join(' and ')}`;ports.append(item);
