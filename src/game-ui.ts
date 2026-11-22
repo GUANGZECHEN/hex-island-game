@@ -613,7 +613,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   learningAction('Upgrade house to city','city',()=>mode('city'),base.city,{grain:2,ore:3},'Need your turn, an eligible settlement, 2 grain + 3 ore');
   if(usesDevelopmentCards(s))learningAction('Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),base.buyDevelopment,{wool:1,grain:1,ore:1},'Need your turn, a card in the deck, 1 wool + 1 grain + 1 ore');
  add('Build trade station','trade',()=>mode('station'),base.station,stationCost(s));
- if(base.ship.visible){const ship=shipActionAvailability(s,viewer);const b=add(`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 3 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b){b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked';if(!base.ship.enabled&&ship.reason&&viewer===active.id&&!isPaused()&&s.phase==='action')apply(b,base.ship,ship.reason);}}
+ if(base.ship.visible){const ship=shipActionAvailability(s,viewer);const b=add(`Build ship · ${ship.remaining}/2 left · 1 VP · 2 wood + 2 brick + 2 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b){b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked';if(!base.ship.enabled&&ship.reason&&viewer===active.id&&!isPaused()&&s.phase==='action')apply(b,base.ship,ship.reason);}}
  add('End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`),base.endTurn);
  add('Move robber','settlement',()=>mode('robber'),base.robber);
  add('Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'),base.finishFreeRoads);

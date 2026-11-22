@@ -102,7 +102,7 @@ D025: The Product Owner explicitly removed the own-road-connection prerequisite 
 
 ## 2026-11-20: Harbor Ship cost reduction
 
-D026: The Product Owner changed the optional Classic Harbor Ships cost from 3 lumber + 3 brick + 3 ore to **2 lumber + 2 brick + 3 ore**. The port-ownership prerequisite, no-road remote placement, building distance, supply cap of two ships per player, 1 VP and other benefits are unchanged. This supersedes the ship-cost terms in D021 and D025 only. The authoritative reducer, Actions affordability, resource display and tests must apply the same cost.
+D026: The Product Owner changed the optional Classic Harbor Ships cost from 3 lumber + 3 brick + 3 ore to **2 lumber + 2 brick + 3 ore**. The port-ownership prerequisite, no-road remote placement, building distance, supply cap of two ships per player, 1 VP and other benefits are unchanged. This supersedes the ship-cost terms in D021 and D025 only. The authoritative reducer, Actions affordability, resource display and tests must apply the same cost. D034 supersedes this decision for the current ship cost only; all non-cost terms remain in force.
 
 ## 2026-11-20: mandatory 30-second player inactivity clock
 
@@ -135,3 +135,7 @@ D033: The Product Owner corrected Classic Catch-up. Let x be the highest public 
 Preserve host-owned random draws from available bank stock, distinct types when two cards are available, the Classic lobby toggle, private hands and public award metadata. Saved awards remain historical facts and are not re-evaluated against later VP. Repeated commands, snapshots, rendering and recovery must not award resources again. The presentation does not reset the 45-second effective-action clock. Harbor Co-op and existing infrastructure are unchanged.
 
 Architect classification: complex because rules, recovery and multi-client presentation cross core modules. Validate boundaries, seven discards, privacy, clocks and visible timing. Publish through game/mvp after validation; no automatic main merge.
+
+## 2026-11-22: Harbor Ship cost reduction amendment
+
+D034: The Product Owner further reduced the optional Classic Harbor Ships cost from D026's 2 lumber + 2 brick + 3 ore to **2 lumber + 2 brick + 2 ore**. This supersedes D026 for cost only. The already-owned port prerequisite, no-road remote placement, settlement-distance spacing, two-ship supply cap, 1 VP, settlement-level production, port trading and the rule that ships cannot anchor or extend roads remain unchanged. The authoritative reducer, Actions affordability, resource display and tests must apply the 2 lumber + 2 brick + 2 ore cost. Harbor Co-op and all other game rules remain unchanged.

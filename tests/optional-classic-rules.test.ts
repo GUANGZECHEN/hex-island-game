@@ -101,14 +101,14 @@ function shipGame():{s:GameState;target:string;home:string;edgeId:string} {
  const target=candidate!;
  const edge=topology.edges.find(e=>e.vertexIds.includes(target)&&!e.vertexIds.includes(home))!;
  s.roads[edge.id]='a';
- s.players[0].hand={lumber:2,brick:2,wool:0,grain:0,ore:3};
- s.bank={lumber:17,brick:17,wool:19,grain:19,ore:16};
+ s.players[0].hand={lumber:2,brick:2,wool:0,grain:0,ore:2};
+ s.bank={lumber:17,brick:17,wool:19,grain:19,ore:17};
  return {s,target,home,edgeId:edge.id};
 }
-test('ship claims a remote harbor without any roads for exactly 2 wood, 2 brick, 3 ore and 1 VP',()=>{
+test('ship claims a remote harbor without any roads for exactly 2 wood, 2 brick, 2 ore and 1 VP',()=>{
  const {s,target,home}=shipGame();
  s.roads={}; // A ship can establish an independent remote port.
- assert.deepEqual(SHIP_COST,{lumber:2,brick:2,wool:0,grain:0,ore:3});
+ assert.deepEqual(SHIP_COST,{lumber:2,brick:2,wool:0,grain:0,ore:2});
  assert.ok(legalTargetIds(s,'a','ship').includes(target));
  const before=publicVictoryPoints(s,'a');
  const next=applyBuildCommand(s,{type:'build-ship',playerId:'a',vertexId:target});
@@ -205,10 +205,10 @@ test('Classic ship action stays discoverable when resources are present but a ha
   const withoutRoad=structuredClone(s);withoutRoad.roads={};
   assert.deepEqual(shipActionAvailability(withoutRoad,'a'),{remaining:2,enabled:true,reason:null});
   assert.ok(legalTargetIds(withoutRoad,'a','ship').includes(target),'remote legal ship targets need no road');
-  for(const [resource,count] of [['lumber',1],['brick',1],['ore',2]] as const){
+  for(const [resource,count] of [['lumber',1],['brick',1],['ore',1]] as const){
     const short=structuredClone(s);short.players[0].hand[resource]=count;
     assert.equal(shipActionAvailability(short,'a').enabled,false);
-    assert.match(shipActionAvailability(short,'a').reason!,/2 wood, 2 brick and 3 ore/);
+    assert.match(shipActionAvailability(short,'a').reason!,/2 wood, 2 brick and 2 ore/);
     assert.throws(()=>applyBuildCommand(short,{type:'build-ship',playerId:'a',vertexId:target}),/Insufficient resources/);
   }
   const disabledRule=structuredClone(s);disabledRule.rules!.ships=false;

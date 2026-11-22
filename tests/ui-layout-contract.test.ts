@@ -456,7 +456,7 @@ test('ship action uses the approved resource cost and availability metadata',()=
   const status=readFileSync('src/game/ui/ship-action.ts','utf8');
   const css=readFileSync('src/compact-actions.css','utf8');
   assert.ok(ui.includes('if(base.ship.visible)'));
-   assert.ok(ui.includes('2 wood + 2 brick + 3 ore'),'Actions must display the same ship price as the reducer');
+   assert.ok(ui.includes('2 wood + 2 brick + 2 ore'),'Actions must display the same ship price as the reducer');
   assert.ok(ui.includes('const ship=shipActionAvailability(s,viewer)'));
   assert.ok(ui.includes("b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked'"));
   assert.ok(ui.includes('apply(b,base.ship,ship.reason)'));
@@ -487,13 +487,13 @@ test('trade composer can address one player or all opponents, with first-accept 
  assert.ok(css.includes('.trade-broadcast-note,.trade-broadcast-status{'));
 });
 
-test('Classic Harbor Ships show the reduced 2 lumber + 2 brick + 3 ore cost in both room setup screens',()=>{
+test('Classic Harbor Ships show the reduced 2 lumber + 2 brick + 2 ore cost in both room setup screens',()=>{
  const html=readFileSync('index.html','utf8');
- const correct='2 lumber + 2 brick + 3 ore';
+ const correct='2 lumber + 2 brick + 2 ore';
  assert.equal(html.split(correct).length-1,2,'multiplayer and local room options must both show the current cost');
- assert.ok(!html.includes('3 lumber + 3 brick + 3 ore'),'the superseded ship cost must not remain visible in setup copy');
+ assert.ok(!html.includes('2 lumber + 2 brick + 3 ore'),'the superseded ship cost must not remain visible in setup copy');
  const rules=readFileSync('src/game/rules/build.ts','utf8');
- assert.ok(rules.includes('Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:3})'),'the authoritative ship reducer must keep the same cost');
+ assert.ok(rules.includes('Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:2})'),'the authoritative ship reducer must keep the same cost');
 });
 
 test('room preview uses persistent 3D renderer and trade responses honor availability',()=>{
