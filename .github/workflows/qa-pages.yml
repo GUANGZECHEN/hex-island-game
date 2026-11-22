@@ -11,11 +11,8 @@ permissions:
   id-token: write
 
 concurrency:
-  # Keep this restoration in the existing active deployment concurrency group
-  # so in-progress permanent-web QA is cancelled before temporary mode publishes.
-  # Preserve the existing five-hour temporary ingress session during this release.
-  # New timer QA runs supersede each other without terminating that session.
-  group: game-mvp-qa-clock
+  # A marked frontend-only push must not cancel the existing five-hour backend.
+  group: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[reuse-qa-ingress]') && 'game-mvp-qa-frontend' || 'game-mvp-qa-clock' }}
   cancel-in-progress: true
 
 jobs:
@@ -45,10 +42,23 @@ jobs:
 
       - name: Select QA signaling mode
         id: signaling_mode
+        env:
+          REUSE_INGRESS: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[reuse-qa-ingress]') }}
         run: |
           set -euo pipefail
-          echo 'mode=temporary' >> "$GITHUB_OUTPUT"
-          echo 'Restored approved five-hour Cloudflare Quick Tunnel QA mode by Product Owner request; permanent QA Worker remains deployed but is not used by this build.'
+          if [[ "$REUSE_INGRESS" == 'true' ]]; then
+            echo 'mode=reuse' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mode=temporary' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reuse the live QA ingress
+        if: steps.signaling_mode.outputs.mode == 'reuse'
+        run: |
+          set -euo pipefail
+          origin=$(node scripts/reuse-qa-ingress.mjs)
+          echo "QA_SIGNALING_URL=$origin" >> "$GITHUB_ENV"
+          echo 'QA_INGRESS_VALID=true' >> "$GITHUB_ENV"
 
       - name: Diagnose persistent Cloudflare access safely
         if: steps.signaling_mode.outputs.mode == 'permanent'
@@ -265,7 +275,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
-          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs scripts/qa-catch-up.mjs "$RUNNER_TEMP/qa-e2e/"
+          cp scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs scripts/qa-catch-up.mjs scripts/qa-bot-catch-up.mjs "$RUNNER_TEMP/qa-e2e/"
           cd "$RUNNER_TEMP/qa-e2e"
           npm init -y >/dev/null 2>&1
           npm install --silent playwright@1.58.0 pngjs@7.0.0
@@ -277,6 +287,7 @@ jobs:
           GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-trade-camera.mjs
           GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-dice-visual.mjs
           GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-catch-up.mjs
+          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-bot-catch-up.mjs
           node qa-harbor-coop.mjs
 
       - name: Upload integrated 3D evidence
@@ -292,6 +303,7 @@ jobs:
             ${{ runner.temp }}/qa-e2e/target-evidence
             ${{ runner.temp }}/qa-e2e/harbor-evidence
             ${{ runner.temp }}/qa-e2e/catch-up-evidence
+            ${{ runner.temp }}/qa-e2e/bot-catch-up-evidence
 
       - name: Report QA environment
         env:
@@ -318,6 +330,9 @@ jobs:
             elif [[ "$SIGNALING_MODE" == permanent ]]; then
               echo "Persistent QA Worker: ${QA_SIGNALING_URL}"
               echo 'Rooms remain recoverable for up to 48 hours, subject to normal Cloudflare availability.'
+            elif [[ "$SIGNALING_MODE" == reuse ]]; then
+              echo "Reused existing Quick Tunnel QA ingress: ${QA_SIGNALING_URL}"
+              echo 'The existing ingress retains its remaining lifetime; this deployment does not extend it.'
             else
               echo 'Quick Tunnel QA ingress is active by Product Owner choice.'
               echo 'This QA tunnel is kept online for about 5 hours after validation.'
@@ -329,7 +344,7 @@ jobs:
         run: bash scripts/keep-qa-ingress.sh
 
       - name: Cleanup temporary QA processes
-        if: always()
+        if: always() && steps.signaling_mode.outputs.mode == 'temporary'
         run: |
           set +e
           if [[ -f "$RUNNER_TEMP/cloudflared-qa.pid" ]]; then

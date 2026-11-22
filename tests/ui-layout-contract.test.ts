@@ -288,7 +288,9 @@ test('ART-C01 keeps card animation but renders dice on the board',()=>{
  assert.ok(ui.includes('function motionCard'));
  assert.ok(ui.includes('activity-alert activity-${kind}'));
  assert.ok(ui.includes('const event=pendingRollPresentation,generation=rollGeneration;'));
- assert.ok(ui.includes('boardRenderer?.playRoll(event,()=>{if(generation!==rollGeneration)return;pendingSupplement=event.supplement;showSupplement();});diceSound.playRoll();pendingRollPresentation=null;'));
+ assert.ok(ui.includes('boardRenderer.playRoll(event,'));
+ assert.ok(ui.includes('pendingSupplement=event.supplement;showSupplement();'));
+ assert.ok(ui.includes('diceSound.playRoll();pendingRollPresentation=null;'));
  assert.ok(ui.includes("kind==='development'"));
  assert.ok(ui.includes("kind==='card-buy'"));
  assert.ok(css.includes('/* ART-C01 · motion polish */'));

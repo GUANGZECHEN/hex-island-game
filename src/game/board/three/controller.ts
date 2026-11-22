@@ -61,6 +61,7 @@ export class BoardRendererController {
   update(view: BoardSceneView): void {
     // SVG redraw and renderer switches replace board children; keep live alerts.
     const alerts=Array.from(this.host.querySelectorAll<HTMLElement>('.turn-alert,.activity-alert,.victory-alert,.supplement-alert'));
+    let resumeAfterFallback=false;
     this.last = view;
     this.preview.update(`${staticBoardKey(view.board)}:${view.targetMode ?? ''}`, view.legalTargets);
     if (!this.explicit2D && !this.fallback) {
@@ -75,12 +76,13 @@ export class BoardRendererController {
           if (this.rememberedCamera) this.instance.restoreView(this.rememberedCamera);
         }
         this.instance.highlightTarget(this.preview.selected);
-      } catch (error) { this.reason = `3D unavailable: ${error instanceof Error ? error.message : String(error)}. Using 2D.`; this.fallback = true; if (this.instance) this.rememberedCamera = this.instance.captureView(); this.instance?.dispose(); this.instance = null; }
+      } catch (error) { this.reason = `3D unavailable: ${error instanceof Error ? error.message : String(error)}. Using 2D.`; this.fallback = true; if (this.instance) this.rememberedCamera = this.instance.captureView(); this.instance?.dispose(); this.instance = null; resumeAfterFallback=true; }
     }
     if (this.explicit2D || this.fallback) {
       if (this.instance) this.rememberedCamera = this.instance.captureView();
       this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.drawSVG(); this.paintSVG();
       this.rollOverlay?.update(view);
+      if(resumeAfterFallback)this.resumeRoll();
     }
     const active = !!this.instance;
     (document.getElementById('board-render-toggle') as HTMLButtonElement).textContent = active ? '2D view' : '3D view';
@@ -99,7 +101,7 @@ export class BoardRendererController {
   }
   private resumeRoll():void {
     const active=this.activeRoll;
-    if(!active)return;
+    if(!active||this.rollOverlay)return;
     const complete=()=>{if(this.activeRoll!==active)return;this.activeRoll=null;active.complete();};
     if(this.instance)this.instance.playRoll(active.event,complete);
     else if(this.last)this.rollOverlay=new BoardRollOverlay(this.host,active.event,this.last,complete);

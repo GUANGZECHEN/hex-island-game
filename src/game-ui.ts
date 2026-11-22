@@ -40,16 +40,26 @@ let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let pendingSupplement:RollPresentation['supplement'];
 let supplementTimer:number|null=null;
-let rollGeneration=0;
+let rollGeneration=0,rollPlaying=false;
+const loggedSupplements=new Set<string>();
+function boardVisible():boolean {
+ if(el('game').hidden||document.hidden)return false;
+ const rect=el('board').getBoundingClientRect();
+ return rect.width>0&&rect.height>0&&rect.bottom>0&&rect.right>0&&rect.top<window.innerHeight&&rect.left<window.innerWidth;
+}
+function logSupplement(key:string,reward:GameState['catchUpReward']|null|undefined,name:(id:string)=>string):void {
+ if(!reward||loggedSupplements.has(key))return;
+ const items=RESOURCES.filter(resource=>reward.gains[resource]>0).map(resource=>`${reward.gains[resource]} ${resource}`);
+ if(!items.length)return;
+ loggedSupplements.add(key);log.unshift(`${name(reward.playerId)} gained supplement: ${items.join(', ')}.`);
+}
 function clearSupplement():void {
- rollGeneration++;pendingSupplement=undefined;
+ rollGeneration++;rollPlaying=false;pendingSupplement=undefined;
  if(supplementTimer!==null){window.clearTimeout(supplementTimer);supplementTimer=null;}
  document.querySelector('.supplement-alert')?.remove();
 }
 function showSupplement():void {
- if(!pendingSupplement||el('game').hidden||document.hidden||!state||el('board').querySelector('.turn-alert,.activity-alert,.victory-alert'))return;
- const rect=el('board').getBoundingClientRect();
- if(rect.width<=0||rect.height<=0||rect.bottom<=0||rect.right<=0||rect.top>=window.innerHeight||rect.left>=window.innerWidth)return;
+ if(!pendingSupplement||!boardVisible()||!state||el('board').querySelector('.turn-alert,.activity-alert,.victory-alert'))return;
  const reward=pendingSupplement;pendingSupplement=undefined;
  const player=state.players.find(p=>p.id===reward.playerId);
  const alert=document.createElement('div');alert.className=`supplement-alert player-${(player?.seat??0)+1}`;
@@ -61,12 +71,13 @@ function showSupplement():void {
   item.append(resourceIcon(resource),document.createTextNode(`+${count}`));items.append(item);
  }
  alert.append(title,items);el('board').append(alert);
- supplementTimer=window.setTimeout(()=>{alert.remove();supplementTimer=null;},2200);
+ supplementTimer=window.setTimeout(()=>{alert.remove();supplementTimer=null;scheduleLocalBot();},2200);
 }
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)showSupplement();});
-window.addEventListener('scroll',showSupplement,{passive:true,capture:true});
-window.addEventListener('resize',showSupplement,{passive:true});
-new MutationObserver(()=>showSupplement()).observe(el('board'),{childList:true});
+function presentationVisibilityChanged():void {showSupplement();scheduleLocalBot();}
+document.addEventListener('visibilitychange',presentationVisibilityChanged);
+window.addEventListener('scroll',presentationVisibilityChanged,{passive:true,capture:true});
+window.addEventListener('resize',presentationVisibilityChanged,{passive:true});
+new MutationObserver(presentationVisibilityChanged).observe(el('board'),{childList:true});
 /** The host alone decides remote expiry. */
 let remoteActionClock:{playerId:string;deadlineAt:number;paused:boolean;remainingMs:number}|null=null;
 let localPaused=false,localPauseAt=0;
@@ -118,7 +129,7 @@ function localTimedAction():void {
 }
 
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
-const BOT_DELAY_MS=1100,BOT_ACTION_LIMIT=20;
+const BOT_DELAY_MS=3000,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#f27ebd',edge:'#993a70'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
 const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
 let localUndoState:GameState|null=null,localUndoPlayerId='',localUndoDeadlines:Map<string,number>|null=null,pendingLocalUndo:{state:GameState;playerId:string;deadlines:Map<string,number>}|null=null;
@@ -145,7 +156,7 @@ function activityState(s:GameState):PublicActivityState {
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice){clearSupplement();pendingRollPresentation=describeRoll(old,next.dice,next);}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice){clearSupplement();pendingRollPresentation=describeRoll(old,next.dice,next);logSupplement(`local:${next.turn}`,next.catchUpReward,playerName);}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -155,8 +166,11 @@ function pendingLocalBot(s:GameState):string|null{
  const tradeBot=[...localBotIds].find(botId=>s.offer?.targets.includes(botId));if(tradeBot)return tradeBot;
  const active=s.players[s.currentSeat]?.id;return active&&localBotIds.has(active)?active:null;
 }
+function botPresentationBlocked():boolean {
+ return boardVisible()&&(rollPlaying||!!pendingSupplement||supplementTimer!==null);
+}
 function runLocalBotStep(){
- botTimer=null;if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished')return;
+ botTimer=null;if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished'||botPresentationBlocked())return;
  const botId=pendingLocalBot(state);if(!botId)return;
  const key=`${state.turn}:${state.currentSeat}:${botId}`;if(key!==botTurnKey){botTurnKey=key;botActionCount=0;}
  let command=chooseBotCommand(state,botId);if(!command)return;
@@ -167,7 +181,7 @@ function runLocalBotStep(){
  botActionCount++;const before=state,description=botDescription(command,before);pendingLocalUndo=null;const next=applyBotCommand(before,command);pendingClockCommand=command;commit(next,description);
 }
 function scheduleLocalBot(){
- if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null)return;
+ if(remote||localPaused||localBotIds.size===0||!state||state.phase==='finished'||botTimer!==null||botPresentationBlocked())return;
  if(!pendingLocalBot(state))return;
  botTimer=window.setTimeout(runLocalBotStep,BOT_DELAY_MS);
 }
@@ -570,7 +584,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
   if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}
   el('board').querySelector('.turn-alert')?.remove();
   const event=pendingRollPresentation,generation=rollGeneration;
-  boardRenderer?.playRoll(event,()=>{if(generation!==rollGeneration)return;pendingSupplement=event.supplement;showSupplement();});diceSound.playRoll();pendingRollPresentation=null;
+  if(boardRenderer){rollPlaying=true;boardRenderer.playRoll(event,()=>{if(generation!==rollGeneration)return;rollPlaying=false;pendingSupplement=event.supplement;showSupplement();scheduleLocalBot();});}diceSound.playRoll();pendingRollPresentation=null;
  }
  showActivityAlert(s);showVictoryAlert(s);showSupplement();scheduleLocalBot();const actions=el('actions'),trade=el('trade-actions');actions.replaceChildren();trade.replaceChildren();actions.dataset.phase=s.phase;trade.dataset.phase=s.phase;const targets=el('targets');targets.replaceChildren();
  const actionPane=el('board-action-pane'),tradePane=el('board-trade-pane');
@@ -679,7 +693,7 @@ function startLocalRound(settings:LocalRoomSettings){
  botTurnKey='';botActionCount=0;viewer='';
  state=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
  remoteActionClock=null;syncLocalActionClock();
- clearSupplement();log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';
+ clearSupplement();loggedSupplements.clear();log=[];publicActivity='New local game started.';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';
  for(const timer of [turnAlertTimer,activityAlertTimer,victoryAlertTimer])if(timer!==null)window.clearTimeout(timer);
  turnAlertTimer=null;activityAlertTimer=null;victoryAlertTimer=null;
  for(const selector of ['.turn-alert','.activity-alert','.victory-alert'])document.querySelector(selector)?.remove();
@@ -738,11 +752,11 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
  discardSubmitted=true;
  if(state?.phase==='discard')render();
 },reset:()=>{
-  clearSupplement();remoteActionClock=null;localActionDeadlines.clear();localPaused=false;localPauseAt=0;pendingClockCommand=null;discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
+  clearSupplement();loggedSupplements.clear();remoteActionClock=null;localActionDeadlines.clear();localPaused=false;localPauseAt=0;pendingClockCommand=null;discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
   if(projection&&value.gameId===projection.gameId&&(value.revision<networkRevision||(value.revision===networkRevision&&value.public.paused===projection.public.paused)))return;
   const sameGame=projection?.gameId===value.gameId;
-  if(projection&&!sameGame){clearSupplement();pendingRollPresentation=null;boardRenderer?.clearRoll();}
+  if(projection&&!sameGame){clearSupplement();loggedSupplements.clear();pendingRollPresentation=null;boardRenderer?.clearRoll();}
   const gameplayUpdate=!sameGame||value.revision>networkRevision;
   const previousPublic=(sameGame?projection?.public:null) as unknown as PublicActivityState|null;
   const tradeSummary=value.public.tradeSummary;
@@ -753,6 +767,7 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   const activity=gameplayUpdate?((value.public.harbor&&value.public.harbor.event!==(sameGame?projection?.public.harbor?.event:null)?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic)):null;
   if(gameplayUpdate&&projection?.gameId===value.gameId&&isNewRoll(projection.public,value.public)&&value.public.dice){clearSupplement();pendingRollPresentation=describeRoll(projection.public,value.public.dice,value.public);}
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
+  if(gameplayUpdate&&value.public.catchUpReward)logSupplement(`${value.gameId}:${value.public.catchUpReward.turn}`,value.public.catchUpReward,publicName);
   if(!projection||value.gameId!==projection.gameId||value.revision!==networkRevision)targetMode=null;
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;
   const pub=value.public;
