@@ -14,6 +14,8 @@ const rendererPath = 'src/game/board/three/renderer.ts';
 const originalRenderer = await readFile(rendererPath, 'utf8');
 const diagnosticRenderer = originalRenderer.replace("return { instanceId: this.instanceId, mode: '3d',", "return { frustum: [this.camera.left,this.camera.right,this.camera.top,this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width,this.height], staticKey: this.key, instanceId: this.instanceId, mode: '3d',");
 const fixture = `
+import { legalTargetIds } from './game/rules/legal.ts';
+
 // Isolated deterministic setup for real game controls; this module is never shipped.
 (window as any).__cardCameraFixture = {
  load(card: Exclude<Development,'victory-point'>) {

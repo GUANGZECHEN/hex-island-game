@@ -15,6 +15,8 @@ const url=new URL(process.env.QA_URL||'http://127.0.0.1:4178/hex-island-game/');
 const htmlPath='__target-feedback-fixture.html',fixturePath='src/__target-feedback-fixture.ts';
 let server,browser,page;
 const fixture=`
+import { legalTargetIds } from './game/rules/legal.ts';
+
 // Disposable test data only; excluded from every production build.
 (window as any).__targetFixture={load(card:'knight'|'road-building'|null){
  clearBotTimer();remote=null;projection=null;networkRevision=0;localBotIds=new Set();
