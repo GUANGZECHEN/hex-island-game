@@ -51,7 +51,7 @@ jobs:
           fi
           # This parent preserves the app from 5d68f98, which passed dice,
           # 3D and Co-op checks. Rerun this fixture and remaining action checks.
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/catch-up-supplement-20261122' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == '51187b74e43dc4f0cc3d6abcd3ba364f7a1dc1ca' ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/catch-up-supplement-20261122' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == '56682466eb0b17819a57b7dc06d8e782f13e95dd' ]]; then
             changed=$(git diff --name-only HEAD^ HEAD)
             if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-catch-up\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
               catchup_fixture=true

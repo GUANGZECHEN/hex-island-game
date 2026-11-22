@@ -47,7 +47,7 @@ const capture=async(page,mode)=>{
   // prove the page is responsive before requesting the compositor capture.
   await bounded(page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))),1500,mode+' paint frames');
   const session=await bounded(page.context().newCDPSession(page),3000,mode+' CDP session');
-  const shot=await bounded(session.send('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:false}),8000,mode+' screenshot');
+  const shot=await bounded(session.send('Page.captureScreenshot',{format:'png',fromSurface:mode!=='2d',captureBeyondViewport:false}),8000,mode+' screenshot');
   await writeFile(join(evidence,mode+'-supplement.png'),Buffer.from(shot.data,'base64'));
   console.log('Captured '+mode+' supplement screenshot in '+(Date.now()-started)+'ms');
  }catch(error){
@@ -65,9 +65,10 @@ try{
  await writeFile(join(root,source),ui+'\n'+fixture);await writeFile(join(root,html),index.replace('/src/game-ui.ts','/'+source));
  server=spawn(process.execPath,[join(root,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--port','4184','--strictPort'],{cwd:root,stdio:'ignore'});
  for(let i=0;i<100;i++){try{if((await fetch(url)).ok)break;}catch{}await delay(200);}
- browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  for(const mode of ['3d','2d']){
-  active=await browser.newPage({viewport:{width:1600,height:900}});active.on('pageerror',e=>errors.push(String(e)));
+  const args=mode==='3d'?['--use-angle=swiftshader','--enable-unsafe-swiftshader']:['--disable-gpu'];
+  browser=await chromium.launch({headless:true,args});
+  active=await browser.newPage({viewport:{width:1600,height:900}});active.setDefaultTimeout(8000);active.on('pageerror',e=>errors.push(String(e)));
   await active.goto(url+(mode==='2d'?'&renderer=2d':''),{waitUntil:'networkidle'});
   await active.bringToFront();
   await active.evaluate(()=>window.__supplementFixture.load());
@@ -100,7 +101,6 @@ try{
   assert.deepEqual(notice.visible,Object.fromEntries(Object.entries(expected.reward.gains).filter(([,n])=>n>0)));
   assert.equal(notice.icons,Object.keys(notice.visible).length);
   assert.equal(notice.count,1);assert.equal(notice.sameNode,true,'render retains the same announcement');
-  await capture(active,mode);
   await alert.waitFor({state:'detached',timeout:5000});await active.evaluate(()=>window.__supplementFixture.refresh());await delay(300);
   assert.equal(await active.locator('.supplement-alert').count(),0,'render/reconnect-like update must not replay reward');
   await active.evaluate(()=>window.__supplementFixture.load('seven'));
@@ -111,7 +111,15 @@ try{
    await active.evaluate(v=>window.__supplementFixture.load(v),variant);await active.getByRole('button',{name:'Roll dice',exact:true}).click();
    await delay(4000);assert.equal(await active.locator('.supplement-alert').count(),0);assert.equal((await active.evaluate(()=>window.__supplementFixture.result())).reward,undefined);
   }
-  console.log('PASS '+mode+' production before separate exact supplement, seven pre-award discard, no repeat, disabled rule');await active.close();
+  console.log('PASS '+mode+' production before separate exact supplement, seven pre-award discard, no repeat, disabled rule');
+  // Capture on a fresh roll only after all behavior checks, so a stalled
+  // compositor capture cannot interfere with remaining gameplay assertions.
+  await active.evaluate(()=>window.__supplementFixture.load());
+  await active.getByRole('button',{name:'Roll dice',exact:true}).click();
+  await alert.waitFor({state:'visible',timeout:8000});
+  assert.equal(await alert.locator('strong').textContent(),'Player 1 gained supplement');
+  await capture(active,mode);
+  await browser.close();browser=null;active=null;
  }
  assert.deepEqual(errors,[]);
  assert.deepEqual(captureErrors,[],'screenshot capture failures are not ignored');
