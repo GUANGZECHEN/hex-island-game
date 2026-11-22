@@ -1,6 +1,6 @@
 import { validateHarborState } from '../rules/harbor.ts';
 import { validateOptionalRules } from '../rules/optional-rules.ts';
-import type { GameState, Hand } from '../rules/state.ts';
+import { RESOURCES, type GameState, type Hand } from '../rules/state.ts';
 import type { BoardLayout } from '../board/geometry.ts';
 
 export interface AuthorityRecovery {
@@ -43,8 +43,19 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   const rules=validateOptionalRules(state.rules);
   if(state.mode==='harbor-coop'&&(rules.catchUp||rules.ships))throw new Error('Optional Classic rules conflict with Harbor mode.');
   if(Object.values(state.buildings).some(b=>b.kind==='ship')&&!rules.ships)throw new Error('Saved ships rule is disabled.');
-  if(state.catchUpReward && (!rules.catchUp||!Number.isSafeInteger(state.catchUpReward.turn)||state.catchUpReward.turn!==state.turn||
-     !state.players.some(p=>p.id===state.catchUpReward?.playerId)))throw new Error('Invalid saved catch-up award.');
+  const reward=state.catchUpReward;
+  if(reward){
+    const gains=reward.gains;
+    if(!rules.catchUp||!Number.isSafeInteger(reward.turn)||reward.turn!==state.turn||
+       state.players[state.currentSeat]?.id!==reward.playerId||
+       !Array.isArray(state.dice)||state.dice.length!==2||state.dice.some(d=>!Number.isInteger(d)||d<1||d>6)||
+       !['discard','robber','steal','action','free-road','finished'].includes(state.phase)||
+       !gains||typeof gains!=='object'||Array.isArray(gains)||
+       Object.keys(gains).sort().join(',')!==[...RESOURCES].sort().join(',')||
+       RESOURCES.some(r=>!Number.isSafeInteger(gains[r])||gains[r]<0||gains[r]>1)||
+       RESOURCES.reduce((sum,r)=>sum+gains[r],0)<1||RESOURCES.reduce((sum,r)=>sum+gains[r],0)>2)
+      throw new Error('Invalid saved catch-up award.');
+  }
   const boardLayout=(x.boardLayout??state.board?.layout??'standard') as BoardLayout;
   if(boardLayout!=='standard'&&boardLayout!=='expanded-5-6')throw new Error('Saved game board layout is invalid.');
   const validCount=boardLayout==='expanded-5-6'?state.players.length>=5&&state.players.length<=6:state.players.length>=2&&state.players.length<=4;

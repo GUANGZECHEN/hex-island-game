@@ -10,6 +10,7 @@ import '../../../target-feedback.css';
 export class BoardRendererController {
   private instance: ThreeBoardRenderer | null = null;
   private rollOverlay: BoardRollOverlay | null = null;
+  private activeRoll: {event:RollPresentation; complete:()=>void} | null = null;
   private rememberedCamera: BoardCameraView | null;
   private fallback = false;
   private explicit2D = new URLSearchParams(location.search).get('renderer') === '2d';
@@ -23,7 +24,7 @@ export class BoardRendererController {
     const reset = document.getElementById('board-view-reset') as HTMLButtonElement;
     const top = document.getElementById('board-view-top') as HTMLButtonElement;
     const touch = document.getElementById('board-adjust-view') as HTMLInputElement;
-    toggle.addEventListener('click', () => { this.rollOverlay?.dispose();this.rollOverlay=null; if (this.instance) this.rememberedCamera = this.instance.captureView(); this.explicit2D = !!this.instance; this.fallback = false; this.reason = ''; if (this.last) this.update(this.last); }, { signal: this.abort.signal });
+    toggle.addEventListener('click', () => { this.rollOverlay?.dispose();this.rollOverlay=null; if (this.instance) this.rememberedCamera = this.instance.captureView(); this.explicit2D = !!this.instance; this.fallback = false; this.reason = ''; if (this.last) this.update(this.last); this.resumeRoll(); }, { signal: this.abort.signal });
     reset.addEventListener('click', () => this.instance?.resetView(), { signal: this.abort.signal });
     top.addEventListener('click', () => this.instance?.topView(), { signal: this.abort.signal });
     touch.addEventListener('change', () => this.instance?.setTouchAdjustment(touch.checked), { signal: this.abort.signal });
@@ -58,6 +59,8 @@ export class BoardRendererController {
     }
   }
   update(view: BoardSceneView): void {
+    // SVG redraw and renderer switches replace board children; keep live alerts.
+    const alerts=Array.from(this.host.querySelectorAll<HTMLElement>('.turn-alert,.activity-alert,.victory-alert,.supplement-alert'));
     this.last = view;
     this.preview.update(`${staticBoardKey(view.board)}:${view.targetMode ?? ''}`, view.legalTargets);
     if (!this.explicit2D && !this.fallback) {
@@ -66,7 +69,7 @@ export class BoardRendererController {
         else {
           this.instance = new ThreeBoardRenderer(this.host, view, this.choose, reason => {
             this.reason = reason; this.fallback = true;
-            queueMicrotask(() => { if (this.instance) this.rememberedCamera = this.instance.captureView(); this.instance?.dispose(); this.instance = null; if (this.last) this.update(this.last); });
+            queueMicrotask(() => { if (this.instance) this.rememberedCamera = this.instance.captureView(); this.instance?.dispose(); this.instance = null; if (this.last) this.update(this.last); this.resumeRoll(); });
           });
           this.instance.setTouchAdjustment((document.getElementById('board-adjust-view') as HTMLInputElement).checked);
           if (this.rememberedCamera) this.instance.restoreView(this.rememberedCamera);
@@ -85,14 +88,23 @@ export class BoardRendererController {
     (document.getElementById('board-view-top') as HTMLButtonElement).disabled = !active;
     (document.getElementById('board-adjust-view') as HTMLInputElement).disabled = !active;
     const label = document.getElementById('board-render-mode')!; label.textContent = active ? '3D · Middle drag to orbit' : this.reason || '2D compatibility view';
+    for(const alert of alerts)if(!alert.isConnected)this.host.append(alert);
     this.host.dispatchEvent(new Event('board-layout-ready'));
   }
   /** Gameplay state is already committed before this local display event arrives. */
-  playRoll(event: RollPresentation):void {
-    if(this.instance){this.rollOverlay?.dispose();this.rollOverlay=null;this.instance.playRoll(event);}
-    else if(this.last){this.rollOverlay?.dispose();this.rollOverlay=new BoardRollOverlay(this.host,event,this.last);}
+  playRoll(event: RollPresentation, onComplete:()=>void):void {
+    this.clearRoll();
+    this.activeRoll={event,complete:onComplete};
+    this.resumeRoll();
   }
-  clearRoll():void {this.rollOverlay?.dispose();this.rollOverlay=null;this.instance?.stopRoll();}
+  private resumeRoll():void {
+    const active=this.activeRoll;
+    if(!active)return;
+    const complete=()=>{if(this.activeRoll!==active)return;this.activeRoll=null;active.complete();};
+    if(this.instance)this.instance.playRoll(active.event,complete);
+    else if(this.last)this.rollOverlay=new BoardRollOverlay(this.host,active.event,this.last,complete);
+  }
+  clearRoll():void {this.activeRoll=null;this.rollOverlay?.dispose();this.rollOverlay=null;this.instance?.stopRoll();}
   resetCamera(): void { this.instance?.resetView(); }
   cameraView(): BoardCameraView | null { return this.instance?.captureView() ?? this.rememberedCamera; }
   dispose(): void { this.rememberedCamera = this.cameraView(); this.rollOverlay?.dispose();this.rollOverlay=null;this.instance?.dispose(); this.instance = null; this.abort.abort(); }

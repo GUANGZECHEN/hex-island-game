@@ -17,7 +17,7 @@ export class BoardRollOverlay {
   private event:RollPresentation;
   private view:BoardSceneView;
 
-  constructor(host:HTMLElement,event:RollPresentation,view:BoardSceneView){
+  constructor(host:HTMLElement,event:RollPresentation,view:BoardSceneView,onComplete:()=>void){
     this.host=host;this.event=event;this.view=view;
     const root=document.createElement('div');root.className='board-roll-overlay';
     root.setAttribute('role','status');root.setAttribute('aria-live','polite');
@@ -42,7 +42,7 @@ export class BoardRollOverlay {
     if(reduced){root.classList.add('board-roll-reduced');this.land();}
     else this.timers.push(window.setTimeout(()=>this.land(),DICE_LANDING_MS));
     if(!reduced)this.timers.push(window.setTimeout(()=>dice.remove(),DICE_END_MS));
-    this.timers.push(window.setTimeout(()=>this.dispose(),reduced?DICE_REDUCED_END_MS:DICE_GAIN_END_MS));
+    this.timers.push(window.setTimeout(()=>{this.dispose();onComplete();},reduced?DICE_REDUCED_END_MS:DICE_GAIN_END_MS));
   }
   update(view:BoardSceneView):void {
     this.view=view;

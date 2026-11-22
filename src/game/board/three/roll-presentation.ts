@@ -14,6 +14,7 @@ export interface RollPresentation {
   dice: readonly [number, number];
   hexIds: string[];
   gains: BuildingRollGain[];
+  supplement?: { playerId: string; gains: Partial<Record<Resource, number>> };
 }
 
 type PublicBoard = Pick<GameState, 'board' | 'buildings' | 'bank'> & { players: readonly { id: string }[] };
@@ -26,18 +27,8 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
   if (![first, second].every(n => Number.isInteger(n) && n >= 1 && n <= 6)) throw new Error('Invalid public dice result.');
   const total = first + second;
   const catchUp=after?.catchUpReward?.turn===after?.turn ? after?.catchUpReward:null;
-  const appendCatchUp=(gains:BuildingRollGain[])=>{
-    if(!catchUp)return;
-    const home=Object.entries(before.buildings).find(([,building])=>building.playerId===catchUp.playerId);
-    if(!home)return;
-    for(const resource of RESOURCES){
-      const count=catchUp.gains[resource]??0;if(!count)continue;
-      const [vertexId,building]=home;
-      const existing=gains.find(g=>g.vertexId===vertexId&&g.playerId===catchUp.playerId&&g.resource===resource);
-      if(existing)existing.count+=count;
-      else gains.push({vertexId,playerId:catchUp.playerId,kind:building.kind,resource,count});
-    }
-  };
+  const supplement=catchUp && RESOURCES.some(resource=>(catchUp.gains[resource]??0)>0)
+    ? {playerId:catchUp.playerId,gains:{...catchUp.gains}} : undefined;
   if (total === 7) {
     // Harbor gives each teammate public random bank resources on a seven,
     // without hex production. Display the actual awarded resource above their
@@ -54,8 +45,7 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
         if(count>0)gains.push({vertexId,playerId:player.id,kind:building.kind,resource,count});
       }
     }
-    appendCatchUp(gains);
-    return {dice:[first,second],hexIds:[],gains};
+    return {dice:[first,second],hexIds:[],gains,supplement};
   }
 
   const topology = createIslandBoard(before.board.layout);
@@ -84,8 +74,7 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
     }
   }
   const gains=[...awards.values()];
-  appendCatchUp(gains);
-  return { dice: [first, second], hexIds: hexes.map(hex => hex.id), gains };
+  return { dice: [first, second], hexIds: hexes.map(hex => hex.id), gains, supplement };
 }
 
 export function isNewRoll(before: { dice: readonly [number, number] | null; turn: number } | null,

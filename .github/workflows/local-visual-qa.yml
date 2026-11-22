@@ -2,7 +2,7 @@ name: Validate local visual gameplay without QA tunnel
 
 on:
   push:
-    branches: [game/mvp, work/persistent-actions-20261121, work/learnable-action-panels-20261122]
+    branches: [game/mvp, work/persistent-actions-20261121, work/learnable-action-panels-20261122, work/catch-up-supplement-20261122]
   workflow_dispatch:
 
 permissions:
@@ -69,6 +69,9 @@ jobs:
       - name: Verify local Harbor Co-op rules and seven
         if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
         run: node scripts/qa-harbor-coop.mjs
+      - name: Verify catch-up supplement timing and exact awards in 3D and 2D
+        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-catch-up.mjs
       - name: Verify persistent action availability
         if: steps.scope.outputs.supplemental != 'true'
         run: node scripts/qa-persistent-actions.mjs
@@ -87,6 +90,7 @@ jobs:
             dice-evidence
             three-evidence
             harbor-evidence
+            catch-up-evidence
             persistent-actions-evidence
             compact-action-evidence
             target-evidence

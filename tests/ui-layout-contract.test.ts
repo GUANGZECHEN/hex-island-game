@@ -124,7 +124,7 @@ test('public gameplay actions surface as centered board alerts without replacing
  assert.ok(ui.includes("kind==='trade'?'TRADE'"));
  assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);'));
   assert.ok(ui.includes("el('board').querySelector('.turn-alert')?.remove()"));
-  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
+  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);showSupplement();scheduleLocalBot();'));
  assert.ok(!ui.includes('rolled dice|built a road|built a settlement'));
  assert.ok(css.includes('.activity-alert{'));
  assert.ok(css.includes('.activity-alert-message{'));
@@ -210,7 +210,7 @@ test('a winner gets a one-shot animated board-centered victory celebration',()=>
  assert.ok(ui.includes("alert.classList.add('victory-alert-out')"));
  assert.ok(ui.includes('},5000)'));
  assert.ok(ui.includes('if(!boardFitReady)scheduleDesktopBoardFit();flashTurnCue(s);'));
-  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);scheduleLocalBot();'));
+  assert.ok(ui.includes('showActivityAlert(s);showVictoryAlert(s);showSupplement();scheduleLocalBot();'));
  assert.ok(css.includes('.victory-alert{'));
  assert.ok(css.includes('@keyframes victory-confetti-pop'));
  assert.ok(css.includes('.victory-alert.victory-alert-out'));
@@ -287,7 +287,8 @@ test('ART-C01 keeps card animation but renders dice on the board',()=>{
  assert.ok(ui.includes('function playedDevelopment'));
  assert.ok(ui.includes('function motionCard'));
  assert.ok(ui.includes('activity-alert activity-${kind}'));
- assert.ok(ui.includes('boardRenderer?.playRoll(pendingRollPresentation)'));
+ assert.ok(ui.includes('const event=pendingRollPresentation,generation=rollGeneration;'));
+ assert.ok(ui.includes('boardRenderer?.playRoll(event,()=>{if(generation!==rollGeneration)return;pendingSupplement=event.supplement;showSupplement();});diceSound.playRoll();pendingRollPresentation=null;'));
  assert.ok(ui.includes("kind==='development'"));
  assert.ok(ui.includes("kind==='card-buy'"));
  assert.ok(css.includes('/* ART-C01 · motion polish */'));

@@ -18,44 +18,75 @@ function catchUpGame(leader:number,actor=2): GameState {
  return s;
 }
 
-test('opt-in lagging bonus follows public VP thresholds and distributes distinct bank resources after roll',()=>{
- let s=catchUpGame(4);
- assert.equal(applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined,'leader below five: no bonus');
- s=catchUpGame(5);
- let result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0);
- assert.equal(result.catchUpReward?.turn,s.turn);
- assert.equal(result.catchUpReward?.playerId,'behind');
- assert.deepEqual(RESOURCES.filter(r=>result.catchUpReward!.gains[r]>0),['lumber']);
- assert.ok(result.bank.lumber<=s.bank.lumber-1);
- let event=describeRoll(s,result.dice!,result);
- assert.ok(event.gains.some(g=>g.playerId==='behind'&&g.resource==='lumber'));
- s=catchUpGame(6);
- result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0);
- assert.deepEqual(RESOURCES.filter(r=>result.catchUpReward!.gains[r]>0),['lumber','brick']);
- assert.equal(RESOURCES.reduce((n,r)=>n+result.catchUpReward!.gains[r],0),2);
- event=describeRoll(s,result.dice!,result);
- assert.ok(event.gains.some(g=>g.playerId==='behind'&&g.resource==='brick'));
- s=catchUpGame(6,4);
- assert.equal(applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined,'actor at four VP is not lagging');
- s=createGame(24680,['leader','behind']);s.phase='roll';s.currentSeat=1;
- assert.equal(applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined,'default rule stays disabled');
+test('catch-up uses the public leader-relative threshold and awards only the roller',()=>{
+ for(const [leader,actor,count] of [[4,1,0],[5,2,1],[5,3,0],[6,3,1],[6,4,0],[7,4,1],[7,5,0],[8,5,2],[8,6,0],[9,6,2],[9,7,0],[8,8,0]] as const){
+  const s=catchUpGame(leader,actor);
+  const result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0);
+  const gains=result.catchUpReward?.gains;
+  assert.equal(RESOURCES.reduce((n,r)=>n+(gains?.[r]??0),0),count,`leader ${leader}, roller ${actor}`);
+  if(count){
+   assert.equal(result.catchUpReward?.turn,s.turn);
+   assert.equal(result.catchUpReward?.playerId,'behind');
+   assert.equal(RESOURCES.filter(r=>gains![r]>0).length,count);
+  }
+ }
+ // Hidden development points do not change either player's public eligibility.
+ const hiddenLeader=catchUpGame(4,1);
+ hiddenLeader.players[0].cards.push({type:'victory-point',boughtTurn:0});
+ assert.equal(applyTurnCommand(hiddenLeader,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined);
+ const hiddenRoller=catchUpGame(5,2);
+ hiddenRoller.players[1].cards.push({type:'victory-point',boughtTurn:0});
+ assert.equal(applyTurnCommand(hiddenRoller,{type:'roll',playerId:'behind'},()=>0).catchUpReward?.playerId,'behind');
+ const off=catchUpGame(8,2);off.rules!.catchUp=false;
+ assert.equal(applyTurnCommand(off,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined);
+ const coop=createGame(24680,['leader','behind'],undefined,{mode:'harbor-coop'});
+ coop.phase='roll';coop.currentSeat=1;coop.rules!.catchUp=true; // Defensive guard for recovered state.
+ assert.equal(applyTurnCommand(coop,{type:'roll',playerId:'behind'},()=>0).catchUpReward,undefined);
+ assert.throws(()=>applyTurnCommand(catchUpGame(8,2),{type:'roll',playerId:'leader'},()=>0),/authorized/);
 });
 
-test('catch-up handles depleted bank and seven without extra redraw RNG',()=>{
- const s=catchUpGame(6);
+test('catch-up draws distinct stocked types with host entropy and handles shortages',()=>{
+ const s=catchUpGame(8,5);
  for(const r of RESOURCES)s.bank[r]=0;
- s.bank.ore=1;
- const result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>0);
+ s.bank.ore=2;
+ let calls=0;
+ const result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>{calls++;return 0;});
  assert.equal(result.catchUpReward?.gains.ore,1);
  assert.equal(RESOURCES.reduce((sum,r)=>sum+(result.catchUpReward?.gains[r]??0),0),1);
- assert.equal(result.bank.ore,0);
- const seven=catchUpGame(5);
- const sequence=[0,5,0]; // 1 + 6 = 7, then the bonus from the bank.
- const after=applyTurnCommand(seven,{type:'roll',playerId:'behind'},()=>sequence.shift()??0);
- assert.equal(after.dice![0]+after.dice![1],7);
- assert.equal(after.catchUpReward?.gains.lumber,1);
- assert.equal(after.phase,'robber');
- assert.ok(describeRoll(seven,after.dice!,after).gains.some(g=>g.resource==='lumber'));
+ assert.equal(result.bank.ore,1,'no duplicate type even when stock remains');
+ assert.equal(calls,3,'two dice and one stocked-type draw');
+ assert.equal(result.randomState,s.randomState,'host entropy does not advance public seeded RNG');
+ const empty=catchUpGame(8,5);for(const r of RESOURCES)empty.bank[r]=0;
+ calls=0;
+ assert.equal(applyTurnCommand(empty,{type:'roll',playerId:'behind'},()=>{calls++;return 0;}).catchUpReward,undefined);
+ assert.equal(calls,2,'no random draw from an empty bank');
+ const full=catchUpGame(8,5);const values=[0,0,4,2];
+ const drawn=applyTurnCommand(full,{type:'roll',playerId:'behind'},()=>values.shift()!);
+ assert.deepEqual(RESOURCES.filter(r=>drawn.catchUpReward!.gains[r]),['wool','ore']);
+ assert.equal(values.length,0);
+ assert.equal(drawn.bank.ore,full.bank.ore-1);
+ assert.equal(drawn.bank.wool,full.bank.wool-1);
+ const event=describeRoll(full,drawn.dice!,drawn);
+ assert.deepEqual(event.supplement,{playerId:'behind',gains:drawn.catchUpReward!.gains});
+ assert.deepEqual(event.gains,describeRoll(full,drawn.dice!).gains,'supplement is separate from ordinary production');
+});
+
+test('seven locks each discard obligation before the roller receives catch-up',()=>{
+ for(const own of [7,8,9])for(const other of [7,8,9]){
+  const s=catchUpGame(8,5);
+  s.players[1].hand.lumber=own;s.players[0].hand.brick=other;
+  const entropy=[0,5,0,0];
+  const after=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>entropy.shift()!);
+  assert.equal(after.dice![0]+after.dice![1],7);
+  assert.equal(after.catchUpReward?.playerId,'behind');
+  assert.equal(RESOURCES.reduce((n,r)=>n+after.catchUpReward!.gains[r],0),2);
+  const event=describeRoll(s,after.dice!,after);
+  assert.deepEqual(event.gains,[]);
+  assert.deepEqual(event.supplement,{playerId:'behind',gains:after.catchUpReward!.gains});
+  assert.equal(after.discards.behind,own>7?Math.floor(own/2):undefined,`roller held ${own}`);
+  assert.equal(after.discards.leader,other>7?Math.floor(other/2):undefined,`other player held ${other}`);
+  assert.equal(after.phase,own>7||other>7?'discard':'robber');
+ }
 });
 
 function shipGame():{s:GameState;target:string;home:string;edgeId:string} {

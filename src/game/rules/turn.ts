@@ -64,8 +64,8 @@ export function awardCatchUp(state: GameState, secureRandom?: () => number): voi
   if(state.mode==='harbor-coop'||!state.rules?.catchUp)return;
   const active=state.players[state.currentSeat];
   const leader=Math.max(...state.players.map(player=>publicVictoryPoints(state,player.id)));
-  if(publicVictoryPoints(state,active.id)>3||leader<5)return;
-  const count=leader>=6?2:1;
+  if(leader<5||publicVictoryPoints(state,active.id)>leader-3)return;
+  const count=leader>7?2:1;
   const gains:Hand={lumber:0,brick:0,wool:0,grain:0,ore:0};
   const remaining=RESOURCES.filter(resource=>state.bank[resource]>0);
   for(let i=0;i<count&&remaining.length;i++){
@@ -101,6 +101,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
         state.discards={};state.victims=[];state.resumePhase=null;
         awardHarborSeven(state,secureRandom);state.phase='action';
       }else{
+        // Lock discard obligations against the hands held before the catch-up award.
         state.discards = Object.fromEntries(state.players.filter(player => size(player.hand) > 7).map(player => [player.id, Math.floor(size(player.hand) / 2)]));
         state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
       }

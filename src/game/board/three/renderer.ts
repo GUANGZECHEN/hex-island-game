@@ -58,6 +58,7 @@ export class ThreeBoardRenderer {
   private lastReactionKind: DecorationKind | null = null;
   private rollScene: BoardDiceScene | null = null;
   private rollStarted = 0;
+  private rollComplete: (()=>void) | null = null;
   private rollTimeout: number | null = null;
   private lastDice: readonly [number,number] | null = null;
   private productionHexes: string[] = [];
@@ -317,9 +318,10 @@ export class ThreeBoardRenderer {
     this.scheduleMotion();
   }
   /** Accepts only the public, already-resolved outcome. Never rolls RNG. */
-  playRoll(event: RollPresentation): void {
+  playRoll(event: RollPresentation, onComplete:()=>void): void {
     if (this.disposed) return;
     this.cancelRoll();
+    this.rollComplete=onComplete;
     this.lastDice=[event.dice[0],event.dice[1]];
     this.productionHexes=[];
     this.rollScene=new BoardDiceScene(event,id=>this.geometry.vertices.get(id),
@@ -330,7 +332,7 @@ export class ThreeBoardRenderer {
     if (this.reducedMotion.matches || document.hidden || !this.withinViewport) {
       const landed=this.rollScene.advance(DICE_LANDING_MS,true);
       if(landed)this.productionHexes=[...event.hexIds];
-      this.rollTimeout=window.setTimeout(()=>this.cancelRoll(),DICE_REDUCED_END_MS);
+      this.rollTimeout=window.setTimeout(()=>this.finishRoll(),DICE_REDUCED_END_MS);
       this.invalidate();
     } else {
       this.scheduleMotion();
@@ -347,7 +349,9 @@ export class ThreeBoardRenderer {
     }
   }
   stopRoll():void { this.cancelRoll();this.lastDice=null;this.productionHexes=[]; }
+  private finishRoll():void { const complete=this.rollComplete;this.cancelRoll();complete?.(); }
   private cancelRoll():void {
+    this.rollComplete=null;
     if(this.rollTimeout!==null){window.clearTimeout(this.rollTimeout);this.rollTimeout=null;}
     this.rollScene?.dispose();this.rollScene=null;
     this.invalidate();
@@ -370,6 +374,14 @@ export class ThreeBoardRenderer {
     if (!this.motionEnabled()) {
       if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
       this.motionFrame = null;
+      // Finish a roll that becomes hidden or reduced-motion while in flight.
+      // Its completion remains tied to the reduced presentation's lifetime.
+      if(this.rollScene && this.rollTimeout===null){
+        const landed=this.rollScene.advance(DICE_LANDING_MS,true);
+        if(landed)this.productionHexes=[...this.rollScene.event.hexIds];
+        this.rollTimeout=window.setTimeout(()=>this.finishRoll(),DICE_REDUCED_END_MS);
+        this.invalidate();
+      }
       // Full-page screenshots, tab switches and scrolling can move the board
       // offscreen during a reaction. Never leave pieces frozen mid-hop; restore
       // every decorative model whenever ambient rendering is suspended.
@@ -391,7 +403,7 @@ export class ThreeBoardRenderer {
       roll.setViewDirection(this.camera.position.clone().sub(this.controls.target));
       const landed=roll.advance(now-this.rollStarted);
       if(landed)this.producePulse(roll.event.hexIds);
-      if(roll.complete)this.cancelRoll();
+      if(roll.complete)this.finishRoll();
       this.invalidate(); // Smooth dice rotation; ambient waves stay capped at 20 FPS.
     }
     if (now - this.motionLastTick >= AMBIENT_FRAME_MS) {
