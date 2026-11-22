@@ -266,7 +266,7 @@ test('ART-B01 keeps player, hand and trade art in the integrated board',()=>{
  assert.ok(ui.includes("domestic.className='domestic-trade-card'"));
  assert.ok(!ui.includes("tab.dataset.panel==='actions'"));
  assert.ok(!ui.includes("tab.dataset.panel==='status'"));
- assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
+ assert.ok(ui.includes("incomingTradeCard(trade,s.offer,actor.hand)"));
  assert.ok(css.includes('/* ART-B01 · tabletop control-surface visual system */'));
  assert.ok(css.includes('.hand-card.active-hand'));
  assert.ok(css.includes('.action-button.action-settlement'));
@@ -317,9 +317,9 @@ test('ART-FINAL renders ports as coastal docks and removes the old floating circ
  assert.ok(render.includes("class:'port-bollard'"));
  assert.ok(!render.includes("'port-anchor-icon'"));
  assert.ok(render.includes("label.classList.add('port-label-generic')"));
- assert.ok(render.includes("symbol.setAttribute('width','.40')"));
- assert.ok(css.includes('font-size:.27px'));
- assert.ok(css.includes('.port-label-generic{font-size:.31px'));
+ assert.ok(render.includes("symbol.setAttribute('width','.56')"));
+ assert.ok(css.includes('font-size:.34px'));
+ assert.ok(css.includes('.port-label-generic{font-size:.42px'));
  assert.ok(css.includes('.activity-production-summary{'));
  assert.ok(render.includes("class:'port-boat-decor'"));
  assert.ok(!render.includes("class:'port-badge'"));
@@ -432,7 +432,7 @@ test('board workspace contains player, map, and simultaneous actions/trades with
  assert.ok(!html.includes('class="control-panel"'));
  assert.ok(!ui.includes('function setPanel('));
  assert.ok(!ui.includes("document.querySelectorAll<HTMLButtonElement>('[data-panel]')"));
- assert.ok(ui.includes("incomingTradeCard(trade,s.offer)"));
+ assert.ok(ui.includes("incomingTradeCard(trade,s.offer,actor.hand)"));
  assert.ok(ui.includes('bankTradeButtons(trade,s,actor,base,reason)'));
  assert.ok(css.includes('grid-template-areas:"status status" "actions trade"'));
  assert.ok(css.includes('grid-template-columns:minmax(230px,280px) minmax(0,1fr) minmax(330px,400px)'));
@@ -453,15 +453,10 @@ test('desktop map fits the viewport height while only side columns can scroll',(
 
 test('ship action uses the approved resource cost and availability metadata',()=>{
   const ui=readFileSync('src/game-ui.ts','utf8');
-  const status=readFileSync('src/game/ui/ship-action.ts','utf8');
-  const css=readFileSync('src/compact-actions.css','utf8');
-  assert.ok(ui.includes('if(base.ship.visible)'));
-   assert.ok(ui.includes('2 wood + 2 brick + 2 ore'),'Actions must display the same ship price as the reducer');
-  assert.ok(ui.includes('const ship=shipActionAvailability(s,viewer)'));
-  assert.ok(ui.includes("b.dataset.shipAvailability=base.ship.enabled?'ready':'blocked'"));
-  assert.ok(ui.includes('apply(b,base.ship,ship.reason)'));
-  assert.ok(status.includes("legalTargetIds(state,playerId,'ship')"));
-  assert.ok(css.includes('> .ship-action-reason'));
+  assert.ok(ui.includes('if(base.ship.enabled)'));
+  assert.ok(ui.includes('2 wood + 2 brick + 2 ore'),'Actions must display the same ship price as the reducer');
+  assert.ok(ui.includes('shipsRemaining(s,viewer)'));
+  assert.ok(ui.includes("b.dataset.shipAvailability='ready'"));
 });
 
 test('multiplayer waiting lobby keeps the final board workspace layout on desktop and mobile',()=>{

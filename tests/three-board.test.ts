@@ -40,14 +40,15 @@ test('moving the robber never recreates the static scene key', () => {
 });
 test('3D receives only public geometry and targets, while camera remains outside gameplay', () => {
   const ui = readFileSync('src/game-ui.ts', 'utf8'), render = readFileSync('src/game/board/three/renderer.ts', 'utf8'), controller = readFileSync('src/game/board/three/controller.ts', 'utf8');
-  const bridge = ui.slice(ui.indexOf('function drawBoard(){'), ui.indexOf('function drawSvgBoard(){'));
-  assert.ok(bridge.includes('legalTargetIds(state,viewer,targetMode)'));
+  const bridge = ui.slice(ui.indexOf('function drawBoard('), ui.indexOf('function drawSvgBoard('));
+  assert.ok(ui.includes('availability.targetIds(targetMode)'));
+  assert.ok(bridge.includes('targetMode,legalTargets'));
   assert.ok(bridge.includes('PLAYER_PIECE_PALETTE[p.seat]'));
   assert.ok(!bridge.includes('.hand')); assert.ok(!bridge.includes('.cards')); assert.ok(!bridge.includes('randomState'));
   assert.ok(!render.includes('WebSocket')); assert.ok(!render.includes('remote.submit'));
   assert.ok(render.includes('MIDDLE: THREE.MOUSE.ROTATE'));
   assert.ok(render.includes("document.body.classList.contains('network-resyncing')"));
   assert.ok(render.includes('this.renderer.dispose()'));
-  assert.ok(controller.includes('this.drawSVG()'));
+  assert.ok(controller.includes('this.drawSVG(view.legalTargets)'));
   assert.ok(controller.includes('qa3d'));
 });
