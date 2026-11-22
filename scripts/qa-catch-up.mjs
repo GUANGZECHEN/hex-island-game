@@ -34,7 +34,32 @@ import {drawIndex as fixtureDraw} from './game/rules/state.ts';
  result(){return {reward:state?.catchUpReward,discards:state?.discards,hand:state?.players[0].hand,phase:state?.phase};},
  refresh(){state=structuredClone(state);render();},
 };`;
-await mkdir(evidence,{recursive:true});let server,browser,active;const errors=[];
+await mkdir(evidence,{recursive:true});let server,browser,active;const errors=[],captureErrors=[];
+// Chromium's direct capture avoids Playwright's screenshot preparation/second
+// font wait. Fonts and paint frames are already awaited before each roll.
+const bounded=(promise,ms,label)=>{let timer;return Promise.race([
+ promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+' timed out after '+ms+'ms')),ms);})
+ ]).finally(()=>clearTimeout(timer));};
+const capture=async(page,mode)=>{
+ const started=Date.now();
+ try{
+  // A 2D redraw replaces the SVG: require two fresh paint opportunities and
+  // prove the page is responsive before requesting the compositor capture.
+  await bounded(page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))),1500,mode+' paint frames');
+  const session=await bounded(page.context().newCDPSession(page),3000,mode+' CDP session');
+  const shot=await bounded(session.send('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:false}),8000,mode+' screenshot');
+  await writeFile(join(evidence,mode+'-supplement.png'),Buffer.from(shot.data,'base64'));
+  console.log('Captured '+mode+' supplement screenshot in '+(Date.now()-started)+'ms');
+ }catch(error){
+  let diagnostics;
+  try{diagnostics=await bounded(page.evaluate(()=>({visibility:document.visibilityState,fonts:document.fonts.status,
+   renderer:window.__hex3D?.inspect().mode,alertCount:document.querySelectorAll('.supplement-alert').length,
+   viewport:[innerWidth,innerHeight]})),2000,mode+' capture diagnostics');}
+  catch(diagnosticError){diagnostics={error:String(diagnosticError)};}
+  const message=mode+' screenshot failed: '+String(error)+'; diagnostics '+JSON.stringify(diagnostics);
+  console.error(message);captureErrors.push(message);
+ }
+};
 try{
  const ui=await readFile(join(root,'src/game-ui.ts'),'utf8'),index=await readFile(join(root,'index.html'),'utf8');
  await writeFile(join(root,source),ui+'\n'+fixture);await writeFile(join(root,html),index.replace('/src/game-ui.ts','/'+source));
@@ -44,6 +69,7 @@ try{
  for(const mode of ['3d','2d']){
   active=await browser.newPage({viewport:{width:1600,height:900}});active.on('pageerror',e=>errors.push(String(e)));
   await active.goto(url+(mode==='2d'?'&renderer=2d':''),{waitUntil:'networkidle'});
+  await active.bringToFront();
   await active.evaluate(()=>window.__supplementFixture.load());
   // Resolve fonts and paint readiness before the short-lived announcement starts.
   await active.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
@@ -74,7 +100,7 @@ try{
   assert.deepEqual(notice.visible,Object.fromEntries(Object.entries(expected.reward.gains).filter(([,n])=>n>0)));
   assert.equal(notice.icons,Object.keys(notice.visible).length);
   assert.equal(notice.count,1);assert.equal(notice.sameNode,true,'render retains the same announcement');
-  await active.screenshot({path:join(evidence,mode+'-supplement.png')});
+  await capture(active,mode);
   await alert.waitFor({state:'detached',timeout:5000});await active.evaluate(()=>window.__supplementFixture.refresh());await delay(300);
   assert.equal(await active.locator('.supplement-alert').count(),0,'render/reconnect-like update must not replay reward');
   await active.evaluate(()=>window.__supplementFixture.load('seven'));
@@ -88,5 +114,6 @@ try{
   console.log('PASS '+mode+' production before separate exact supplement, seven pre-award discard, no repeat, disabled rule');await active.close();
  }
  assert.deepEqual(errors,[]);
-}catch(error){console.error(error?.stack||error);process.exitCode=1;try{await active?.screenshot({path:join(evidence,'failure.png')});}catch{}}
+ assert.deepEqual(captureErrors,[],'screenshot capture failures are not ignored');
+}catch(error){console.error(error?.stack||error);process.exitCode=1;}
 finally{await browser?.close();server?.kill('SIGTERM');await rm(join(root,source),{force:true});await rm(join(root,html),{force:true});}
