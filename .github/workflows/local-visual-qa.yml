@@ -33,6 +33,7 @@ jobs:
         run: |
           focus=false
           supplemental=false
+          catchup_fixture=false
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/persistent-actions-20261121' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" ]]; then
             changed=$(git diff --name-only HEAD^ HEAD)
             if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(src/style\.css|scripts/qa-persistent-actions\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
@@ -48,8 +49,17 @@ jobs:
               supplemental=true
             fi
           fi
+          # The exact parent already passed dice, 3D and Co-op checks. A push
+          # limited to this fixture reruns it plus the remaining action checks.
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/catch-up-supplement-20261122' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == '5d68f98a177a891516a709eb8c08d59f665da234' ]]; then
+            changed=$(git diff --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-catch-up\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
+              catchup_fixture=true
+            fi
+          fi
           echo "focus=$focus" >> "$GITHUB_OUTPUT"
           echo "supplemental=$supplemental" >> "$GITHUB_OUTPUT"
+          echo "catchup_fixture=$catchup_fixture" >> "$GITHUB_OUTPUT"
       - name: Install, typecheck, unit tests, and compile standalone frontend
         run: |
           npm ci
@@ -61,13 +71,13 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
       - name: Verify real dice geometry, resource payout and 2D fallback
-        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
+        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
       - name: Verify 3D graphics, input, camera, audio-independent behavior and layouts
-        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
+        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-three-live.mjs
       - name: Verify local Harbor Co-op rules and seven
-        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
+        if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-harbor-coop.mjs
       - name: Verify catch-up supplement timing and exact awards in 3D and 2D
         if: steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'

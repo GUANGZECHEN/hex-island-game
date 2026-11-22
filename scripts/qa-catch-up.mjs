@@ -45,6 +45,8 @@ try{
   active=await browser.newPage({viewport:{width:1600,height:900}});active.on('pageerror',e=>errors.push(String(e)));
   await active.goto(url+(mode==='2d'?'&renderer=2d':''),{waitUntil:'networkidle'});
   await active.evaluate(()=>window.__supplementFixture.load());
+  // Resolve fonts and paint readiness before the short-lived announcement starts.
+  await active.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
   await active.getByRole('button',{name:'Roll dice',exact:true}).click();
   assert.equal(await active.locator('.supplement-alert').count(),0,'supplement must wait for dice');
   await active.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:8000});
@@ -55,12 +57,24 @@ try{
   else {const city=active.locator('[data-roll-building="'+fixtureExpected.city+'"]');assert.equal(await city.locator('[data-resource="'+fixtureExpected.resource+'"]').textContent(),'+2');}
   assert.equal(Object.values(expected.reward.gains).reduce((a,b)=>a+b,0),2);
   const alert=active.locator('.supplement-alert');await alert.waitFor({state:'visible',timeout:8000});
-  assert.equal(await alert.locator('strong').textContent(),'Player 1 gained supplement');
-  const visible=await alert.locator('[data-resource]').evaluateAll(nodes=>Object.fromEntries(nodes.map(n=>[n.dataset.resource,Number(n.textContent.match(/\+(\d+)/)?.[1])])));
-  assert.deepEqual(visible,Object.fromEntries(Object.entries(expected.reward.gains).filter(([,n])=>n>0)));
-  assert.equal(await alert.locator('[data-resource] svg').count(),Object.keys(visible).length);
-  await active.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});await active.screenshot({path:join(evidence,mode+'-supplement.png')});
-  await active.evaluate(()=>window.__supplementFixture.refresh());assert.equal(await active.locator('.supplement-alert').count(),1);
+  // Inspect and redraw synchronously in one browser task: screenshots can take
+  // longer than the alert's lifetime on a busy CI runner.
+  const notice=await active.evaluate(()=>{
+   const node=document.querySelector('.supplement-alert');
+   if(!node)return null;
+   const resources=Array.from(node.querySelectorAll('[data-resource]'));
+   const result={observedAt:performance.now(),title:node.querySelector('strong')?.textContent,
+    visible:Object.fromEntries(resources.map(n=>[n.dataset.resource,Number(n.textContent.match(/\+(\d+)/)?.[1])])),
+    icons:node.querySelectorAll('[data-resource] svg').length};
+   window.__supplementFixture.refresh();
+   return {...result,sameNode:node===document.querySelector('.supplement-alert'),count:document.querySelectorAll('.supplement-alert').length};
+  });
+  assert.ok(notice,'supplement was visible when inspected');
+  assert.equal(notice.title,'Player 1 gained supplement');
+  assert.deepEqual(notice.visible,Object.fromEntries(Object.entries(expected.reward.gains).filter(([,n])=>n>0)));
+  assert.equal(notice.icons,Object.keys(notice.visible).length);
+  assert.equal(notice.count,1);assert.equal(notice.sameNode,true,'render retains the same announcement');
+  await active.screenshot({path:join(evidence,mode+'-supplement.png')});
   await alert.waitFor({state:'detached',timeout:5000});await active.evaluate(()=>window.__supplementFixture.refresh());await delay(300);
   assert.equal(await active.locator('.supplement-alert').count(),0,'render/reconnect-like update must not replay reward');
   await active.evaluate(()=>window.__supplementFixture.load('seven'));
