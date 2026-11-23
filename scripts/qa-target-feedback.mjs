@@ -86,6 +86,14 @@ async function preview(p,action,label,preferredTarget){
  return {a,b,point:second,before};
 }
 
+async function captureBoardView(page, path, hex) {
+ const field = page.locator(`#board .island-hex[data-hex-id="${hex}"]`);
+ const surface = await field.count() ? field : page.locator('#board canvas.three-island-board');
+ await surface.evaluate(element => element.scrollIntoView({block:'center', inline:'center', behavior:'instant'}));
+ // A viewport capture does not wait for the responsive board wrapper to stop resizing.
+ await page.screenshot({path});
+}
+
 async function verifySvgRobberArt(page,fixtureURL){
  const svgUrl=new URL(fixtureURL);svgUrl.searchParams.set('renderer','2d');
  await page.goto(svgUrl.href,{waitUntil:'networkidle'});
@@ -115,7 +123,7 @@ async function verifySvgRobberArt(page,fixtureURL){
   return !!(tile.compareDocumentPosition(settlement)&Node.DOCUMENT_POSITION_FOLLOWING);
  },vertex),'settlements paint over the robber target in SVG');
  await page.locator('#board .activity-alert').waitFor({state:'hidden',timeout:5000});
- await page.locator('#board').screenshot({path:`${evidence}/transparent-robber-2d.png`});
+ await captureBoardView(page, `${evidence}/transparent-robber-2d.png`, hex);
  await target.press('Enter');
  assert.equal(await page.locator('#board [data-robber="true"]').getAttribute('data-hex-id'),hex);
  assert.equal(await page.locator('#game-error').textContent(),'');
@@ -157,7 +165,7 @@ async function verifyGrainArt(page,fixtureURL){
   verifyFade(clear,await read(site.tile),renderer+' settlement');
   assert.deepEqual(await read(site.control),unchanged,'placing a settlement does not fade a separate field');
   await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
-  await page.locator('#board').screenshot({path:`${evidence}/grain-settlement-${renderer}.png`});
+  await captureBoardView(page, `${evidence}/grain-settlement-${renderer}.png`, site.tile);
 
   await start(page,renderer,fixtureURL);
   site=await page.evaluate(()=>window.__targetFixture.grainSite());
@@ -169,7 +177,7 @@ async function verifyGrainArt(page,fixtureURL){
   verifyFade(withoutRoad,await read(site.tile),renderer+' road');
   assert.deepEqual(await read(site.control),control,'placing a road does not fade a separate field');
   await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
-  await page.locator('#board').screenshot({path:`${evidence}/grain-road-${renderer}.png`});
+  await captureBoardView(page, `${evidence}/grain-road-${renderer}.png`, site.tile);
   check(renderer+' grain art fades locally after actual settlement and road placement');
  }
 }

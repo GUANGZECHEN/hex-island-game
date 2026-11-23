@@ -8,6 +8,8 @@ Desert is a continuous sand-dune surface without props, resource icons or placeh
 ## Interaction and lifecycle
 Middle-button drag orbits; Shift+middle pans; wheel on the canvas zooms. A left click acts on a legal target. On touchscreens, releasing a construction target previews the piece and a separate button confirms it. Reset/Top view and camera gestures never issue game commands. Mobile camera gestures require Adjust view; ordinary touch allows page scrolling.
 
+When a road or settlement borders a grain field, the nearby wheat fades so the piece stays visible. The same cue previews a legal placement. While choosing a robber destination, translucent hex highlights leave the neighboring buildings visible.
+
 Terrain is cached by a static map key, excluding robber location. Pieces and targets update independently; snapshots preserve the canvas and camera. Hand/Actions adjacency and compact desktop height-fit remain. Rendering is on demand; shared GPU resources are disposed when replaced.
 
 User-selected 2D, unavailable WebGL2 and context loss use the existing SVG renderer with the same current state. Legal SVG targets accept keyboard focus and Enter.
