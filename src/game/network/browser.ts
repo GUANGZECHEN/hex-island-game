@@ -7,6 +7,7 @@ import type { GameMode } from '../rules/harbor';
 import type { BoardLayout } from '../board/geometry';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
 import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
+import { isRoomMusicMessage, RoomMusicGuest } from './room-music.ts';
 
 type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
 export interface RoomTableLobby {
@@ -14,8 +15,19 @@ export interface RoomTableLobby {
  started:boolean; recovering:boolean; spectators:number;
  seats:Array<{id:string;name:string;connected:boolean;ready:boolean}>;
 }
-type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; clock?:(clock:TurnClockSnapshot|null)=>void; timedOut?:(playerId:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void };
-export interface BrowserGame { submit:(command:Record<string,unknown>,revision:number)=>void; canPause:()=>boolean; setPaused:(paused:boolean)=>void }
+type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; clock?:(clock:TurnClockSnapshot|null)=>void; timedOut?:(playerId:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void; musicState?:(value:RoomMusicState)=>void;
+ musicFrame?:(frame:RoomMusicFrame)=>void; musicSubscribers?:(hasSubscribers:boolean)=>void; musicReset?:()=>void;
+};
+export type RoomMusicState = {role:'host'|'guest'|null; offered:boolean};
+export type RoomMusicFrame = {base64:string; seq:number; generation:number};
+export interface BrowserGame {
+ submit:(command:Record<string,unknown>,revision:number)=>void;
+ canPause:()=>boolean;
+ setPaused:(paused:boolean)=>void;
+ setMusicSharing:(enabled:boolean)=>void;
+ setMusicListening:(enabled:boolean)=>void;
+ publishMusicFrame:(base64:string)=>void;
+}
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
 const token=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
@@ -46,6 +58,40 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  let acceptedGameId='',acceptedRevision=-1,awaitingSnapshot=false,syncAttempts=0,syncTimer:number|null=null;
  let recoveryMode=false,recoveryItems:CheckpointMeta[]=[],pendingResumeId='',bootstrapCheckpointId='',lastLobbySeats:Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>=[],gameFinished=false;
  const pendingHostMessages:Array<{id:string;text:string}>=[];
+ let musicRoom='', musicRoomRole:RoomMusicState['role']=null, musicGuestAdmitted=false;
+ let musicState:RoomMusicState={role:null,offered:false};
+ const send=(peer:string,data:string,bestEffort=false)=>{
+  if(bestEffort)return client.trySendOptional(peer,data);
+  client.send(peer,data);
+ };
+ const reportMusicState=(role:RoomMusicState['role'],offered:boolean)=>{
+  if(musicState.role===role&&musicState.offered===offered)return;
+  musicState={role,offered};callbacks.musicState?.(musicState);
+ };
+ const guestMusic=new RoomMusicGuest(text=>{
+  if(!musicGuestAdmitted||!open)return false;
+  try{send('host',text);return true;}catch{return false;}
+ },{
+  availability:offered=>{if(musicState.role==='guest')reportMusicState('guest',offered);},
+  frame:(base64,seq,generation)=>callbacks.musicFrame?.({base64,seq,generation}),
+  reset:()=>callbacks.musicReset?.(),
+ });
+ const resetGuestMusic=()=>{
+  if(!musicGuestAdmitted)return;
+  musicGuestAdmitted=false;guestMusic.reset();
+ };
+ const admitGuestMusic=()=>{
+  if(musicGuestAdmitted)return;
+  musicGuestAdmitted=true;reportMusicState('guest',false);
+ };
+ const enterMusicRoom=(nextRoom:string,nextRole:RoomMusicState['role'])=>{
+  if(musicRoom!==nextRoom||musicRoomRole!==nextRole){
+   host?.setMusicSharing(false);
+   musicRoom=nextRoom;musicRoomRole=nextRole;
+   reportMusicState(null,false);
+   resetGuestMusic();guestMusic.setListening(true);
+  }else if(nextRole==='guest')resetGuestMusic();
+ };
  const rawEndpoints=((import.meta.env.VITE_SIGNALING_URLS as string|undefined)??(import.meta.env.VITE_SIGNALING_URL as string|undefined)??'')
   .split(',').map(value=>value.trim().replace(/\/$/,'')).filter(Boolean);
  const endpoints=rawEndpoints.filter(value=>{try{const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)));}catch{return false;}});
@@ -152,6 +198,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const publish=(event:unknown)=>{
   const x=event as {type:string;lobby?:unknown;data?:unknown;revision?:unknown;round?:unknown;replace?:unknown};
   if(x.type==='lobby')showLobby(x.lobby);
+  if(x.type==='music-subscribers'&&typeof x.data==='boolean')callbacks.musicSubscribers?.(x.data);
   if(x.type==='clock')callbacks.clock?.(x.data as TurnClockSnapshot|null);
   if(x.type==='clock-timeout'&&typeof (x.data as {playerId?:unknown}|null)?.playerId==='string')callbacks.timedOut?.((x.data as {playerId:string}).playerId);
   if(x.type==='abort'){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;gameId='';gameFinished=false;networkResetForResume();clearSafe(gameKey(room));status('Game ended. Choose the next map and mode in this room.');}
@@ -162,8 +209,13 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    try{client.saveCheckpoint(JSON.stringify(x.data),Number(x.revision),Number(x.round),x.replace);}catch{status('Game continues, but the recovery checkpoint could not be saved.');}
   }
  };
- const send=(peer:string,data:string)=>client.send(peer,data);
  const flushPendingHostMessages=()=>{if(!host)return;for(const item of pendingHostMessages.splice(0))host.receive(item.id,item.text);};
+ const disconnectHostPeers=(ids:readonly string[])=>{
+  host?.disconnectMany(ids);
+  for(let i=pendingHostMessages.length-1;i>=0;i--){
+   if(ids.includes(pendingHostMessages[i].id))pendingHostMessages.splice(i,1);
+  }
+ };
 
  const handleCheckpoint=(item:StoredCheckpoint)=>{
   let recovery;
@@ -171,6 +223,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   if(!host&&bootstrapCheckpointId===item.id){
    recoveryMode=true;
    host=HostSession.fromRecovery(send,publish,token,random,recovery);
+   if(musicState.role==='host'&&musicState.offered)host.setMusicSharing(true);
    bootstrapCheckpointId='';
    flushPendingHostMessages();
    el('room-ready').hidden=true;el('room-start').hidden=true;
@@ -207,31 +260,42 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
      const credential=safeGet(seatKey(room))??'';
      send('host',JSON.stringify({protocol:1,type:'hello',token:credential,name:nickname(),role:safeGet(roleKey(room))==='spectator'?'spectator':'player'}));
     }else if(!isOpen&&open){
-     open=false;clearSyncTimer();
+     open=false;resetGuestMusic();clearSyncTimer();
      if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');
      else status('Host connection interrupted. Automatic reconnect is in progress.');
     }
    }
-   if(role==='host'&&!isOpen)host?.disconnect(id);
+   if(role==='host'&&!isOpen)disconnectHostPeers([id]);
   },
   removeMany:ids=>{
-   if(role==='host')host?.disconnectMany(ids);
-   else if(ids.includes('host')){open=false;clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}
+   if(role==='host')disconnectHostPeers(ids);
+   else if(ids.includes('host')){open=false;resetGuestMusic();clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}
   },
   remove:id=>{
-   if(role==='host')host?.disconnect(id);
-   else if(id==='host'){open=false;clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}
+   if(role==='host')disconnectHostPeers([id]);
+   else if(id==='host'){open=false;resetGuestMusic();clearSyncTimer();if(acceptedRevision>=0)setSynchronizing(true,'Host connection interrupted. Automatic reconnect is in progress.');else status('Host connection interrupted. Automatic reconnect is in progress.');}
   },
   message:(id,text)=>{
-   if(role==='host'){if(host)host.receive(id,text);else pendingHostMessages.push({id,text});return;}
+   if(role==='host'){
+    if(host)host.receive(id,text);
+    else{
+     try{if(!isRoomMusicMessage(JSON.parse(text)))pendingHostMessages.push({id,text});}catch{}
+    }
+    return;
+   }
    if(role!=='guest'||id!=='host'||text.length>16384)return;
    let message:{protocol?:number;type?:string;data?:unknown};try{message=JSON.parse(text);}catch{return;}
-   if(message.protocol!==1)return;
+   if(isRoomMusicMessage(message)){
+    if(open&&musicGuestAdmitted)guestMusic.receive(message);
+    return;
+   }
+   if(message?.protocol!==1)return;
    if(message.type==='seat'){
     const value=message.data as {id?:unknown;token?:unknown;gameId?:unknown};
     if(typeof value?.id==='string'&&typeof value.token==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.token)){
      if(typeof value.gameId==='string'&&acceptedGameId&&acceptedGameId!==value.gameId){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;}
      spectator=false;playerId=value.id;safeSet(seatKey(room),value.token);safeSet(roleKey(room),'player');
+     admitGuestMusic();
      el<HTMLButtonElement>('room-ready').disabled=false;
      if(awaitingSnapshot)status(`Seat restored as ${playerId}. Synchronizing game state…`);
      else status(`Connected as ${playerId}.`);
@@ -242,6 +306,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
     const info=message.data as {watching?:unknown;gameId?:unknown}|null;
     if(typeof info?.gameId==='string'&&acceptedGameId&&info.gameId!==acceptedGameId){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;}
     spectator=true;playerId='';hostReady=false;clearSafe(seatKey(room));safeSet(roleKey(room),'spectator');
+    admitGuestMusic();
     el('room-ready').hidden=true;el('room-start').hidden=true;
     clearSyncTimer();syncAttempts=0;setSynchronizing(false);
     status(info?.watching?'Watching live game as spectator.':'In the lobby as spectator.');
@@ -311,10 +376,12 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  el<HTMLButtonElement>('room-create').disabled=!allowed;
  el('room-create').onclick=async()=>{
   try{
+   enterMusicRoom('',null);
    clearRecoveryUi();role='host';spectator=false;playerId='Player 1';
    host=new HostSession(send,publish,token,random,{qaTwoPlayers:isTwoPlayerQa(location.search),boardLayout:'standard',mapSeed:1});
    const invite=await client.create();const info=client.connectionInfo();if(!info||info.role!=='host')throw new Error('Host room capability was unavailable.');
-   room=info.room;saveRoom({version:1,role:'host',room:info.room,capability:info.token});callbacks.enterRoom?.();host.setHostName(nickname()||'Player 1');
+   room=info.room;enterMusicRoom(room,'host');reportMusicState('host',false);
+   saveRoom({version:1,role:'host',room:info.room,capability:info.token});callbacks.enterRoom?.();host.setHostName(nickname()||'Player 1');
    boardVersionInput.disabled=false;mapSeedInput.disabled=false;el('room-map-lobby').hidden=false;hostReady=false;el('room-ready').textContent='Mark ready';el<HTMLInputElement>('room-invite').value=invite;el('room-ready').hidden=false;el('room-start').hidden=false;el<HTMLButtonElement>('room-start').disabled=true;host.setHostReady(false);status('Room created. Share the invitation privately.');
   }catch(error){status(error instanceof RoomError ? error.message : error instanceof Error?error.message:'Signaling WebSocket connection or authentication failed.');}
  };
@@ -340,6 +407,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  };
 
  async function join(roomId:string,capability:string,rejoining=false){
+  enterMusicRoom(roomId,'guest');
   clearRecoveryUi();role='guest';spectator=false;boardVersionInput.disabled=true;mapSeedInput.disabled=true;el('room-map-lobby').hidden=true;room=roomId;open=false;hostReady=false;playerId='';clearSyncTimer();syncAttempts=0;callbacks.enterRoom?.();
   saveRoom({version:1,role:'guest',room:roomId,capability});
   if(!rejoining){acceptedGameId='';acceptedRevision=-1;gameId='';setSynchronizing(false);}
@@ -356,9 +424,10 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  }
 
  async function restoreHost(roomId:string,capability:string){
+  enterMusicRoom(roomId,'host');host?.setMusicSharing(false);
   role='host';spectator=false;boardVersionInput.disabled=true;room=roomId;playerId='Player 1';open=false;hostReady=false;host=null;pendingHostMessages.splice(0);recoveryMode=true;recoveryItems=[];pendingResumeId='';bootstrapCheckpointId='';callbacks.reset?.();callbacks.enterRoom?.();
   el('room-map-controls').hidden=false;el('room-ready').hidden=true;el('room-start').hidden=true;el('room-recovery-panel').hidden=false;el('room-recovery-status').textContent='Reconnecting hosted room and looking for saved games…';el('room-recovery-options').replaceChildren();
-  try{await client.restoreHost(roomId,capability);saveRoom({version:1,role:'host',room:roomId,capability});status('Hosted room reconnected. Looking for saved games…');client.requestCheckpoints();}
+  try{await client.restoreHost(roomId,capability);reportMusicState('host',musicState.offered);saveRoom({version:1,role:'host',room:roomId,capability});status('Hosted room reconnected. Looking for saved games…');client.requestCheckpoints();}
   catch{status('Could not rejoin the hosted room.');}
  }
 
@@ -369,5 +438,12 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  // The host's authority checks deadlines. Hidden tabs may throttle the callback,
  // but the next tick catches up without trusting a guest's device clock.
  window.setInterval(()=>{if(role==='host'&&host&&!recoveryMode)host.tick();},300);
- return {canPause(){return role==='host'&&!!host;},setPaused(paused){if(role!=='host'||!host)throw new Error('Only the host can pause.');host.setPaused(paused);},submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
+ return {
+  setMusicSharing(enabled){
+   if(musicState.role!=='host')return;
+   reportMusicState('host',enabled);host?.setMusicSharing(enabled);
+  },
+  setMusicListening(enabled){if(musicRoomRole==='guest')guestMusic.setListening(enabled);},
+  publishMusicFrame(base64){if(musicState.role==='host'&&musicState.offered)host?.publishMusicFrame(base64);},
+  canPause(){return role==='host'&&!!host;},setPaused(paused){if(role!=='host'||!host)throw new Error('Only the host can pause.');host.setPaused(paused);},submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

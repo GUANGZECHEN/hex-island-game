@@ -21,6 +21,7 @@ const HEARTBEAT_INTERVAL = 25_000;
 const HEARTBEAT_TIMEOUT = 20_000;
 const HANDSHAKE_TIMEOUT = 15_000;
 const MAX_RELAY_DATA = 16384;
+const MAX_MESSAGE_BUFFER_FOR_MEDIA = 64 * 1024;
 const MAX_CHECKPOINT_DATA = 49152;
 const validPeerId = (value:unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
@@ -416,6 +417,13 @@ export class RoomClient {
       throw Error('Room relay message is too large.');
     }
     ws.send(JSON.stringify({type:'relay',to:id,data:text}));
+  }
+
+  /** Drop optional media when the connection has a backlog of room traffic. */
+  trySendOptional(id:string,text:string):boolean {
+    const ws=this.ws;
+    if(!ws||ws.bufferedAmount>=MAX_MESSAGE_BUFFER_FOR_MEDIA)return false;
+    try{this.send(id,text);return true;}catch{return false;}
   }
 
   private remove(id:string):void {

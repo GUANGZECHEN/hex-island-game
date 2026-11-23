@@ -94,7 +94,12 @@ The expanded table admits up to six player seats before game start and uses the 
 
 ## Background music
 
-Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. Each new match shuffles the other tracks. Once all tracks have played, the next pass shuffles again. With multiple tracks, the first song of a new pass differs from the one that just ended. During a match, open **Music** and select a track. **Play now** starts it immediately, including when music is paused. **Move up** and **Move down** change the playback order. **Shuffle** keeps the current song playing and shuffles the remaining tracks for a fresh pass. These controls affect only your own browser. Music and its pause setting are stored in the browser on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
+Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. Each new match shuffles the other tracks. Once all tracks have played, the next pass shuffles again. With multiple tracks, the first song of a new pass differs from the one that just ended. During a match, open **Music** and select a track. **Play now** starts it immediately, including when music is paused. **Move up** and **Move down** change the playback order. **Shuffle** keeps the current song playing and shuffles the remaining tracks for a fresh pass. The imported files and pause preference are stored on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
+
+
+In an online private room, the host can turn on **Music → Share music with this room**. Everyone admitted to the room, including spectators, can hear the host’s waiting-room song, current match track and playlist changes. Guests can mute **Listen to room music** independently. If a browser needs a gesture, open **Music → Play room music**. The host can stop playback with **Pause music** or withdraw sharing at any time.
+
+The host sends a live mono mix of the music player through the authenticated room connection. Music files, track names, microphone audio and dice sounds stay out of the stream. Guests can join mid-song with an empty music library. The room service forwards short audio frames in memory. Slow listeners drop frames and resume with current audio when their connection catches up. Leaving the room stops the stream.
 
 ## Local test bots
 

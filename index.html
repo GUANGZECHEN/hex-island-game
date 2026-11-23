@@ -4,18 +4,29 @@
 <details id="music-controls" class="music-controls">
   <summary>Music</summary>
   <div class="music-panel">
-    <button id="music-folder" type="button">Choose music folder</button>
-    <button id="music-toggle" type="button" hidden>Play music</button>
-    <input id="music-files" type="file" webkitdirectory multiple hidden>
-    <p id="music-status" role="status"></p>
-    <div id="music-playlist" hidden>
-      <label for="music-queue">Match playlist</label>
-      <select id="music-queue" size="4"></select>
-      <div class="music-queue-actions">
-        <button id="music-play-now" type="button">Play now</button>
-        <button id="music-shuffle" type="button">Shuffle</button>
-        <button id="music-up" type="button">Move up</button>
-        <button id="music-down" type="button">Move down</button>
+    <div id="music-room-host" hidden>
+      <label class="room-music-switch"><input type="checkbox" id="music-share-room"> Share music with this room</label>
+      <p id="music-share-status" role="status"></p>
+    </div>
+    <div id="music-room-guest" hidden>
+      <label class="room-music-switch"><input type="checkbox" id="music-listen-room" checked> Listen to room music</label>
+      <button type="button" id="music-enable-room" hidden>Play room music</button>
+      <p id="music-listen-status" role="status"></p>
+    </div>
+    <div id="music-local-controls">
+      <button id="music-folder" type="button">Choose music folder</button>
+      <button id="music-toggle" type="button" hidden>Play music</button>
+      <input id="music-files" type="file" webkitdirectory multiple hidden>
+      <p id="music-status" role="status"></p>
+      <div id="music-playlist" hidden>
+        <label for="music-queue">Match playlist</label>
+        <select id="music-queue" size="4"></select>
+        <div class="music-queue-actions">
+          <button id="music-play-now" type="button">Play now</button>
+          <button id="music-shuffle" type="button">Shuffle</button>
+          <button id="music-up" type="button">Move up</button>
+          <button id="music-down" type="button">Move down</button>
+        </div>
       </div>
     </div>
     <audio id="music-player" preload="none" hidden></audio>

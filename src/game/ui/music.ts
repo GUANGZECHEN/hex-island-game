@@ -45,6 +45,7 @@ export class GameMusic {
   private trackLabels: string[] = [];
   private failedTracks = new Set<File>();
   private muted = false;
+  private roomListening = false;
   private blocked = false;
   private savingFailed = false;
   private audio = document.querySelector<HTMLAudioElement>('#music-player')!;
@@ -124,6 +125,15 @@ export class GameMusic {
     this.failedTracks.clear();
     this.showQueue(this.queue?.current);
     this.loadTrack();
+  }
+
+  /** Avoid two soundtracks on a guest device while it listens to its host. */
+  setRoomListening(active: boolean): void {
+    if (active === this.roomListening) return;
+    this.roomListening = active;
+    if (active) this.audio.pause();
+    else this.play();
+    this.paint();
   }
 
   private setMuted(value: boolean): void {
@@ -219,10 +229,10 @@ export class GameMusic {
 
   private play(): void {
     const source = this.source;
-    if (!source || this.muted || !this.audio.paused) return;
+    if (!source || this.roomListening || this.muted || !this.audio.paused) return;
     this.blocked = false;
     void this.audio.play().catch((error: DOMException) => {
-      if (this.source !== source || this.muted || error.name === 'AbortError') return;
+      if (this.source !== source || this.roomListening || this.muted || error.name === 'AbortError') return;
       if (error.name === 'NotAllowedError') {
         this.blocked = true;
         this.paint();

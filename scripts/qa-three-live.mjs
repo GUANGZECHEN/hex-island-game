@@ -54,33 +54,55 @@ async function drag(page, dx, dy, shift = false) {
   if (shift) await page.keyboard.up('Shift'); await settle(page);
 }
 function colors(data) { const p = PNG.sync.read(data), result = new Set(); for (let i = 0; i < p.data.length; i += 16) result.add(`${p.data[i] >> 3},${p.data[i + 1] >> 3},${p.data[i + 2] >> 3}`); return result.size; }
+const lobbyMusicTrack = 'M01001.wav';
+const matchMusicTracks = ['m01002.wav', 'm01003.wav', 'm01004.wav'];
+const musicTone = new Map([[lobbyMusicTrack, 400], ...matchMusicTracks.map((name, index) => [name, 600 + index * 200])]);
+
+async function writeMusicFixture(directory, seconds = 30) {
+  const sampleRate = 8000;
+  const samples = sampleRate * seconds;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(samples * 2, 40);
+  for (const [name, frequency] of musicTone) {
+    for (let n = 0; n < samples; n++) wav.writeInt16LE(Math.round(7200 * Math.sin(n * 2 * Math.PI * frequency / sampleRate)), 44 + n * 2);
+    await writeFile(join(directory, name), wav);
+  }
+  await writeFile(join(directory, 'notes.txt'), 'not an audio track');
+}
+async function importMusicFolder(page, directory) {
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'), page.locator('#music-folder').click(),
+  ]);
+  await chooser.setFiles(directory);
+  await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
+}
+async function waitForPlayingMusic(page, names) {
+  const result = await page.waitForFunction(names => {
+    const player = document.querySelector('#music-player');
+    const status = document.querySelector('#music-status')?.textContent ?? '';
+    return player?.currentSrc.startsWith('blob:') && !player.paused && player.readyState >= 2
+      && names.find(name => status.startsWith('Playing ' + name));
+  }, names, { timeout: 15000 });
+  return result.jsonValue();
+}
 async function checkMusic(browser) {
   const directory = await mkdtemp(join(tmpdir(), 'hex-music-'));
   const page = await browser.newPage();
   try {
-    const lobbyTrack = 'M01001.wav';
-    const matchTracks = ['m01002.wav', 'm01003.wav', 'm01004.wav'];
-    const sampleRate = 8000;
-    const samples = sampleRate * 30;
-    const wav = Buffer.alloc(44 + samples * 2);
-    wav.write('RIFF', 0);
-    wav.writeUInt32LE(wav.length - 8, 4);
-    wav.write('WAVEfmt ', 8);
-    wav.writeUInt32LE(16, 16);
-    wav.writeUInt16LE(1, 20);
-    wav.writeUInt16LE(1, 22);
-    wav.writeUInt32LE(sampleRate, 24);
-    wav.writeUInt32LE(sampleRate * 2, 28);
-    wav.writeUInt16LE(2, 32);
-    wav.writeUInt16LE(16, 34);
-    wav.write('data', 36);
-    wav.writeUInt32LE(samples * 2, 40);
-    for (const [index, name] of [lobbyTrack, ...matchTracks].entries()) {
-      const frequency = 220 + index * 55;
-      for (let n = 0; n < samples; n++) wav.writeInt16LE(Math.round(150 * Math.sin(n * 2 * Math.PI * frequency / sampleRate)), 44 + n * 2);
-      await writeFile(join(directory, name), wav);
-    }
-    await writeFile(join(directory, 'notes.txt'), 'not an audio track');
+    const lobbyTrack = lobbyMusicTrack;
+    const matchTracks = matchMusicTracks;
+    await writeMusicFixture(directory);
 
     const musicUrl = new URL(url);
     musicUrl.searchParams.set('renderer', '2d');
@@ -92,15 +114,7 @@ async function checkMusic(browser) {
     const moveUp = page.locator('#music-up');
     const moveDown = page.locator('#music-down');
     const shuffle = page.locator('#music-shuffle');
-    const waitForPlaying = async names => {
-      const result = await page.waitForFunction(names => {
-        const player = document.querySelector('#music-player');
-        const status = document.querySelector('#music-status')?.textContent ?? '';
-        return player?.currentSrc.startsWith('blob:') && !player.paused && player.readyState >= 2
-          && names.find(name => status.startsWith('Playing ' + name));
-      }, names, { timeout: 15000 });
-      return result.jsonValue();
-    };
+    const waitForPlaying = names => waitForPlayingMusic(page, names);
     const options = () => queue.locator('option').evaluateAll(nodes => nodes.map(node => ({ name: node.textContent.trim(), value: node.value })));
     const queueOrder = async () => (await options()).map(option => option.name);
     const choose = async name => {
@@ -130,11 +144,7 @@ async function checkMusic(browser) {
 
     await page.goto(musicUrl.href, { waitUntil: 'networkidle' });
     await summary.click();
-    const [chooser] = await Promise.all([
-      page.waitForEvent('filechooser'), page.locator('#music-folder').click(),
-    ]);
-    await chooser.setFiles(directory);
-    await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
+    await importMusicFolder(page, directory);
     assert.equal(await audio.getAttribute('src'), null, 'the home screen waits until a room is opened');
     await assertQueueHidden();
 
@@ -229,6 +239,160 @@ async function checkMusic(browser) {
     check('Imported music keeps the lobby loop and cache, shuffles passes, and follows match-only queue controls');
   } finally {
     await page.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function observeRoomAudio() {
+  const taps = [];
+  const byOutput = new WeakMap();
+  const connect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (...args) {
+    const result = connect.apply(this, args);
+    if (args[0] !== this.context.destination || !(this instanceof GainNode || this instanceof AudioBufferSourceNode)) return result;
+    let tap = byOutput.get(this);
+    if (!tap) {
+      const analyser = this.context.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0;
+      tap = { analyser, wave: new Float32Array(analyser.fftSize), spectrum: new Float32Array(analyser.frequencyBinCount) };
+      byOutput.set(this, tap);
+      taps.push(tap);
+      if (taps.length > 12) taps.shift();
+    }
+    // Read the real rendered output. The analyser has no output connection.
+    connect.call(this, tap.analyser);
+    return result;
+  };
+  window.__hexQaRoomAudio = () => {
+    let loudest = { rms: 0, frequency: 0 };
+    for (const { analyser, wave, spectrum } of taps) {
+      if (analyser.context.state !== 'running') continue;
+      analyser.getFloatTimeDomainData(wave);
+      const rms = Math.sqrt(wave.reduce((energy, value) => energy + value * value, 0) / wave.length);
+      if (rms <= loudest.rms) continue;
+      analyser.getFloatFrequencyData(spectrum);
+      const binWidth = analyser.context.sampleRate / analyser.fftSize;
+      let peak = Math.ceil(180 / binWidth);
+      for (let bin = peak + 1; bin < Math.floor(1600 / binWidth); bin++) {
+        if (spectrum[bin] > spectrum[peak]) peak = bin;
+      }
+      loudest = { rms, frequency: peak * binWidth };
+    }
+    return loudest;
+  };
+}
+async function waitForRoomTone(page, name, allowUnlock = false) {
+  const frequency = musicTone.get(name);
+  const wait = allowUnlock => page.waitForFunction(({ frequency, allowUnlock }) => {
+    const { rms, frequency: heard } = window.__hexQaRoomAudio();
+    if (rms >= .004 && Math.abs(heard - frequency) <= 35) return 'audible';
+    const enable = document.querySelector('#music-enable-room');
+    if (allowUnlock && enable?.getClientRects().length) return 'unlock';
+    return false;
+  }, { frequency, allowUnlock }, { timeout: 20000, polling: 40 });
+  if (await (await wait(allowUnlock)).jsonValue() === 'unlock') {
+    await page.locator('#music-enable-room').click();
+    await wait(false);
+  }
+}
+async function waitForRoomSilence(page) {
+  await page.evaluate(() => { window.__hexQaQuietSince = null; });
+  await page.waitForFunction(() => {
+    const now = performance.now();
+    if (window.__hexQaRoomAudio().rms >= .004) window.__hexQaQuietSince = null;
+    else window.__hexQaQuietSince ??= now;
+    return window.__hexQaQuietSince !== null && now - window.__hexQaQuietSince >= 800;
+  }, null, { timeout: 10000, polling: 40 });
+}
+async function checkSharedMusic(browser) {
+  const directory = await mkdtemp(join(tmpdir(), 'hex-room-music-'));
+  let hostContext, listenerBrowser;
+  try {
+    await writeMusicFixture(directory, 90);
+    hostContext = await browser.newContext();
+    listenerBrowser = await chromium.launch({ headless: true });
+    const guestContext = await listenerBrowser.newContext();
+    const lateContext = await listenerBrowser.newContext();
+    await Promise.all([guestContext, lateContext].map(context => context.addInitScript(observeRoomAudio)));
+    const host = watch(await hostContext.newPage());
+    const guest = watch(await guestContext.newPage());
+    const musicUrl = new URL(url);
+    musicUrl.searchParams.set('renderer', '2d');
+    const summary = page => page.locator('#music-controls summary');
+    const listen = page => page.locator('#music-listen-room');
+    const share = host.locator('#music-share-room');
+
+    await host.goto(musicUrl.href);
+    await summary(host).click();
+    await importMusicFolder(host, directory);
+    await summary(host).click();
+    await host.locator('#room-create').click();
+    await host.waitForFunction(() => document.querySelector('#room-invite')?.value.includes('#join='), null, { timeout: 30000 });
+    const invite = await host.locator('#room-invite').inputValue();
+    await waitForPlayingMusic(host, [lobbyMusicTrack]);
+    await summary(host).click();
+    await share.waitFor({ state: 'visible' });
+    assert.equal(await share.isChecked(), false, 'room music is opt-in for the host');
+
+    await guest.goto(invite);
+    await guest.waitForFunction(() => {
+      const ready = document.querySelector('#room-ready');
+      return ready && !ready.disabled && !ready.hidden;
+    }, null, { timeout: 30000 });
+    await guest.locator('#room-ready').click();
+    await summary(guest).click();
+    assert.equal(await guest.locator('#music-player').getAttribute('src'), null, 'the fresh guest has never imported music');
+    await waitForRoomSilence(guest);
+
+    await share.check();
+    await listen(guest).waitFor({ state: 'visible' });
+    assert.equal(await listen(guest).isChecked(), true, 'guests listen by default when the host offers music');
+    await waitForRoomTone(guest, lobbyMusicTrack, true);
+    await summary(host).click();
+
+    await host.locator('#room-ready').click();
+    await host.waitForFunction(() => !document.querySelector('#room-start')?.disabled);
+    await host.locator('#room-start').click();
+    await guest.waitForFunction(() => document.querySelector('#game-status')?.textContent?.includes('Revision 0'), null, { timeout: 20000 });
+    const first = await waitForPlayingMusic(host, matchMusicTracks);
+    await waitForRoomTone(guest, first, true);
+
+    const next = matchMusicTracks.find(name => name !== first);
+    await summary(host).click();
+    await host.locator('#music-queue').selectOption({ label: next });
+    await host.locator('#music-play-now').click();
+    await waitForPlayingMusic(host, [next]);
+    await waitForRoomTone(guest, next, true);
+
+    const late = watch(await lateContext.newPage());
+    await late.goto(invite);
+    await late.waitForFunction(() => document.querySelector('#network-status')?.textContent?.includes('Watching live game as spectator'), null, { timeout: 30000 });
+    await summary(late).click();
+    await listen(late).waitFor({ state: 'visible' });
+    assert.equal(await listen(late).isChecked(), true);
+    await waitForRoomTone(late, next, true);
+
+    await listen(guest).uncheck();
+    await waitForRoomSilence(guest);
+    await waitForRoomTone(late, next);
+    await waitForPlayingMusic(host, [next]);
+    await listen(guest).check();
+    await waitForRoomTone(guest, next, true);
+
+    await host.locator('#music-toggle').click();
+    await Promise.all([guest, late].map(waitForRoomSilence));
+    await host.locator('#music-toggle').click();
+    await waitForRoomTone(guest, next, true);
+    await waitForRoomTone(late, next, true);
+
+    await share.uncheck();
+    await Promise.all([guest, late].map(waitForRoomSilence));
+    await waitForPlayingMusic(host, [next]);
+    check('Two browsers verify shared lobby, match and Play Now tones; late listening, mute and stopping work independently');
+  } finally {
+    await listenerBrowser?.close();
+    await hostContext?.close();
     await rm(directory, { recursive: true, force: true });
   }
 }
@@ -517,6 +681,7 @@ try {
     assertCameraUnchanged(beforeAbort,await inspect(guest),'Abort / select new map / start');
     check('Map re-selection and a fresh room game preserve each player camera');
     await hc.close(); await gc.close(); await sc.close();
+    await checkSharedMusic(browser);
   }
   assert.deepEqual(report.errors, []); check('No page, shader or rendering errors');
 } catch (error) {

@@ -5,21 +5,27 @@ import { validateOptionalRules, type OptionalRules } from '../rules/optional-rul
 import { HostAuthority } from './authority.ts';
 import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
 import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
+import { isRoomMusicMessage, RoomMusicHost } from './room-music.ts';
 
 export interface LobbySeat { id:string; name:string; connected:boolean; ready:boolean }
 interface Seat extends LobbySeat { peer:string | null; token:string }
 const cleanName=(value:unknown,fallback:string)=>{if(typeof value!=='string')return fallback;const name=value.replace(/\s+/g,' ').trim();return name.length>=1&&name.length<=20?name:fallback;};
-type Send = (peer:string, message:string)=>void;
+type Send = (peer:string, message:string, bestEffort?:boolean)=>unknown;
 
 /** Host-only session. Credentials must be generated with cryptographically secure randomness. */
 export class HostSession {
  private seats:Seat[]; private spectators=new Set<string>(); private authority:HostAuthority|null=null; private gameId=''; private recovering=false;
+ private readonly music:RoomMusicHost;
  constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number; mode?:GameMode; rules?:OptionalRules } = {}) {
   this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;this.mode=options.mode??'classic';this.rules=validateOptionalRules(options.rules);
   if(this.mode!=='classic'&&this.mode!=='harbor-coop')throw new Error('Invalid game mode.');
   if(this.mode==='harbor-coop'&&this.boardLayout!=='standard')throw new Error('Harbor Co-op requires the standard board.');
    if(this.mode==='harbor-coop'&&(this.rules.catchUp||this.rules.ships))throw new Error('Optional rules require Classic mode.');
   this.seats=[{id:'Player 1',name:'Player 1',connected:true,ready:false,peer:null,token:''}];
+  this.music=new RoomMusicHost(
+   (peer,text,frame)=>privateSend(peer,text,frame)!==false,
+   hasListeners=>this.publish({type:'music-subscribers',data:hasListeners}),
+  );
  }
  private mode:GameMode='classic';private rules:OptionalRules={catchUp:false,ships:false};
  private qaTwoPlayers:boolean; private boardLayout:BoardLayout; private mapSeed:number; private send:Send; private publish:(value:unknown)=>void; private token:()=>string; private random:()=>number;
@@ -35,6 +41,8 @@ export class HostSession {
  lobby():LobbySeat[]{return this.seats.map(({id,name,connected,ready})=>({id,name,connected,ready}));}
  spectatorCount():number{return this.spectators.size;}
  isRecovering():boolean{return this.recovering;}
+ setMusicSharing(enabled:boolean):void{this.music.setSharing(enabled);}
+ publishMusicFrame(base64:string):void{this.music.frame(base64);}
  allSeatsConnected():boolean{return this.seats.length>0&&this.seats.every(seat=>seat.connected);}
  recovery():SessionRecovery {
   if(!this.authority)throw new Error('Game not started.');
@@ -108,7 +116,10 @@ export class HostSession {
  /** Remove every lost transport before announcing, so no message targets a dead relay. */
  disconnectMany(peers:readonly string[]){
   const lost=new Set(peers);let changed=false;
-  for(const peer of lost)if(this.spectators.delete(peer))changed=true;
+  for(const peer of lost){
+   this.music.remove(peer);
+   if(this.spectators.delete(peer))changed=true;
+  }
   for(const seat of this.seats)if(seat.peer&&lost.has(seat.peer)){seat.peer=null;seat.connected=false;seat.ready=false;changed=true;}
   if(changed)this.announce();
  }
@@ -122,21 +133,24 @@ export class HostSession {
    if(typeof msg.token==='string'&&msg.token)seat=this.seats.find(s=>s.token===msg.token);
    else if(msg.token===undefined||msg.token===''){
     if(this.authority||msg.role==='spectator'){
-     this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});this.announce();
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});
+     this.music.admit(peer);this.announce();
      if(this.authority&&!this.recovering){this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));this.sendClock(peer);}
      return;
     }
     seat=this.claimSeat(peer,msg.name)??undefined;
     if(!seat){
-     this.spectators.add(peer);this.output(peer,'spectator',{watching:false,gameId:null});this.announce();return;
+     this.spectators.add(peer);this.output(peer,'spectator',{watching:false,gameId:null});
+     this.music.admit(peer);this.announce();return;
     }
    }
    if(!seat){this.output(peer,'error','Seat unavailable.');return;}
    const stalePeer=seat.peer;
    if(!this.authority)seat.name=cleanName(msg.name,seat.name||seat.id);
    seat.peer=peer;seat.connected=true;seat.ready=false;
-   this.output(peer,'seat',{id:seat.id,token:seat.token,gameId:this.gameId||null});this.announce();
-   if(stalePeer&&stalePeer!==peer){/* stale peer no longer controls the credential */}
+   if(stalePeer&&stalePeer!==peer)this.music.remove(stalePeer);
+   this.output(peer,'seat',{id:seat.id,token:seat.token,gameId:this.gameId||null});
+   this.music.admit(peer);this.announce();
    if(this.authority&&!this.recovering){
     this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
     if(this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
@@ -147,6 +161,7 @@ export class HostSession {
   const seat=this.seats.find(s=>s.peer===peer&&s.connected);
   const spectator=this.spectators.has(peer);
   if(!seat&&!spectator)return;
+  if(isRoomMusicMessage(msg)){this.music.receive(peer,msg);return;}
   if(msg.type==='role'&&!this.authority&&(msg.role==='player'||msg.role==='spectator')){
    if(seat&&seat.id!=='Player 1'&&msg.role==='spectator'){
     this.seats.splice(this.seats.indexOf(seat),1);

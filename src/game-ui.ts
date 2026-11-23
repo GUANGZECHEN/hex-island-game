@@ -8,6 +8,7 @@ import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
 import { GameMusic } from './game/ui/music.ts';
+import { RoomMusicControls } from './game/ui/room-music-controls.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, formatClockSeconds, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
@@ -38,6 +39,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
 const music=new GameMusic();
+const roomMusic = new RoomMusicControls(music);
 let localMusicRound = 0;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
@@ -820,6 +822,7 @@ const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectE
 el('room-randomize-map').onclick=()=>{roomSeed.value=String(crypto.getRandomValues(new Uint32Array(1))[0]);renderRoomMapPreview();roomSeed.dispatchEvent(new Event('change',{bubbles:true}));};renderRoomMapPreview();
 
 const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkRoom,lobby:renderNetworkLobby,
+ musicState:roomMusic.setState, musicFrame:roomMusic.receive, musicSubscribers:roomMusic.setSubscribers, musicReset:roomMusic.resetPlayback,
  clock:pulse=>{remoteActionClock=pulse?{playerId:pulse.playerId,deadlineAt:Date.now()+Math.max(0,Math.min(ACTION_WINDOW_MS,pulse.remainingMs)),paused:pulse.paused,remainingMs:pulse.remainingMs}:null;actionClockDisplay();},
  timedOut:playerId=>{log.unshift(`${playerName(playerId)} ran out of time; automatic action.`);},
  discardPending:()=>{
@@ -849,6 +852,7 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame(!sameGame);render();
 }});
+roomMusic.attach(network);
 
 el('turn-clock-pause').onclick=()=>attempt(()=>{
  if(!state)return;
