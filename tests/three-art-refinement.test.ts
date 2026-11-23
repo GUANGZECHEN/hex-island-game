@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ArtAssets, makeTerrain, makeBoatPort, makeBuilding } from '../src/game/board/three/art.ts';
 import { SEAT_EMBLEMS, HULL_STRIPE, SAIL_CLOTH, EMBLEM_INK } from '../src/game/ui/player-emblem.ts';
+import { DRAWN_WHEAT, grainClearance, MODELED_WHEAT } from '../src/game/board/grain-clearance.ts';
+import { setWheatClearance } from '../src/game/board/three/wheat-batches.ts';
 import { generateBoardSetup } from '../src/game/board/setup.ts';
 import { worldGeometry, portBoatPlan } from '../src/game/board/three/model.ts';
 import { ART_REVISION, refineTerrain, inspectTerrainArt, makeOcean, coastline, coastDistance, disposeArtInstances } from '../src/game/board/three/refinement.ts';
@@ -127,4 +129,53 @@ test('each ship keeps its owner’s colored hull, paint stripe and distinct came
   };
   assert.ok((luminance(SAIL_CLOTH) + .05) / (luminance(EMBLEM_INK) + .05) >= 7);
   assets.dispose();
+});
+
+test('roads and settlements subdue only the wheat nearest their border in both presentations', () => {
+  for (const layout of ['standard', 'expanded-5-6'] as const) {
+    const { topology } = worldGeometry(layout);
+    const hex = topology.hexes.find(hex => hex.neighborIds.length === 6)!;
+    const vertex = hex.vertexIds[3], edge = hex.edgeIds[0];
+    const distant = topology.hexes.find(other => !other.vertexIds.includes(vertex) && !other.edgeIds.includes(edge))!;
+    for (const art of [MODELED_WHEAT, DRAWN_WHEAT]) {
+      const vertexMask = grainClearance(hex, art, {}, {}, 'settlement', vertex);
+      const roadMask = grainClearance(hex, art, {}, {}, 'road', edge);
+      assert.ok(vertexMask > 0 && roadMask > 0 && vertexMask !== roadMask);
+      assert.equal(grainClearance(hex, art, {}, { [vertex]: { kind: 'city' } }, null, null), vertexMask);
+      assert.equal(grainClearance(hex, art, { [edge]: 'p1' }, {}, null, null), roadMask);
+      assert.equal(grainClearance(hex, art, { [edge]: 'p1' }, {}, 'city', vertex), roadMask | vertexMask);
+      assert.equal(grainClearance(distant, art, { [edge]: 'p1' }, { [vertex]: { kind: 'settlement' } }, null, null), 0);
+      assert.equal(grainClearance(hex, art, {}, { [vertex]: { kind: 'ship' } }, 'robber', hex.id), 0);
+    }
+  }
+});
+
+test('grain clearance retains the crop, restores exact matrices after Undo and never changes its token or ground', () => {
+  const assets = new GeometryAssets(), board = generateBoardSetup(24680), geometry = worldGeometry(board.layout);
+  const assignment = board.hexes.find(cell => cell.terrain === 'fields')!;
+  const hex = geometry.topology.hexes.find(cell => cell.id === assignment.hexId)!;
+  const { root, token } = makeTerrain(assets, assignment, geometry.hexes.get(hex.id)!);
+  refineTerrain(assets, assignment, root, token);
+  const base = root.children[0] as THREE.Mesh, baseMaterial = base.material, tokenMaterial = token!.material;
+  const solid = root.getObjectByName('upright-wheat-stems') as THREE.InstancedMesh;
+  const faded = root.getObjectByName('faded-upright-wheat-stems') as THREE.InstancedMesh;
+  const originalMatrices = solid.instanceMatrix.array.slice();
+  const mask = grainClearance(hex, MODELED_WHEAT, {}, { [hex.vertexIds[3]]: { kind: 'settlement' } }, null, null);
+  setWheatClearance(root, mask);
+  const art = inspectTerrainArt(root);
+  assert.equal(art.stems, 15);
+  assert.ok(art.fadedStems > 0 && art.fadedStems < art.stems);
+  assert.ok(art.wheatOpacity <= .2);
+  assert.equal((solid.material as THREE.Material).opacity, 1);
+  assert.equal(solid.count + faded.count, 15);
+  assert.equal(faded.castShadow, false);
+  assert.equal(faded.parent?.userData.decorative, 'wheat');
+  assert.equal(root.children[0], base); assert.equal(base.material, baseMaterial); assert.equal(token!.material, tokenMaterial);
+  const version = solid.instanceMatrix.version;
+  setWheatClearance(root, mask);
+  assert.equal(solid.instanceMatrix.version, version, 'same effective border does not re-upload instances');
+  setWheatClearance(root, 0);
+  assert.equal(solid.count, 15); assert.equal(faded.visible, false); assert.equal(faded.count, 0);
+  assert.deepEqual(solid.instanceMatrix.array, originalMatrices);
+  disposeArtInstances(root); assets.dispose();
 });

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { WHEAT_PATCHES } from '../grain-clearance.ts';
+import { prepareWheat } from './wheat-batches.ts';
 import type { ArtAssets } from './art.ts';
 import type { HexSetup } from '../setup.ts';
 import type { GroundPoint, worldGeometry } from './model.ts';
@@ -65,12 +67,12 @@ function addBricks(assets: ArtAssets, root: THREE.Group): void {
 
 function addWheat(assets: ArtAssets, root: THREE.Group): void {
   const field = new THREE.Group(); field.name = 'wheat-field'; field.userData.decorative = 'wheat'; root.add(field);
-  const count = OFFSETS.length * 5;
+  const count = WHEAT_PATCHES.length * 5;
   const stems = new THREE.InstancedMesh(assets.geometry('upright-wheat-stem', () => new THREE.CylinderGeometry(.008, .011, 1, 5)), assets.material('#b18c35'), count);
   const kernels = new THREE.InstancedMesh(assets.geometry('wheat-kernel', () => new THREE.IcosahedronGeometry(.032, 0)), assets.material('#efce62'), count * 7);
   stems.name = 'upright-wheat-stems'; kernels.name = 'wheat-ears';
   const transform = new THREE.Object3D(); let stem = 0, grain = 0;
-  OFFSETS.forEach(([x, z], patch) => {
+  WHEAT_PATCHES.forEach(([x, z], patch) => {
     for (let row = 0; row < 5; row++) {
       const sx = x + (row % 3 - 1) * .095, sz = z + (row < 3 ? -.065 : .065);
       const height = .29 + .035 * ((row + patch) % 3);
@@ -84,6 +86,7 @@ function addWheat(assets: ArtAssets, root: THREE.Group): void {
     }
   });
   for (const mesh of [stems, kernels]) { mesh.instanceMatrix.needsUpdate = true; mesh.castShadow = true; mesh.receiveShadow = true; mesh.computeBoundingBox(); mesh.computeBoundingSphere(); field.add(mesh); }
+  prepareWheat(root, field, [stems, kernels], assets);
 }
 
 /** Refines only visible terrain. The original boats, tokens and logical IDs are untouched. */
@@ -208,10 +211,14 @@ export function inspectTerrainArt(root: THREE.Group) {
   const distinct = new Set<string>();
   if (colors) for (let i = 0; i < colors.count; i++) distinct.add([colors.getX(i), colors.getY(i), colors.getZ(i)].map(n => n.toFixed(4)).join(','));
   let sheep = 0, bricks = 0, stems = 0, upward = true, cuboids = true, minDune = Infinity, maxDune = -Infinity;
+  let fadedStems = 0, wheatOpacity = 1;
   root.traverse(object => {
     if (object.userData.animal === 'sheep') sheep++;
     if (object instanceof THREE.Mesh && object.userData.brick) { bricks++; cuboids &&= object.geometry.type === 'BoxGeometry' && object.scale.x > object.scale.z && object.scale.z > object.scale.y; }
-    if (object instanceof THREE.InstancedMesh && object.name === 'upright-wheat-stems') {
+    if (object instanceof THREE.InstancedMesh && (object.name === 'upright-wheat-stems' || object.name === 'faded-upright-wheat-stems')) {
+      if (object.name.startsWith('faded-') && object.count > 0) {
+        fadedStems += object.count; wheatOpacity = (object.material as THREE.Material).opacity;
+      }
       stems += object.count; const matrix = new THREE.Matrix4();
       for (let i = 0; i < object.count; i++) { object.getMatrixAt(i, matrix); const up = new THREE.Vector3(0, 1, 0).transformDirection(matrix); upward &&= up.y > .99; }
     }
@@ -221,6 +228,6 @@ export function inspectTerrainArt(root: THREE.Group) {
     }
   });
   return { id: root.userData.hexId, terrain: root.userData.terrain, revision: root.userData.artRevision,
-    gradientColors: distinct.size, sheep, bricks, cuboids, stems, upward,
+    gradientColors: distinct.size, sheep, bricks, cuboids, stems, fadedStems, wheatOpacity, upward,
     duneMin: Number.isFinite(minDune) ? minDune : null, duneMax: Number.isFinite(maxDune) ? maxDune : null };
 }

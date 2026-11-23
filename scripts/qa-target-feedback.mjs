@@ -42,16 +42,35 @@ import { legalTargetIds } from './game/rules/legal.ts';
 },setShipBuilder(seat:number){
  state!.currentSeat=seat;viewer=state!.players[seat].id;lastTurnCue='10:'+seat;
  syncLocalActionClock();render();
+},robberWithSettlement(){
+ const current=state!;
+ for(const tile of createIslandBoard(current.board.layout).hexes){
+  if(tile.id===current.board.robberHexId)continue;
+  const vertex=tile.vertexIds.find(id=>current.buildings[id]?.kind==='settlement');
+  if(vertex)return {hex:tile.id,vertex};
+ }
+ throw new Error('The robber fixture needs a legal hex with a settlement on its boundary');
+},grainSite(){
+ const current=state!;
+ const land=createIslandBoard(current.board.layout);
+ const cropIds=new Set(current.board.hexes.filter(tile=>tile.terrain==='fields').map(tile=>tile.hexId));
+ const fields=land.hexes.filter(tile=>cropIds.has(tile.id));
+ for(const tile of fields){
+  const control=fields.find(other=>other.id!==tile.id&&!tile.neighborIds.includes(other.id));
+  if(control)return {tile:tile.id,control:control.id,vertices:tile.vertexIds,edges:tile.edgeIds};
+ }
+ throw new Error('The grain fixture needs two separate fields');
 }};
 `;
 async function ready(p){await p.waitForFunction(()=>window.__hex3D?.inspect().mode==='3d'&&window.__hex3D.inspect().frames>0);await settle(p);}
-async function start(p,renderer){const u=new URL(url);if(renderer)u.searchParams.set('renderer',renderer);await p.goto(u.href,{waitUntil:'networkidle'});await p.locator('#local-room-create').click();await p.locator('#start').click();if(await p.locator('#pass').isVisible())await p.locator('#reveal').click();if(renderer!=='2d')await ready(p);}
+async function start(p,renderer,base=url){const u=new URL(base);if(renderer)u.searchParams.set('renderer',renderer);await p.goto(u.href,{waitUntil:'networkidle'});await p.locator('#local-room-create').click();await p.locator('#start').click();if(await p.locator('#pass').isVisible())await p.locator('#reveal').click();if(renderer!=='2d')await ready(p);}
 async function orange(p,id,label){const info=await inspect(p);assert.equal(info.highlightedTarget,id,label);const active=info.targetColors.filter(t=>t.active);assert.equal(active.length,1,label+' exactly one active');assert.equal(active[0].id,id);assert.equal(active[0].color,'ff981f');assert.ok(info.targetColors.filter(t=>!t.active).every(t=>t.color==='fff3a0'));return info;}
-async function preview(p,action,label){
+async function preview(p,action,label,preferredTarget){
  await p.getByRole('button',{name:action,exact:true}).click();await settle(p);await assertDirectTargets(p);
  const ids=await boardTargetIds(p);assert.ok(ids.length>=2,label+' needs choices');
  await p.mouse.move(0,0);await settle(p);assert.equal((await inspect(p)).highlightedTarget,null,label+' starts with no hidden selection');
- const a=ids[0],b=ids[1],before=await inspect(p),status=await p.locator('#game-status').textContent();
+ const b=preferredTarget??ids[1];assert.ok(ids.includes(b),label+' target must remain legal');
+ const a=ids.find(id=>id!==b),before=await inspect(p),status=await p.locator('#game-status').textContent();
  await p.evaluate(()=>window.__oldTargetCancel=document.querySelector('#targets .target-cancel'));
  const point=await boardTargetPoint(p,a);assert.ok(point);
  await p.mouse.move(point.x,point.y);await settle(p);await orange(p,a,label+' first hover');
@@ -65,6 +84,94 @@ async function preview(p,action,label){
  await p.mouse.move(second.x,second.y);await settle(p);await orange(p,b,label+' screenshot highlight');
  check(label+': no coordinate controls; pointer-only orange feedback preserves camera and state');
  return {a,b,point:second,before};
+}
+
+async function verifySvgRobberArt(page,fixtureURL){
+ const svgUrl=new URL(fixtureURL);svgUrl.searchParams.set('renderer','2d');
+ await page.goto(svgUrl.href,{waitUntil:'networkidle'});
+ await page.evaluate(()=>window.__targetFixture.load('knight'));
+ const {hex,vertex}=await page.evaluate(()=>window.__targetFixture.robberWithSettlement());
+ const settlement=page.locator(`#board [data-building-kind="settlement"][data-vertex-id="${vertex}"]`);
+ const shell=settlement.locator('.game-building-shell');
+ const originalFill=await shell.evaluate(node=>getComputedStyle(node).fill);
+ await page.getByRole('button',{name:'Play Knight',exact:true}).click();
+ await page.getByRole('button',{name:'Move robber',exact:true}).click();
+ const target=page.locator(`#board [data-legal-target="robber"][data-target-id="${hex}"]`);
+ const ink=()=>target.evaluate(node=>({
+  stroke:Number(getComputedStyle(node.querySelector('.island-cell')).strokeOpacity),
+  inset:Number(getComputedStyle(node.querySelector('.island-cell-inset')).fillOpacity)
+ }));
+ const idle=await ink();
+ assert.ok(idle.stroke>=.5&&idle.stroke<=.70,'yellow outlines stay visible without a fully opaque stroke');
+ await target.focus();
+ assert.equal(await target.evaluate(node=>node.classList.contains('target-active')),true);
+ const active=await ink();
+ assert.ok(active.stroke>idle.stroke&&active.stroke<=.86);
+ assert.ok(active.inset>0&&active.inset<=.2,'orange keyboard focus uses a light tint on the terrain');
+ assert.ok(await shell.isVisible(),'the settlement remains on-screen while targeting the robber hex');
+ assert.equal(await shell.evaluate(node=>getComputedStyle(node).fill),originalFill);
+ assert.ok(await target.evaluate((tile,vertex)=>{
+  const settlement=tile.ownerSVGElement.querySelector('[data-building-kind="settlement"][data-vertex-id="'+vertex+'"]');
+  return !!(tile.compareDocumentPosition(settlement)&Node.DOCUMENT_POSITION_FOLLOWING);
+ },vertex),'settlements paint over the robber target in SVG');
+ await page.locator('#board .activity-alert').waitFor({state:'hidden',timeout:5000});
+ await page.locator('#board').screenshot({path:`${evidence}/transparent-robber-2d.png`});
+ await target.press('Enter');
+ assert.equal(await page.locator('#board [data-robber="true"]').getAttribute('data-hex-id'),hex);
+ assert.equal(await page.locator('#game-error').textContent(),'');
+ check('Light SVG robber highlight preserves an adjacent settlement and keyboard placement');
+}
+
+async function verifyGrainArt(page,fixtureURL){
+ const place=async (kind,id)=>{
+  await page.getByRole('button',{name:'Build '+kind,exact:true}).click();
+  await clickBoardTarget(page,id);
+  if(await page.locator('#pass').isVisible())await page.locator('#reveal').click();
+  await settle(page);
+ };
+ for(const renderer of ['3d','2d']){
+  const read=async id=>{
+   if(renderer==='3d'){
+    const tile=(await inspect(page)).terrainArt.find(tile=>tile.id===id);
+    return {stems:tile.stems,faded:tile.fadedStems,opacity:tile.wheatOpacity};
+   }
+   return page.locator(`#board [data-hex-id="${id}"] .terrain-art-fields [data-wheat-stalk]`).evaluateAll(stalks=>
+    stalks.map(stalk=>Number(getComputedStyle(stalk).opacity)));
+  };
+  const verifyFade=(before,after,label)=>{
+   if(renderer==='3d'){
+    assert.equal(after.stems,before.stems,'wheat remains present on the field');
+    assert.ok(after.faded>before.faded&&after.faded<after.stems,label+' softens nearby but not every stem');
+    assert.ok(after.opacity>0&&after.opacity<=.22,label+' uses a low-opacity material');
+    return;
+   }
+   assert.equal(before.length,5,'the SVG field has five wheat stalk groups');
+   assert.equal(after.length,before.length);
+   assert.ok(after.some((opacity,index)=>opacity<before[index]&&opacity/before[index]<=.25),label+' visibly softens at least one nearby stalk');
+   assert.ok(after.some(opacity=>opacity>=.95),label+' keeps far-side stalks visible');
+  };
+  await start(page,renderer,fixtureURL);
+  let site=await page.evaluate(()=>window.__targetFixture.grainSite());
+  const clear=await read(site.tile),unchanged=await read(site.control);
+  await place('settlement',site.vertices[3]);
+  verifyFade(clear,await read(site.tile),renderer+' settlement');
+  assert.deepEqual(await read(site.control),unchanged,'placing a settlement does not fade a separate field');
+  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
+  await page.locator('#board').screenshot({path:`${evidence}/grain-settlement-${renderer}.png`});
+
+  await start(page,renderer,fixtureURL);
+  site=await page.evaluate(()=>window.__targetFixture.grainSite());
+  // Choose an edge toward a different bundle from the setup settlement.
+  const [vertex,edge]=renderer==='3d'?[2,1]:[0,0];
+  await place('settlement',site.vertices[vertex]);
+  const withoutRoad=await read(site.tile),control=await read(site.control);
+  await place('road',site.edges[edge]);
+  verifyFade(withoutRoad,await read(site.tile),renderer+' road');
+  assert.deepEqual(await read(site.control),control,'placing a road does not fade a separate field');
+  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
+  await page.locator('#board').screenshot({path:`${evidence}/grain-road-${renderer}.png`});
+  check(renderer+' grain art fades locally after actual settlement and road placement');
+ }
 }
 
 async function captureShipArt(page,renderer){
@@ -235,7 +342,17 @@ try{
   for(const [mode,card,label] of [['city',null,'Upgrade house to city'],['robber','knight','Move robber'],['free-road','road-building','Build road']]){
    await page.goto(fixtureURL.href,{waitUntil:'networkidle'});await page.evaluate(card=>window.__targetFixture.load(card),card);await ready(page);
    if(card)await page.getByRole('button',{name:card==='knight'?'Play Knight':'Play Road Building',exact:true}).click();
-   state=await preview(page,label,mode);
+   const nearby=mode==='robber'?await page.evaluate(()=>window.__targetFixture.robberWithSettlement()):null;
+   state=await preview(page,label,mode,nearby?.hex);
+   if(nearby){
+    assert.ok(state.before.targetColors.every(target=>target.opacity>=.12&&target.opacity<=.25&&target.depthTest),
+      'yellow WebGL robber targets are translucent and respect geometry depth');
+    const active=(await inspect(page)).targetColors.find(target=>target.id===nearby.hex);
+    assert.ok(active.active&&active.depthTest&&active.opacity>.25&&active.opacity<=.36,
+      'the pointed hex remains distinct without painting over the settlement');
+    assert.ok(state.before.buildings.some(([id,piece])=>id===nearby.vertex&&piece.kind==='settlement'));
+    check('Light WebGL robber highlights preserve the adjacent settlement and direct selection');
+   }
    await page.locator('#board .activity-alert').waitFor({state:'hidden',timeout:5000});await page.screenshot({path:`${evidence}/orange-${mode}.png`,fullPage:true});
    await clickBoardTarget(page,state.b);await settle(page);
    const done=await inspect(page);assert.equal(done.highlightedTarget,null);
@@ -245,6 +362,8 @@ try{
    check(mode+': selected target remains correct through the actual reducer');
   }
   await verifyShipArt(page,fixtureURL);
+  await verifySvgRobberArt(page,fixtureURL);
+  await verifyGrainArt(page,fixtureURL);
  }
  await start(page,'2d');await page.getByRole('button',{name:'Build settlement',exact:true}).click();
  const nodes=page.locator('#board [data-target-id]');assert.ok(await nodes.count()>1);

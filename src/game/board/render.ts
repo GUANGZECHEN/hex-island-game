@@ -1,4 +1,5 @@
-import { createIslandBoard } from './geometry.ts';
+import { createIslandBoard, type Board } from './geometry.ts';
+import { DRAWN_WHEAT, grainClearance, SVG_WHEAT_OFFSETS } from './grain-clearance.ts';
 import { createSetupView } from './presentation.ts';
 import type { BoardSetup, HexSetup } from './setup.ts';
 import { desertIcon, resourceIcon } from '../ui/icons.ts';
@@ -58,9 +59,11 @@ function appendTerrainArt(group:SVGElement,terrain:HexSetup['terrain'],cx:number
     path(art,`M${cx-.65} ${cy+.35}Q${cx-.2} ${cy+.13} ${cx+.18} ${cy+.35}Q${cx+.43} ${cy+.19} ${cx+.67} ${cy+.34}`,'terrain-art-secondary');
     path(art,`M${cx-.43} ${cy+.12}l-.05-.12m.05.12.06-.11M${cx+.4} ${cy+.2}l-.04-.12m.04.12.07-.1`,'terrain-art-detail');
   }else if(terrain==='fields'){
-    for(const dx of [-.48,-.24,0,.24,.48]){
-      line(art,cx+dx,cy+.34,cx+dx,cy-.18,'terrain-art-detail');
-      path(art,`M${cx+dx} ${cy-.08}l-.10-.10m.10.2.11-.11M${cx+dx} ${cy+.08}l-.11-.09m.11.2.1-.1`,'terrain-art-primary');
+    for (const [index, dx] of SVG_WHEAT_OFFSETS.entries()) {
+      const stalk = node('g', { 'data-wheat-stalk': String(index) });
+      line(stalk,cx+dx,cy+.34,cx+dx,cy-.18,'terrain-art-detail');
+      path(stalk,`M${cx+dx} ${cy-.08}l-.10-.10m.10.2.11-.11M${cx+dx} ${cy+.08}l-.11-.09m.11.2.1-.1`,'terrain-art-primary');
+      art.append(stalk);
     }
     path(art,`M${cx-.62} ${cy+.36}Q${cx} ${cy+.18} ${cx+.62} ${cy+.36}`,'terrain-art-secondary');
   }else if(terrain==='mountains'){
@@ -97,6 +100,22 @@ function appendRobber(group:SVGElement,cx:number,cy:number){
   line(marker,cx-.18,y-.18,cx+.18,y+.18,'robber-marker-slash');
   path(marker,`M${cx-.15} ${y-.18}Q${cx} ${y-.27} ${cx+.15} ${y-.18}`,'robber-marker-highlight');
   group.append(marker);
+}
+
+/** The illustration alone recedes; rate, number, robber and resource glyphs keep their normal contrast. */
+export function paintGrainClearance(svg: SVGSVGElement, board: Board,
+  roads: Readonly<Record<string, string>>, buildings: Readonly<Record<string, { kind: string }>>,
+  previewKind: string | null = null, previewId: string | null = null): void {
+  const className = previewKind ? 'wheat-preview' : 'wheat-occupied';
+  for (const tile of Array.from(svg.querySelectorAll<SVGGElement>('[data-terrain="fields"]'))) {
+    const hex = board.hexes.find(hex => hex.id === tile.dataset.hexId);
+    if (!hex) continue;
+    const mask = grainClearance(hex, DRAWN_WHEAT, roads, buildings, previewKind, previewId);
+    if (previewKind) tile.querySelector('.terrain-art-fields')?.classList.toggle('wheat-preview-local', !!mask);
+    for (const stalk of Array.from(tile.querySelectorAll<SVGGElement>('[data-wheat-stalk]'))) {
+      stalk.classList.toggle(className, !!(mask & (1 << Number(stalk.dataset.wheatStalk))));
+    }
+  }
 }
 
 export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): void {

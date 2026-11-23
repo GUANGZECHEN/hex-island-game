@@ -2,11 +2,16 @@
 #board .game-target-vertex.target-active{fill:#ff981f!important;stroke:#b75c0a!important;stroke-width:.065;opacity:1;filter:none!important}
 #board .game-target-road.target-active{stroke:#ff981f!important;stroke-opacity:1;opacity:1;filter:none!important}
 #board .game-target-city.target-active .game-building-shell{stroke:#ff981f!important;stroke-width:.10;filter:none!important}
-#board .robber-target.target-active .island-cell{stroke:#ff981f!important;stroke-width:.13;stroke-opacity:1}
-#board .robber-target.target-active .island-cell-inset{fill:#ff981f!important;fill-opacity:.36;stroke:#d56a0f;stroke-width:.055}
+#board .robber-target{cursor:pointer}
+#board .robber-target:focus{outline:none}
+#board .robber-target .island-cell{stroke:#ffd15c;stroke-width:.10;stroke-opacity:.68}
+#board .robber-target.target-active .island-cell{stroke:#ff981f;stroke-width:.11;stroke-opacity:.84}
+#board .robber-target.target-active .island-cell-inset{fill:#ff981f;fill-opacity:.18;stroke:#d56a0f;stroke-width:.05}
 #board [data-target-active="true"]{cursor:pointer}
 
 #board [data-placement-preview]{opacity:.82;pointer-events:none}
-#board .placement-neighbor .terrain-art{opacity:.15}
+#board .placement-neighbor .terrain-art:not(.wheat-preview-local){opacity:.15}
+#board .terrain-art-fields .wheat-occupied,
+#board .placement-neighbor .wheat-preview-local .wheat-preview{opacity:.08}
 #board-confirm-placement{min-height:44px;justify-self:center}
 #board-confirm-placement[hidden]{display:none}
