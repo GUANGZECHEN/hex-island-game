@@ -40,6 +40,9 @@ function prepareDenseBoard() {
   state = next;
   viewer = next.players[0].id;
   syncLocalActionClock();
+  // Safe Undo intentionally restores the pre-build deadline. Each independent
+  // measurement starts with a fresh turn window outside its timed region.
+  window.__startPerformanceTrial = () => syncLocalActionClock([viewer]);
   el('pass').hidden = true;
   el('game').hidden = false;
   enterGame(true);
@@ -105,7 +108,7 @@ async function measureTap(page, session, point, feedback) {
         const before = window.__hex3D.renderedFrames();
         function checkFrame() {
           const confirm = document.getElementById('board-confirm-placement');
-          const shown = !!confirm && confirm.getClientRects().length > 0;
+          const shown = !!confirm && !confirm.hidden && confirm.getClientRects().length > 0;
           if ((feedback === 'preview') !== shown || window.__hex3D.renderedFrames() <= before) {
             requestAnimationFrame(checkFrame);
             return;
@@ -136,10 +139,18 @@ async function place(page, session, label) {
   assert.ok(point);
   const preview = await measureTap(page, session, point, 'preview');
   const confirm = page.locator('#board-confirm-placement');
-  await confirm.scrollIntoViewIfNeeded();
-  const box = await confirm.boundingBox();
-  assert.ok(box);
-  const construction = await measureTap(page, session, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 'construction');
+  await confirm.evaluate(button => {
+    if (button.hidden) throw new Error('Placement preview disappeared before confirmation');
+    button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  });
+  await settle(page);
+  const confirmPoint = await confirm.evaluate(button => {
+    const rect = button.getBoundingClientRect();
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    if (button.hidden || !button.contains(document.elementFromPoint(x, y))) throw new Error('Confirmation button cannot receive touch at its center');
+    return { x, y };
+  });
+  const construction = await measureTap(page, session, confirmPoint, 'construction');
   const metrics = await page.evaluate(id => {
     const state = window.__hex3D.inspect();
     return { kind: state.buildings.find(([key]) => key === id)?.[1].kind, groupBuild: state.structureBuildMs };
@@ -233,7 +244,21 @@ export async function measureExpandedBoard(page, { sameContext = false } = {}) {
     const samples = [];
     // One unmeasured warm-up compiles any new materials and exercises Undo.
     for (let i = 0; i <= sampleCount; i++) {
-      const result = await place(dense, input.session, 'Upgrade house to city');
+      await dense.evaluate(() => window.__startPerformanceTrial());
+      let result;
+      try {
+        result = await place(dense, input.session, 'Upgrade house to city');
+      } catch (cause) {
+        const diagnostic = await dense.evaluate(() => ({
+          status: document.getElementById('game-status')?.textContent,
+          clock: document.getElementById('turn-action-clock-seconds')?.textContent,
+          handoff: !document.getElementById('pass')?.hidden,
+          confirmHidden: document.getElementById('board-confirm-placement')?.hidden,
+          selected: window.__hex3D?.inspect().selectedTarget,
+          mode: window.__hex3D?.inspect().targetMode,
+        }));
+        throw new Error('Dense construction trial ' + i + ' failed: ' + String(cause) + ' ' + JSON.stringify(diagnostic), { cause });
+      }
       if (i > 0) samples.push(result);
       await dense.getByRole('button', { name: 'Undo last action', exact: true }).click();
       await settle(dense);
