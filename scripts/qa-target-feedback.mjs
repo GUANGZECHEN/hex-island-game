@@ -189,11 +189,17 @@ async function verifyTouchPlacement(browser,renderer){
   await confirm.waitFor({state:'visible'});
   assert.match(await confirm.innerText(),/Confirm road/i);
   assert.equal((await inspect(phone)).selectedTarget,edge);
-  const roads=async ()=>renderer==='3d'?(await inspect(phone)).roads.length:phone.locator('#board .game-road-piece').count();
+  const roads=async ()=>renderer==='3d'?(await inspect(phone)).roads.length:phone.locator('#board [data-road-id]').count();
+  if(renderer==='2d'){
+   const preview=phone.locator('#board [data-placement-preview="road"]');
+   assert.equal(await preview.getAttribute('data-preview-target'),edge);
+   assert.equal(await preview.getAttribute('data-road-id'),null,'an SVG preview has no committed road ID');
+  }
   assert.equal(await roads(),0,'touch release previews a road without placing it');
   await confirm.tap();
   await settle(phone);
   assert.equal(await roads(),1,'road confirmation places exactly one road');
+  if(renderer==='2d')assert.equal(await phone.locator('#board [data-road-id]').getAttribute('data-road-id'),edge);
   check(renderer+' touch settlement and road previews require explicit confirmation; Cancel, retarget and stale paths pass');
  }finally{
   await context.close();
