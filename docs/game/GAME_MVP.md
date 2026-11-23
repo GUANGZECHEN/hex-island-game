@@ -92,6 +92,10 @@ The host may select an expanded 5–6 player board before room creation. Its hor
 The expanded table admits up to six player seats before game start and uses the same host-authoritative rules engine, turn structure, build/trade/development-card behavior and victory rules as the current standard game. Additional expansion-specific turn phases are outside this approved change.
 
 
+## Background music
+
+Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. The match plays the other audio tracks in filename order and loops the playlist. Music and its pause setting are stored in the browser on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
+
 ## Local test bots
 
 Local game setup includes a test-bot selector for zero through five bots. Bot modes keep Player 1 as the only human viewer; selecting N bots creates Player 1 plus N automated players. One through three bots use the standard board. Four bots create a five-player expanded-board game, and five bots create a six-player expanded-board game automatically. Bot turns do not open the pass-device screen; the human keeps the Player 1 private hand visible while automated players advance with a two-second delay between actions. On a visible board, bot progression also waits for the roll presentation and any supplement notice to finish; hidden or offscreen boards do not block bot progression.

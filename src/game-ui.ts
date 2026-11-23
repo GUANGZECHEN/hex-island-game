@@ -6,6 +6,7 @@ import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
+import { GameMusic } from './game/ui/music.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, formatClockSeconds, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
@@ -34,6 +35,7 @@ import { applyBotCommand } from './game/bot/runner';
 
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
+const music=new GameMusic();
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
@@ -252,6 +254,7 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function enterGame(newMatch:boolean){
+ music.setScene('match');
  if(newMatch){draftCounts.clear();draftChoices.clear();tradeDrafts.clear();}
  const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
@@ -360,7 +363,10 @@ function enterNetworkRoom(){
  scheduleDesktopBoardFit();
 }
 function renderNetworkLobby(view:RoomTableLobby){
- if(!view.started||view.recovering)enterNetworkRoom();
+ if(!view.started||view.recovering){
+  music.setScene('lobby');
+  enterNetworkRoom();
+ }
  document.body.classList.toggle('room-configuring',!view.started||view.recovering);
  document.body.classList.toggle('room-running',view.started&&!view.recovering);
  if(view.started&&!view.recovering)return;
@@ -729,6 +735,7 @@ function startLocalRound(settings:LocalRoomSettings){
 }
 el('local-room-create').onclick=()=>{
  localRoomOpen=true;
+ music.setScene('lobby');
  el('local-room-create').hidden=true;
  el('local-room-lobby').hidden=false;
  refreshLocalMapPreview();

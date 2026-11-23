@@ -1646,3 +1646,11 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 .supplement-resources{display:flex;justify-content:center;gap:.75rem;margin-top:.4rem;font-size:1.2rem;font-weight:800}
 .supplement-resources>span{display:inline-flex;align-items:center;gap:.25rem}
 .supplement-resources svg{width:1.5rem;height:1.5rem}
+
+.music-controls{position:relative;flex:none;width:max-content;margin-inline-start:auto}
+.music-controls > summary{cursor:pointer;padding:.22rem .6rem;border:1px solid #b7cbbd;border-radius:.45rem;background:#f8fbf6;color:#285543;font-weight:700}
+.music-controls > summary:focus-visible{outline:2px solid #a04c0a;outline-offset:2px}
+.music-controls .music-panel{position:absolute;z-index:30;inset-inline-end:0;margin-top:.25rem;width:min(16rem,calc(100vw - 2rem));padding:.55rem;border:1px solid #cbd8c8;border-radius:.55rem;background:#fffefa;box-shadow:0 .18rem .65rem #1c352b30}
+.music-panel button{font-size:.83rem}
+.music-panel [role="status"]{margin:.3rem 0 0;font-size:.78rem;color:#284c3e;overflow-wrap:anywhere}
+.music-panel [role="status"]:empty{display:none}

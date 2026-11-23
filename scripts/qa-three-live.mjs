@@ -3,7 +3,9 @@ import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const evidence = process.env.THREE_EVIDENCE || 'three-evidence';
@@ -51,12 +53,86 @@ async function drag(page, dx, dy, shift = false) {
   if (shift) await page.keyboard.up('Shift'); await settle(page);
 }
 function colors(data) { const p = PNG.sync.read(data), result = new Set(); for (let i = 0; i < p.data.length; i += 16) result.add(`${p.data[i] >> 3},${p.data[i + 1] >> 3},${p.data[i + 2] >> 3}`); return result.size; }
+async function checkMusic(browser) {
+  const directory = await mkdtemp(join(tmpdir(), 'hex-music-'));
+  const page = await browser.newPage();
+  try {
+    const sampleRate = 8000;
+    const samples = sampleRate * 3;
+    const wav = Buffer.alloc(44 + samples * 2);
+    wav.write('RIFF', 0);
+    wav.writeUInt32LE(wav.length - 8, 4);
+    wav.write('WAVEfmt ', 8);
+    wav.writeUInt32LE(16, 16);
+    wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(sampleRate, 24);
+    wav.writeUInt32LE(sampleRate * 2, 28);
+    wav.writeUInt16LE(2, 32);
+    wav.writeUInt16LE(16, 34);
+    wav.write('data', 36);
+    wav.writeUInt32LE(samples * 2, 40);
+    for (let n = 0; n < samples; n++) wav.writeInt16LE(Math.round(150 * Math.sin(n * 2 * Math.PI * 220 / sampleRate)), 44 + n * 2);
+    for (const name of ['M01001.wav', 'm01002.wav', 'm01003.wav']) await writeFile(join(directory, name), wav);
+    await writeFile(join(directory, 'notes.txt'), 'not an audio track');
+
+    const musicUrl = new URL(url);
+    musicUrl.searchParams.set('renderer', '2d');
+    const summary = page.locator('#music-controls summary');
+    const toggle = page.locator('#music-toggle');
+    const audio = page.locator('#music-player');
+    const waitForTrack = name => page.waitForFunction(name => {
+      const player = document.querySelector('#music-player');
+      return document.querySelector('#music-status')?.textContent?.includes('Playing ' + name)
+        && player.currentSrc.startsWith('blob:') && !player.paused && player.readyState >= 2;
+    }, name, { timeout: 15000 });
+    await page.goto(musicUrl.href, { waitUntil: 'networkidle' });
+    await summary.click();
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'), page.locator('#music-folder').click(),
+    ]);
+    await chooser.setFiles(directory);
+    await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
+    assert.equal(await audio.getAttribute('src'), null, 'the home screen waits until a room is opened');
+
+    await summary.click();
+    await page.locator('#local-room-create').click();
+    await waitForTrack('M01001.wav');
+    assert.equal(await audio.evaluate(player => player.loop), true, 'the waiting-room track loops');
+    const lobbySource = await audio.getAttribute('src');
+    await page.locator('#start').click();
+    await waitForTrack('m01002.wav');
+    assert.notEqual(await audio.getAttribute('src'), lobbySource);
+    assert.equal(await audio.evaluate(player => player.loop), false);
+    await waitForTrack('m01003.wav');
+
+    await summary.click();
+    await toggle.click();
+    assert.equal(await audio.evaluate(player => player.paused), true);
+    await page.reload({ waitUntil: 'networkidle' });
+    await summary.click();
+    await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
+    await summary.click();
+    await page.locator('#local-room-create').click();
+    await summary.click();
+    assert.equal(await audio.evaluate(player => player.paused), true, 'the music pause preference survives reload');
+    await toggle.click();
+    await waitForTrack('M01001.wav');
+    check('Local music folder plays m01001 in the waiting room, advances through gameplay tracks, and survives reload');
+  } finally {
+    await page.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+
 try {
   if (!process.env.QA_URL) {
     server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', '4175', '--strictPort'], { stdio: 'pipe' });
     for (let i = 0; i < 80; i++) { try { if ((await fetch(url)).ok) break; } catch {} await delay(200); }
   }
   browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await checkMusic(browser);
   const page = current = watch(await browser.newPage({ viewport: { width: 1920, height: 900 } }));
   await startLocal(page, 3);
   const actionTimer=page.locator('#turn-action-clock');
