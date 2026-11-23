@@ -1,7 +1,13 @@
+import * as THREE from 'three';
+import { ArtAssets } from '../src/game/board/three/art.ts';
+import { PlacementPreview } from '../src/game/board/three/placement-preview.ts';
+import { generateBoardSetup } from '../src/game/board/setup.ts';
+import { worldGeometry, type BoardSceneView } from '../src/game/board/three/model.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { TargetFeedback, TARGET_COLORS } from '../src/game/board/target-feedback.ts';
+import { createIslandBoard } from '../src/game/board/geometry.ts';
+import { adjacentPlacementHexes, isPlacement, TargetFeedback, TARGET_COLORS } from '../src/game/board/target-feedback.ts';
 
 test('one hovered target is orange and the prior selection returns on leave', () => {
   const view = new TargetFeedback(); view.update('board:road', ['a','b']);
@@ -49,4 +55,49 @@ test('entering target mode does not preselect a hidden coordinate',()=>{
  const preview=new TargetFeedback();preview.update('board:road',['a','b']);
  assert.equal(preview.active,null);preview.hover('b');assert.equal(preview.active,'b');
  preview.hover(null);assert.equal(preview.active,null);
+});
+
+test('scenery focus follows the hexes adjoining the actual vertex or edge', () => {
+  for (const layout of ['standard','expanded-5-6'] as const) {
+    const board = createIslandBoard(layout);
+    const coast = board.edges.find(edge => edge.hexIds.length === 1)!;
+    const inland = board.edges.find(edge => edge.hexIds.length === 2)!;
+    assert.deepEqual(adjacentPlacementHexes(board,'road',coast.id),coast.hexIds);
+    assert.deepEqual(adjacentPlacementHexes(board,'road',inland.id),inland.hexIds);
+    const junction = board.vertices.find(vertex => board.hexes.filter(hex => hex.vertexIds.includes(vertex.id)).length === 3)!;
+    for (const kind of ['city','settlement','ship','station'] as const) {
+      assert.equal(adjacentPlacementHexes(board,kind,junction.id).length,3);
+      assert.deepEqual(adjacentPlacementHexes(board,kind,'missing'),[]);
+      assert.ok(isPlacement(kind));
+    }
+  }
+  assert.ok(isPlacement('road')); assert.equal(isPlacement(null),false); assert.equal(isPlacement('robber'),false);
+});
+
+test('3D road preview reuses the piece and quiets only adjacent scenery without editing shared art', () => {
+  const assets = new ArtAssets(), preview = new PlacementPreview();
+  const board = generateBoardSetup(24680), geometry = worldGeometry(board.layout);
+  const [first, second] = geometry.topology.edges;
+  const adjacent = first.hexIds[0], distant = board.hexes.find(hex => !first.hexIds.includes(hex.hexId))!.hexId;
+  const makeTile = () => {
+    const root = new THREE.Group(), tree = new THREE.Group(); tree.userData.decorative = 'tree'; root.add(tree);
+    const crown = assets.box(tree,'#507347',[.2,.3,.2],0,0,0);
+    return { root, crown };
+  };
+  const near = makeTile(), far = makeTile(), original = near.crown.material;
+  assert.equal(far.crown.material,original);
+  const tiles = new Map([[adjacent,near],[distant,far]]);
+  const view:BoardSceneView = {board,roads:{},buildings:{},players:[{id:'A',name:'A',color:'#005692',seat:0}],
+    targetMode:'road',legalTargets:[first.id,second.id],placementPlayerId:'A'};
+  assert.ok(preview.update(first.id,view,geometry,tiles,assets));
+  const piece = preview.root.children[0];
+  assert.equal(preview.kind,'road'); assert.equal(preview.target,first.id);
+  assert.notEqual(near.crown.material,original); assert.equal(far.crown.material,original);
+  assert.equal(assets.material('#005692').transparent,false);
+  assert.equal(preview.update(first.id,view,geometry,tiles,assets),false);
+  assert.ok(preview.update(second.id,view,geometry,tiles,assets)); assert.equal(preview.root.children[0],piece);
+  assert.ok(preview.update(null,view,geometry,tiles,assets));
+  assert.equal(preview.root.children.length,0); assert.equal(near.crown.material,original);
+  assert.equal(preview.update(first.id,{...view,placementPlayerId:undefined},geometry,tiles,assets),false);
+  preview.reset(); assets.dispose();
 });

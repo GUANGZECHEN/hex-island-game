@@ -8,9 +8,10 @@ export interface BoardSceneView {
   harborPorts?:boolean;
   stations?:Readonly<Record<string,{builtBy:string}>>;
   board: BoardSetup;
-  players: readonly { id: string; name: string; color: string }[];
+  players: readonly { id: string; name: string; color: string; seat?: number }[];
   roads: Readonly<Record<string, string>>;
   buildings: Readonly<Record<string, { playerId: string; kind: 'settlement' | 'city' | 'ship' }>>;
+  placementPlayerId?: string;
   targetMode: TargetMode | null;
   legalTargets: readonly string[];
 }

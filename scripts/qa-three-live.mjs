@@ -1,4 +1,5 @@
 import {assertDirectTargets,boardTargetIds,boardTargetPoint,clickBoardTarget} from './qa-board-targets.mjs';
+import { measureExpandedBoard } from './qa-board-performance.mjs';
 import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import assert from 'node:assert/strict';
@@ -169,6 +170,9 @@ try {
   const colorCount = colors(await page.locator('#board canvas').screenshot()); assert.ok(colorCount > 100);
   assert.ok(info.deserts.every(d => !d.hasToken && d.duneMeshes === 1 && d.props === 0));
   assert.ok(info.boats.every(b => b.decks.length === 2 && b.decks[0].vertexId !== b.decks[1].vertexId));
+  assert.ok(info.boats.every(boat => boat.stitched && boat.ratio === (boat.type === 'generic' ? '3:1' : '2:1')));
+  assert.equal(info.shipIdentities.length, 0, 'neutral trading boats are separate from player ships');
+  check('3D neutral port boats retain stitched sails and trade ratios');
   check('Actual game defaults to nonblank 3D with sand dunes and nine boat ports', { triangles: info.triangles, calls: info.calls, colors: colorCount });
   await page.screenshot({ path: `${evidence}/three-live-desktop.png`, fullPage: true });
   assert.equal(info.ambientMotion.enabled, true);
@@ -293,15 +297,35 @@ try {
   assert.equal(await page.locator('#board [data-building-kind]').count(), 1);
   check('Camera and renderer switching retain direct-board controls; context loss preserves gameplay in SVG');
   await startLocal(page, 6, '86420'); info = await inspect(page); assert.equal(info.hexCount, 24); assert.equal(info.portCount, 11); assert.equal(info.deserts.length, 2);
+  const expandedEmblems = await page.locator('#player-strip .player-marker [data-seat-emblem]').evaluateAll(nodes => nodes.map(node => node.dataset.seatEmblem));
+  assert.equal(expandedEmblems.length, 6);
+  assert.equal(new Set(expandedEmblems).size, 6, 'all six seat emblems are distinct without color');
   await page.screenshot({ path: `${evidence}/three-live-expanded.png`, fullPage: true });
   await delay(300); const f = (await inspect(page)).frames; await delay(550);
   const animatedFrames = (await inspect(page)).frames - f;
   assert.ok(animatedFrames >= 1 && animatedFrames <= 17, `Ambient 3D frame budget exceeded: ${animatedFrames}`);
   check('Expanded board has eleven moving boats, two dunes and a capped ambient animation frame rate', { animatedFrames });
+  check('Expanded-board camera and placement performance baseline', await measureExpandedBoard(page));
   const unsupported = watch(await browser.newPage());
   await unsupported.addInitScript(() => { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (type, ...args) { return type === 'webgl2' ? null : get.call(this, type, ...args); }; });
   await unsupported.goto(url.href); await unsupported.locator('#local-room-create').click(); await unsupported.locator('#start').click(); await reveal(unsupported);
-  assert.equal(await unsupported.locator('#board svg.island-board').count(), 1); await unsupported.close();
+  assert.equal(await unsupported.locator('#board svg.island-board').count(), 1);
+  const ports = await unsupported.locator('#board [data-port-edge]').evaluateAll(groups => groups.map(group => ({
+    type: group.dataset.portType,
+    ratio: group.querySelector('.port-label')?.textContent?.trim(),
+    trim: !!group.querySelector('.port-trim'),
+    symbol: !!group.querySelector('.port-resource-icon'),
+    seatEmblem: !!group.querySelector('[data-seat-emblem]')
+  })));
+  assert.equal(ports.length, 9);
+  for (const port of ports) {
+    const generic = port.type === 'generic';
+    assert.equal(port.ratio, generic ? '3:1' : '2:1');
+    assert.equal(port.symbol, !generic);
+    assert.ok(port.trim && !port.seatEmblem, 'neutral SVG ports carry trade trim and no ownership emblem');
+  }
+  check('SVG neutral ports retain their trade ratios, symbols and trim');
+  await unsupported.close();
   check('A device without WebGL2 starts a playable SVG game automatically');
   // Wait for the real 60-second deadline in a separate game; no accelerated clock
   // or synthetic activity is used, so this exercises the browser timeout path.

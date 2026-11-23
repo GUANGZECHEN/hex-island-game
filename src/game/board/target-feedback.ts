@@ -1,3 +1,17 @@
+import type { Board } from './geometry.ts';
+import type { TargetMode } from '../rules/legal.ts';
+
+export type PlacementKind = Exclude<TargetMode, 'robber'>;
+
+export function isPlacement(mode: TargetMode | null): mode is PlacementKind {
+  return mode !== null && mode !== 'robber';
+}
+
+export function adjacentPlacementHexes(board: Board, kind: PlacementKind, id: string): readonly string[] {
+  if (kind === 'road') return board.edges.find(edge => edge.id === id)?.hexIds ?? [];
+  return board.hexes.filter(hex => hex.vertexIds.includes(id)).map(hex => hex.id);
+}
+
 /** Local presentation only: a preview never validates or submits a game command. */
 export const TARGET_COLORS = Object.freeze({ legal: '#fff3a0', active: '#ff981f' });
 

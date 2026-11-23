@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ArtAssets, makeTerrain, makeBoatPort, makeBuilding } from '../src/game/board/three/art.ts';
+import { SEAT_EMBLEMS, HULL_STRIPE, SAIL_CLOTH, EMBLEM_INK } from '../src/game/ui/player-emblem.ts';
 import { generateBoardSetup } from '../src/game/board/setup.ts';
 import { worldGeometry, portBoatPlan } from '../src/game/board/three/model.ts';
 import { ART_REVISION, refineTerrain, inspectTerrainArt, makeOcean, coastline, coastDistance, disposeArtInstances } from '../src/game/board/three/refinement.ts';
@@ -9,6 +10,7 @@ import { ART_REVISION, refineTerrain, inspectTerrainArt, makeOcean, coastline, c
 // The production label canvas is irrelevant to geometry tests; retain real Sprite meshes.
 class GeometryAssets extends ArtAssets {
   override label(): THREE.SpriteMaterial { return this.extra(new THREE.SpriteMaterial()); }
+  override playerSail(): THREE.SpriteMaterial { return this.extra(new THREE.SpriteMaterial()); }
 }
 
 test('refined terrain has real gradients, three sheep, cuboid bricks and upright wheat', () => {
@@ -91,22 +93,38 @@ test('boat ports keep their deck origins and display trade information on larger
     assert.deepEqual(sail.userData, {
       ratio: port.type === 'generic' ? '3:1' : '2:1',
       resource: port.type === 'generic' ? null : port.type,
+      stitched: true,
     });
     assert.ok(sail.scale.x >= .9 && sail.scale.y >= .9);
   }
   assets.dispose();
 });
 
-test('player-built ship hulls display their owners’ colors', () => {
-  const assets = new ArtAssets();
-  for (const color of ['#2868b2', '#c74a42']) {
-    const ship = makeBuilding(assets, 'ship', color);
+test('each ship keeps its owner’s colored hull, paint stripe and distinct camera-facing sail emblem', () => {
+  const assets = new GeometryAssets();
+  const colors = ['#2868b2', '#c74a42', '#f27ebd', '#8b55a1', '#d48826', '#2b9295'];
+  const marks = new Set<string>();
+  for (const [seat, color] of colors.entries()) {
+    const ship = makeBuilding(assets, 'ship', color, seat);
     const hull = ship.getObjectByName('player-ship-hull');
     assert.ok(hull instanceof THREE.Mesh && hull.material instanceof THREE.MeshStandardMaterial);
     assert.equal(hull.material.color.getHexString(), color.slice(1));
+    const stripe = ship.getObjectByName('player-ship-stripe');
+    assert.ok(stripe instanceof THREE.Mesh && stripe.material instanceof THREE.MeshStandardMaterial);
+    assert.equal(stripe.material.color.getHexString(), HULL_STRIPE.slice(1));
     const sail = ship.getObjectByName('player-ship-sail');
-    assert.ok(sail instanceof THREE.Mesh && sail.material instanceof THREE.MeshStandardMaterial);
-    assert.equal(sail.material.color.getHexString(), 'fff1d8');
+    assert.ok(sail instanceof THREE.Sprite);
+    assert.ok(sail.center.y < .1, 'top view keeps the sail above its colored hull');
+    assert.equal(sail.userData.emblem, SEAT_EMBLEMS[seat].name);
+    marks.add(sail.userData.emblem);
   }
+  assert.equal(marks.size, 6);
+  assert.equal(new Set(SEAT_EMBLEMS.map(e => e.path)).size, 6);
+  // Linear relative luminance is the same after conversion to grayscale.
+  const luminance = (hex: string) => {
+    const { r, g, b } = new THREE.Color(hex);
+    return .2126 * r + .7152 * g + .0722 * b;
+  };
+  assert.ok((luminance(SAIL_CLOTH) + .05) / (luminance(EMBLEM_INK) + .05) >= 7);
   assets.dispose();
 });

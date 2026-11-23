@@ -1,5 +1,6 @@
 import { usesTradeStations, stationCost } from './game/rules/trade-stations';
 import './style.css';
+import { HULL_STRIPE, playerMarker, playerSailSvg } from './game/ui/player-emblem.ts';
 import { renderHarborPanel } from './game/ui/harbor';
 import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type GameMode, type HarborCommand } from './game/rules/harbor';
 import './compact-actions.css';
@@ -13,6 +14,7 @@ import { describeRoll, isNewRoll, type RollPresentation } from './game/board/thr
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
 import { ACTION_PATHS, DEVELOPMENT_LABELS, DEVELOPMENT_PATHS, developmentChip, developmentIcon, icon, resourceChip, resourceIcon, type ActionIcon } from './game/ui/icons';
+import { adjacentPlacementHexes, type PlacementKind } from './game/board/target-feedback';
 import type { TargetMode } from './game/ui/targets';
 import { ALL_OTHER_PLAYERS, incomingTradeView, missingTradeResources, tradeTargetsForSelection, type TradeAmount } from './game/ui/trade';
 import { bankTradeRate } from './game/ui/interactions';
@@ -376,7 +378,7 @@ function renderNetworkLobby(view:RoomTableLobby){
  strip.dataset.playerCount=String(view.seats.length);
  for(const [index,seat] of view.seats.entries()){
   const row=document.createElement('div');row.className=`player-summary player-${index+1}`;row.dataset.seat=String(index+1);
-  const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(index+1);
+  const marker = playerMarker(index);
   const name=document.createElement('strong');name.className='player-summary-name';name.textContent=seat.name;
   const readiness=document.createElement('span');readiness.className='room-seat-readiness';readiness.textContent=seat.connected?(seat.ready?'✓ Ready':'Not ready'):'Disconnected';
   row.append(marker,name,readiness);strip.append(row);
@@ -480,7 +482,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
   card.setAttribute('aria-label',`${playerName(player.id)}${player.id===viewer?', you':''}: ${handCount} resource cards, ${usesDevelopmentCards(s)?`${developmentCount} development cards, ${player.knights} knights played, `:''}${publicVp} public victory points, ${player.roads} roads, ${player.settlements} settlements, ${player.cities} cities remaining, longest road ${routeLength}${usesDevelopmentCards(s)&&s.armyHolder===player.id?', largest army holder':''}${player.id===activeId?', current turn':''}`);
 
   const header=document.createElement('div');header.className='player-summary-header';
-  const marker=document.createElement('span');marker.className='player-marker';marker.textContent=String(player.seat+1);marker.setAttribute('aria-hidden','true');
+  const marker = playerMarker(player.seat);
   const name=document.createElement('span');name.className='player-summary-name';const shown=playerName(player.id);name.textContent=player.id===viewer?`${shown} · You`:shown;
   header.append(marker,name);
   if(player.id===activeId){const turn=document.createElement('span');turn.className='player-turn-badge';turn.textContent='Turn';header.append(turn);}
@@ -512,30 +514,22 @@ function drawBoard(legalTargets:readonly string[]){
  if(!state)return;
  if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)),rememberedBoardCamera);
  boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
-  players:state.players.map(p=>({id:p.id,name:playerName(p.id),color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
-  stations:state.harbor?.stations,harborPorts:isHarbor(state),targetMode,legalTargets});
+  players:state.players.map(p=>({id:p.id,name:playerName(p.id),seat:p.seat,color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
+  stations:state.harbor?.stations,harborPorts:isHarbor(state),placementPlayerId:viewer,targetMode,legalTargets});
 }
 function drawSvgBoard(legalTargets:readonly string[]){
- const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const view=createBoardView(createIslandBoard(s.board.layout));const NS='http://www.w3.org/2000/svg';
+ const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const topology=createIslandBoard(s.board.layout),view=createBoardView(topology);const NS='http://www.w3.org/2000/svg';
  const legal=new Set(legalTargets);
- for(const edge of view.edges){
-  const owner=s.roads[edge.id];
-  if(owner){
-   const seat=byId(owner).seat+1,piece=document.createElementNS(NS,'g'),fresh=renderedRoadOwners.get(edge.id)!==owner;
+ const roadPiece=(edge:typeof view.edges[number],owner:string,fresh=false)=>{
+   const seat=byId(owner).seat+1,piece=document.createElementNS(NS,'g');
    piece.setAttribute('class',`game-road-piece player-${seat}${fresh?' game-piece-enter':''}`);piece.setAttribute('data-road-id',edge.id);
    const title=document.createElementNS(NS,'title');title.textContent=`${playerName(owner)} road, ${edge.id}`;piece.append(title);
    const roadLine=(className:string)=>{const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));line.setAttribute('class',className);line.setAttribute('pathLength','1');piece.append(line);};
-   roadLine('game-road-shadow');roadLine(`game-road player-${seat}`);roadLine('game-road-highlight');svg.append(piece);continue;
-  }
-  if(targetMode!=='road'||!legal.has(edge.id))continue;
-  const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
-  line.setAttribute('class','game-target game-target-road');line.setAttribute('data-legal-target','road');line.setAttribute('data-target-id',edge.id);line.setAttribute('tabindex','0');line.setAttribute('role','button');line.setAttribute('aria-label',`Legal road target ${edge.id}`);
-  line.onclick=()=>attempt(()=>moveTarget(edge.id));line.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(edge.id));}};svg.append(line);
- }
- for(const vertex of view.vertices){
-  const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
-  if(owner){
-   const seat=byId(owner.playerId).seat+1,palette=PLAYER_PIECE_PALETTE[seat-1]??PLAYER_PIECE_PALETTE[0],fresh=renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`,x=vertex.point.x,y=vertex.point.y;
+   roadLine('game-road-shadow');roadLine(`game-road player-${seat}`);roadLine('game-road-highlight');
+   return piece;
+ };
+ const buildingPiece=(vertex:typeof view.vertices[number],owner:GameState['buildings'][string],fresh=false,cityTarget=false)=>{
+   const seat=byId(owner.playerId).seat+1,palette=PLAYER_PIECE_PALETTE[seat-1]??PLAYER_PIECE_PALETTE[0],x=vertex.point.x,y=vertex.point.y;
    const piece=document.createElementNS(NS,'g');
    piece.setAttribute('class',`game-building-piece game-building-${owner.kind} player-${seat}${cityTarget?' game-target-city':''}${fresh?' game-piece-enter':''}`);
    piece.setAttribute('data-building-kind',owner.kind);piece.setAttribute('data-vertex-id',vertex.id);piece.setAttribute('data-board-x',String(x));piece.setAttribute('data-board-y',String(y));
@@ -549,27 +543,56 @@ function drawSvgBoard(legalTargets:readonly string[]){
     accent.setAttribute('d',`M${x-.27} ${y-.02}L${x} ${y-.28}L${x+.27} ${y-.02}`);
     detail.setAttribute('d',`M${x-.055} ${y+.19}V${y+.02}H${x+.055}V${y+.19}M${x-.16} ${y+.02}h.07v.07h-.07zM${x+.09} ${y+.02}h.07v.07h-.07z`);
    }else if(owner.kind==='ship'){
-    shell.setAttribute('d',`M${x-.31} ${y+.06}Q${x} ${y+.26} ${x+.31} ${y+.06}L${x+.23} ${y+.24}H${x-.23}Z`);
-    accent.setAttribute('d',`M${x} ${y+.06}V${y-.34}L${x+.24} ${y+.04}Z`);
-    detail.setAttribute('d',`M${x} ${y+.06}V${y-.34}M${x-.18} ${y+.10}h.36`);
+    shell.setAttribute('d', `M${x-.34} ${y+.055}Q${x} ${y+.12} ${x+.34} ${y+.055}L${x+.22} ${y+.25}H${x-.2}Z`);
+    accent.setAttribute('d', `M${x-.15} ${y+.08}V${y-.44}`);
+    accent.setAttribute('stroke', '#69553c'); accent.setAttribute('opacity', '1');
+    detail.setAttribute('d', `M${x-.275} ${y+.133}Q${x} ${y+.18} ${x+.273} ${y+.133}`);
+    detail.setAttribute('class', 'game-ship-stripe'); detail.setAttribute('stroke', HULL_STRIPE);
+    detail.setAttribute('stroke-width', '.04'); detail.setAttribute('opacity', '1');
    }else{
     shell.setAttribute('d',`M${x-.33} ${y+.2}V${y-.07}H${x-.14}V${y-.19}H${x-.055}V${y-.31}H${x+.09}V${y-.19}H${x+.19}V${y-.07}H${x+.33}V${y+.2}Z`);
     accent.setAttribute('d',`M${x-.35} ${y-.07}H${x-.14}M${x-.14} ${y-.07}V${y-.2}H${x-.055}M${x+.09} ${y-.2}H${x+.19}V${y-.07}H${x+.35}`);
     detail.setAttribute('d',`M${x-.06} ${y+.2}V${y+.03}H${x+.06}V${y+.2}M${x-.23} ${y+.02}h.08v.08h-.08zM${x+.15} ${y+.02}h.08v.08h-.08zM${x-.015} ${y-.255}h.065`);
    }
    piece.append(shadow,shell,accent,detail);
+   if (owner.kind === 'ship') {
+    const sail = playerSailSvg(seat - 1);
+    sail.setAttribute('x', String(x - .19)); sail.setAttribute('y', String(y - .45));
+    sail.setAttribute('width', '.51'); sail.setAttribute('height', '.51');
+    piece.append(sail);
+   }
+   return piece;
+ };
+ const stationPiece=(vertex:typeof view.vertices[number])=>{
+  const label=document.createElementNS(NS,'g');label.setAttribute('class','trade-station-piece');label.setAttribute('data-station-id',vertex.id);
+  const y=vertex.point.y-(s.buildings[vertex.id]?.kind==='city'?.47:.32),x=vertex.point.x+.12;
+  const booth=document.createElementNS(NS,'path');booth.setAttribute('d',`M${x-.12} ${y+.1}v-.14h.24v.14zM${x-.15} ${y-.04}l.06-.1h.18l.06.1z`);booth.setAttribute('fill','#319b8c');booth.setAttribute('stroke','#fff7d2');booth.setAttribute('stroke-width','.035');label.append(booth);
+  return label;
+ };
+ for(const edge of view.edges){
+  const owner=s.roads[edge.id];
+  if(owner){
+   svg.append(roadPiece(edge,owner,renderedRoadOwners.get(edge.id)!==owner));continue;
+  }
+  if(targetMode!=='road'||!legal.has(edge.id))continue;
+  const line=document.createElementNS(NS,'line');for(const [k,v] of Object.entries({x1:edge.start.x,y1:edge.start.y,x2:edge.end.x,y2:edge.end.y}))line.setAttribute(k,String(v));
+  line.setAttribute('class','game-target game-target-road');line.setAttribute('data-legal-target','road');line.setAttribute('data-target-id',edge.id);line.setAttribute('tabindex','0');line.setAttribute('role','button');line.setAttribute('aria-label',`Legal road target ${edge.id}`);
+  line.onclick=()=>attempt(()=>moveTarget(edge.id));line.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(edge.id));}};svg.append(line);
+ }
+ for(const vertex of view.vertices){
+  const owner=s.buildings[vertex.id],cityTarget=targetMode==='city'&&legal.has(vertex.id);
+  if(owner){
+   const piece=buildingPiece(vertex,owner,renderedBuildings.get(vertex.id)!==`${owner.playerId}:${owner.kind}`,cityTarget);
    if(cityTarget){piece.setAttribute('data-legal-target','city');piece.setAttribute('data-target-id',vertex.id);piece.setAttribute('tabindex','0');piece.setAttribute('role','button');piece.setAttribute('aria-label',`Legal city upgrade ${vertex.id}`);piece.onclick=()=>attempt(()=>moveTarget(vertex.id));piece.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};}
    svg.append(piece);continue;
   }
   if((targetMode!=='settlement'&&targetMode!=='ship'&&!(targetMode==='city'&&s.phase==='setup-city'))||!legal.has(vertex.id))continue;
-  const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target',targetMode!);node.setAttribute('data-target-id',vertex.id);node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal ${targetMode==='ship'?'ship':'settlement'} target ${vertex.id}`);
+  const node=document.createElementNS(NS,'circle');node.setAttribute('cx',String(vertex.point.x));node.setAttribute('cy',String(vertex.point.y));node.setAttribute('r','.14');node.setAttribute('class','game-target game-target-vertex');node.setAttribute('data-legal-target',targetMode!);node.setAttribute('data-target-id',vertex.id);node.setAttribute('tabindex','0');node.setAttribute('role','button');node.setAttribute('aria-label',`Legal ${targetMode} target ${vertex.id}`);
   node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};svg.append(node);
  }
  for(const station of Object.values(s.harbor?.stations??{})){
   const vertex=view.vertices.find(v=>v.id===station.vertexId);if(!vertex)continue;
-  const label=document.createElementNS(NS,'g');label.setAttribute('class','trade-station-piece');label.setAttribute('data-station-id',station.vertexId);
-  const y=vertex.point.y-(s.buildings[vertex.id]?.kind==='city'?.47:.32),x=vertex.point.x+.12;
-  const booth=document.createElementNS(NS,'path');booth.setAttribute('d',`M${x-.12} ${y+.1}v-.14h.24v.14zM${x-.15} ${y-.04}l.06-.1h.18l.06.1z`);booth.setAttribute('fill','#319b8c');booth.setAttribute('stroke','#fff7d2');booth.setAttribute('stroke-width','.035');label.append(booth);svg.append(label);
+  svg.append(stationPiece(vertex));
  }
  if(targetMode==='station')for(const vertex of view.vertices){
   if(!legal.has(vertex.id))continue;const node=document.createElementNS(NS,'circle');
@@ -584,6 +607,23 @@ function drawSvgBoard(legalTargets:readonly string[]){
  renderedRoadOwners=new Map(Object.entries(s.roads));renderedBuildings=new Map<string,string>(Object.entries(s.buildings).map(([id,building])=>[id,`${building.playerId}:${building.kind}`] as [string,string]));renderedRobberHex=s.board.robberHexId;
  if(isHarbor(s))s.board.ports.forEach((port,index)=>{const group=Array.from(svg.querySelectorAll<SVGGElement>('[data-port-edge]')).find(n=>n.dataset.portEdge===port.edgeId),face=group?.querySelector('.port-face');if(face){const tag=document.createElementNS(NS,'text');tag.setAttribute('class','harbor-port-label');tag.setAttribute('y','-.49');tag.textContent=`P${index+1}`;face.append(tag);}});
  svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label','Island board');
+ return (id:string,kind:PlacementKind)=>{
+  let ghost:SVGGElement;
+  if(kind==='road'){
+   const edge=view.edges.find(edge=>edge.id===id);if(!edge)return null;
+   ghost=roadPiece(edge,viewer);ghost.removeAttribute('data-road-id');
+  }else{
+   const vertex=view.vertices.find(vertex=>vertex.id===id);if(!vertex)return null;
+   ghost=kind==='station'?stationPiece(vertex):buildingPiece(vertex,{kind,playerId:viewer});
+   for(const attr of ['data-station-id','data-vertex-id','data-building-kind'])ghost.removeAttribute(attr);
+  }
+  ghost.dataset.placementPreview=kind;ghost.dataset.previewTarget=id;
+  ghost.setAttribute('aria-hidden','true');svg.append(ghost);
+  for(const hexId of adjacentPlacementHexes(topology,kind,id)){
+   svg.querySelector(`[data-hex-id="${hexId}"]`)?.classList.add('placement-neighbor');
+  }
+  return ghost;
+ };
 }
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
@@ -619,7 +659,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const reason=isPaused()?'Game paused':s.phase==='finished'?'Game over':viewer!==active.id?'Waiting for your turn':'Unavailable in this phase or with current resources';
  const apply=(b:HTMLButtonElement,a:{enabled:boolean},why=reason)=>setAvailability(b,a,why);
  if(targetMode){
-  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
+  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.${targetMode==='robber'?'':' On touchscreens, confirm below the board.'}`;targets.append(description);
   const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
   if(!legalTargets.length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
  }

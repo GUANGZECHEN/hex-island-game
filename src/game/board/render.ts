@@ -171,6 +171,13 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
 
     // Keep trade information upright even when the dock rotates around the coast.
     const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
+    // Give the upright trade face its own neutral boat, legible even when phone-sized rigging is hidden.
+    path(face, 'M-.43 .37Q0 .43 .43 .34L.32 .52Q-.02 .59-.34 .52Z', 'port-boat-hull');
+    line(face, -.35, .405, -.35, -.5, 'port-boat-mast');
+    face.append(node('path', { class: 'neutral-port-sail', d: 'M-.43-.45Q0-.43 .43-.40Q.38 0 .43 .43L-.43 .45Z',
+      fill: '#fff1cb', stroke: '#8d6a40', 'stroke-width': '.024', 'stroke-linejoin': 'round' }));
+    face.append(node('path', { class: 'port-trim', d: 'M-.387-.403Q0-.382 .382-.358Q.343 0 .384 .385L-.387 .403Z',
+      fill: 'none', stroke: '#8c7955', 'stroke-width': '.013', 'stroke-dasharray': '.047 .031', 'pointer-events': 'none' }));
     const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
     if(port.type==='generic'){
       label.setAttribute('y','.02');label.textContent='3:1';label.classList.add('port-label-generic');face.append(label);
@@ -185,10 +192,10 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
       label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
     }
 
-    // One tiny boat silhouette gives desktop ports a coastal landmark; hidden on phones.
-    const boatX=px+ux*.40,boatY=py+uy*.40,boat=node('g',{class:'port-boat-decor',transform:`translate(${boatX} ${boatY}) rotate(${angle})`});
-    path(boat,'M-.16 .04h.32l-.06.09h-.2Z','port-boat-hull');line(boat,0,.04,0,-.13,'port-boat-mast');path(boat,'M.01-.12v.12h.11Z','port-boat-sail');
-    group.append(boat,face);
+    const trim = node('g', {class:'port-boat-decor'});
+    trim.append(node('path', { d: 'M-.28 .483Q0 .53 .25 .476', fill: 'none', stroke: '#c9ab79', 'stroke-width': '.018' }));
+    face.append(trim);
+    group.append(face);
 
     svg.append(group);
     const item=document.createElement('li');item.textContent=port.type==='generic'?`Any resource 3:1 port at ${port.vertexIds.join(' and ')}`:`${port.type} 2:1 port at ${port.vertexIds.join(' and ')}`;ports.append(item);

@@ -5,3 +5,8 @@
 #board .robber-target.target-active .island-cell{stroke:#ff981f!important;stroke-width:.13;stroke-opacity:1}
 #board .robber-target.target-active .island-cell-inset{fill:#ff981f!important;fill-opacity:.36;stroke:#d56a0f;stroke-width:.055}
 #board [data-target-active="true"]{cursor:pointer}
+
+#board [data-placement-preview]{opacity:.82;pointer-events:none}
+#board .placement-neighbor .terrain-art{opacity:.15}
+#board-confirm-placement{min-height:44px;justify-self:center}
+#board-confirm-placement[hidden]{display:none}

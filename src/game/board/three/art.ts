@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EMBLEM_INK, EMBLEM_ON_SAIL, HULL_STRIPE, PLAYER_SAIL_OUTLINE, SAIL_CLOTH, seatEmblem, type SeatEmblem } from '../../ui/player-emblem.ts';
 import { RESOURCE_PATHS } from '../../ui/icons.ts';
 import type { Resource } from '../../rules/state.ts';
 import type { HexSetup, PortType } from '../setup.ts';
@@ -30,40 +31,61 @@ export class ArtAssets {
     const m = this.mesh(parent, g, this.material(color), x, y, z); m.scale.set(...size); return m;
   }
   label(text: string, kind: 'token' | 'sail' | 'robber', resource: Resource | null = null): THREE.SpriteMaterial {
-    const key = `${kind}:${text}:${resource}`; const existing = this.labels.get(key); if (existing) return existing;
+    return this.canvasLabel(`${kind}:${text}:${resource}`, ctx => {
+      if (kind === 'token' || kind === 'robber') {
+        ctx.fillStyle = '#fff8dc'; ctx.strokeStyle = kind === 'robber' ? '#c3382f' : '#a49368'; ctx.lineWidth = kind === 'robber' ? 16 : 7;
+        ctx.beginPath(); ctx.arc(128, 128, 109, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        if (kind === 'robber') { ctx.beginPath(); ctx.moveTo(53, 53); ctx.lineTo(203, 203); ctx.stroke(); }
+        else {
+          ctx.fillStyle = text === '6' || text === '8' ? '#b93b32' : '#314b3f';
+          ctx.font = 'bold 102px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 128, 116);
+          const count = 6 - Math.abs(7 - Number(text)); for (let i = 0; i < count; i++) { ctx.beginPath(); ctx.arc(128 + (i - (count - 1) / 2) * 20, 184, 6, 0, Math.PI * 2); ctx.fill(); }
+        }
+      } else {
+        ctx.fillStyle = '#fff1cb'; ctx.strokeStyle = '#8d6a40'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(20, 23); ctx.lineTo(236, 37); ctx.quadraticCurveTo(213, 125, 236, 225); ctx.lineTo(20, 233); ctx.closePath(); ctx.fill(); ctx.stroke();
+        // Neutral running stitches use only the margin around the trade information.
+        ctx.save();
+        ctx.strokeStyle = '#8c7955'; ctx.lineWidth = 2.8; ctx.setLineDash([7, 6]);
+        ctx.beginPath(); ctx.moveTo(30, 34); ctx.lineTo(224, 47); ctx.quadraticCurveTo(207, 126, 224, 215); ctx.lineTo(30, 222); ctx.closePath();
+        ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#423b2f';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `900 ${resource ? 100 : 108}px system-ui, sans-serif`;
+        ctx.fillText(text, 128, resource ? 75 : 128);
+        if (resource) {
+          const iconScale = 4.6;
+          ctx.save();
+          ctx.translate(128 - 12 * iconScale, 116);
+          ctx.scale(iconScale, iconScale);
+          ctx.lineWidth = 2.1;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = ({ lumber: '#25553c', brick: '#9c4735', wool: '#4d7845', grain: '#806017', ore: '#4b5b68' })[resource];
+          ctx.stroke(new Path2D(RESOURCE_PATHS[resource])); ctx.restore();
+        }
+      }
+    });
+  }
+  playerSail(emblem: SeatEmblem): THREE.SpriteMaterial {
+    return this.canvasLabel(`player-sail:${emblem.name}`, ctx => {
+      ctx.scale(256 / 24, 256 / 24);
+      const cloth = new Path2D(PLAYER_SAIL_OUTLINE);
+      ctx.fillStyle = SAIL_CLOTH; ctx.fill(cloth);
+      ctx.strokeStyle = '#66543c'; ctx.lineWidth = .9; ctx.lineJoin = 'round'; ctx.stroke(cloth);
+      const { x, y, size } = EMBLEM_ON_SAIL;
+      ctx.translate(x, y); ctx.scale(size / 24, size / 24);
+      ctx.fillStyle = EMBLEM_INK; ctx.fill(new Path2D(emblem.path));
+    }, true);
+  }
+  private canvasLabel(key: string, draw: (ctx: CanvasRenderingContext2D) => void, depthTest = false): THREE.SpriteMaterial {
+    const cached = this.labels.get(key); if (cached) return cached;
     const c = document.createElement('canvas'); c.width = 256; c.height = 256;
     const ctx = c.getContext('2d'); if (!ctx) throw new Error('Canvas text rendering unavailable.');
-    if (kind === 'token' || kind === 'robber') {
-      ctx.fillStyle = '#fff8dc'; ctx.strokeStyle = kind === 'robber' ? '#c3382f' : '#a49368'; ctx.lineWidth = kind === 'robber' ? 16 : 7;
-      ctx.beginPath(); ctx.arc(128, 128, 109, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (kind === 'robber') { ctx.beginPath(); ctx.moveTo(53, 53); ctx.lineTo(203, 203); ctx.stroke(); }
-      else {
-        ctx.fillStyle = text === '6' || text === '8' ? '#b93b32' : '#314b3f';
-        ctx.font = 'bold 102px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 128, 116);
-        const count = 6 - Math.abs(7 - Number(text)); for (let i = 0; i < count; i++) { ctx.beginPath(); ctx.arc(128 + (i - (count - 1) / 2) * 20, 184, 6, 0, Math.PI * 2); ctx.fill(); }
-      }
-    } else {
-      ctx.fillStyle = '#fff1cb'; ctx.strokeStyle = '#8d6a40'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(20, 23); ctx.lineTo(236, 37); ctx.quadraticCurveTo(213, 125, 236, 225); ctx.lineTo(20, 233); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#423b2f';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `900 ${resource ? 100 : 108}px system-ui, sans-serif`;
-      ctx.fillText(text, 128, resource ? 75 : 128);
-      if (resource) {
-        const iconScale = 4.6;
-        ctx.save();
-        ctx.translate(128 - 12 * iconScale, 116);
-        ctx.scale(iconScale, iconScale);
-        ctx.lineWidth = 2.1;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = ({ lumber: '#25553c', brick: '#9c4735', wool: '#4d7845', grain: '#806017', ore: '#4b5b68' })[resource];
-        ctx.stroke(new Path2D(RESOURCE_PATHS[resource])); ctx.restore();
-      }
-    }
+    draw(ctx);
     const texture = new THREE.CanvasTexture(c); texture.colorSpace = THREE.SRGBColorSpace; this.textures.add(texture);
-    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false, toneMapped: false });
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest, depthWrite: false, toneMapped: false });
     this.labels.set(key, mat); return mat;
   }
   sprite(parent: THREE.Object3D, material: THREE.SpriteMaterial, x: number, y: number, z: number, size: number): THREE.Sprite {
@@ -152,12 +174,12 @@ export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPl
   const ratio = resource ? '2:1' : '3:1';
   const sail = assets.sprite(boat, assets.label(ratio, 'sail', resource), .03, PORT_SAIL.centerY, 0, PORT_SAIL.size);
   sail.name = 'boat-ratio';
-  sail.userData = { ratio, resource };
+  sail.userData = { ratio, resource, stitched: true };
   root.add(boat); return root;
 }
 /** Distinct tabletop silhouettes: a cottage settlement and a fortified, two-level city.
  * Geometry/materials are cached by ArtAssets; all details remain part of one board piece. */
-export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city' | 'ship', color: string): THREE.Group {
+export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city' | 'ship', color: string, seat = 0): THREE.Group {
   const g = new THREE.Group(); g.userData.kind = kind;
   if(kind==='ship'){
     // Player-built harbor ship: compact colored hull and one ivory sail.
@@ -170,14 +192,29 @@ export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city' | 's
       geo.rotateX(-Math.PI/2);return geo;
     });
     assets.mesh(g,hull,assets.material(color),0,.32,0).name='player-ship-hull';
-    assets.box(g,color,[.55,.075,.20],0,.34,0).name='player-ship-stripe';
-    assets.box(g,'#6c513a',[.032,.55,.035],0,.57,0).name='player-ship-mast';
-    const sail=assets.geometry('player-ship-sail',()=>{
-      const shape=new THREE.Shape();shape.moveTo(0,0);shape.lineTo(0,.47);shape.lineTo(.29,.075);shape.closePath();
-      return new THREE.ShapeGeometry(shape);
+    // Carry the painted band over the deck bevel and both flanks so it reads from above, too.
+    const stripe = assets.geometry('player-ship-stripe', () => {
+      const positions: number[] = [], indices: number[] = [];
+      const contour = [[-.153, .052], [-.153, .14], [-.13, .161], [.13, .161], [.153, .14], [.153, .052]];
+      for (const [z, y] of contour) positions.push(-.26, y, z, -.13, y, z);
+      for (let i = 0; i < contour.length - 1; i++) {
+        const left = i * 2;
+        indices.push(left, left + 2, left + 1, left + 1, left + 2, left + 3);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices); geometry.computeVertexNormals();
+      return geometry;
     });
-    const cloth=assets.extra(new THREE.MeshStandardMaterial({color:'#fff1d8',roughness:.92,side:THREE.DoubleSide}));
-    assets.mesh(g,sail,cloth,-.01,.41,.02).name='player-ship-sail';
+    assets.mesh(g, stripe, assets.material(HULL_STRIPE), 0, .32, 0).name = 'player-ship-stripe';
+    assets.box(g, '#6c513a', [.032, .68, .035], -.16, .67, 0).name = 'player-ship-mast';
+    const emblem = seatEmblem(seat);
+    const sail = assets.sprite(g, assets.playerSail(emblem), .036, .49, .015, .67);
+    // Hang the cloth above its deck anchor even when the camera looks straight down.
+    sail.center.y = .055;
+    sail.name = 'player-ship-sail';
+    sail.userData.emblem = emblem.name;
+    sail.renderOrder = 3;
     g.scale.setScalar(.68);
     return g;
   }

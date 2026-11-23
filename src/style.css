@@ -1654,3 +1654,13 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 .music-panel button{font-size:.83rem}
 .music-panel [role="status"]{margin:.3rem 0 0;font-size:.78rem;color:#284c3e;overflow-wrap:anywhere}
 .music-panel [role="status"]:empty{display:none}
+
+/* Preserve the seat number beside the same ink emblem painted on its ships. */
+.player-summary .player-marker.with-emblem {
+ display: inline-flex; align-items: center; justify-content: center; gap: .13rem;
+ flex: none; width: auto; padding: 0 .25rem; border-radius: .65rem;
+}
+.player-marker [data-seat-emblem] {
+ width: .92rem; height: .92rem; box-sizing: border-box;
+ background: #fff1d8; border-radius: 50%; padding: .1rem;
+}

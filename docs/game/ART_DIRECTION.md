@@ -45,7 +45,7 @@ The existing prohibition-sign concept is retained. It is presented as a raised c
 
 Roads render as three-layer wooden pieces: dark lower edge, player-color body, and a soft top highlight. Settlements and cities use the approved B3 silhouettes with solid player-color material, darker edges, light highlights, and a small table shadow. City presentation is about 1.38× the settlement size for stronger board-level distinction.
 
-Player colors support all six seats.
+Player colors support all six seats. Each seat has a distinct emblem beside its name on the player card and on the sail of its built ships. A painted stripe accents the player-colored hull. Neutral port boats carry a stitched sail border and a large trade ratio. Resource-specific ports also display their resource symbol. Judge both types of boat at the default camera distance and in grayscale.
 
 Player 3 uses a saturated **rose pink** (`#f27ebd`, dark edge `#993a70`) instead of forest green. The pink is kept distinct from the violet Player 4 and muted teal Player 6. This one seat's color is shared by 3D house/road meshes, SVG pieces, public player frames, action notices, victory effects, and the per-player activity clock; the six-seat palette remains unique.
 
