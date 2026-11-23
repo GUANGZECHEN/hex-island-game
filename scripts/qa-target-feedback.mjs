@@ -14,7 +14,9 @@ const inspect=page=>page.evaluate(()=>window.__hex3D?.inspect());
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await delay(80);};
 const url=new URL(process.env.QA_URL||'http://127.0.0.1:4178/hex-island-game/');url.searchParams.set('qa3d','1');url.searchParams.delete('renderer');
 const htmlPath='__target-feedback-fixture.html',fixturePath='src/__target-feedback-fixture.ts';
-let server,browser,page;
+const fixtureURL=new URL(htmlPath+'?qa3d=1',url);
+const svgOnly=process.env.TARGET_SVG_ONLY==='1';
+let server,browser,page,svgFixtureActive=false;
 const fixture=`
 import { legalTargetIds } from './game/rules/legal.ts';
 
@@ -86,12 +88,71 @@ async function preview(p,action,label,preferredTarget){
  return {a,b,point:second,before};
 }
 
-async function captureBoardView(page, path, hex) {
- const field = page.locator(`#board .island-hex[data-hex-id="${hex}"]`);
- const surface = await field.count() ? field : page.locator('#board canvas.three-island-board');
- await surface.evaluate(element => element.scrollIntoView({block:'center', inline:'center', behavior:'instant'}));
- // A viewport capture does not wait for the responsive board wrapper to stop resizing.
- await page.screenshot({path});
+const bounded=(promise,ms,label)=>{
+ let timer;
+ return Promise.race([promise,new Promise((_,reject)=>{
+  timer=setTimeout(()=>reject(new Error(label+' timed out after '+ms+'ms')),ms);
+ })]).finally(()=>clearTimeout(timer));
+};
+async function captureWebGLView(page,path){
+ await page.locator('#board canvas.three-island-board').evaluate(canvas=>canvas.scrollIntoView({block:'center',inline:'center',behavior:'instant'}));
+ await page.screenshot({path,timeout:10000});
+}
+async function captureSvgView(page,name,hex,{vectorOnly=false}={}){
+ // Read the stable SVG state before requesting any native Chromium capture.
+ const {svg,geometry}=await bounded(page.evaluate(id=>{
+  const board=document.querySelector('#board svg.island-board');
+  const tile=Array.from(board.querySelectorAll('[data-hex-id]')).find(node=>node.dataset.hexId===id);
+  tile.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+  const rect=node=>{const {x,y,width,height}=node.getBoundingClientRect();return {x,y,width,height};};
+  const geometry={viewport:[innerWidth,innerHeight],board:rect(board),tile:rect(tile),fonts:document.fonts.status};
+  const copy=board.cloneNode(true);
+  const original=[board,...board.querySelectorAll('*')];
+  const copies=[copy,...copy.querySelectorAll('*')];
+  const ids=new Set(original.map(node=>node.id).filter(Boolean));
+  const properties='color fill fill-opacity fill-rule opacity stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset paint-order vector-effect visibility display clip-path mask filter stop-color stop-opacity font-family font-size font-weight font-style text-anchor dominant-baseline letter-spacing'.split(' ');
+  for(const [index,node] of original.entries()){
+   const computed=getComputedStyle(node);
+   for(const property of properties){
+    const value=computed.getPropertyValue(property).replace(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/g,(match,double,single,bare)=>{
+     const reference=(double??single??bare).split('#').pop();
+     return ids.has(reference)?'url("#'+reference+'")':match;
+    });
+    if(value)copies[index].style.setProperty(property,value);
+   }
+  }
+  const bounds=tile.getBBox(),pad=.5,viewWidth=bounds.width+pad*2,viewHeight=bounds.height+pad*2;
+  copy.setAttribute('viewBox',[bounds.x-pad,bounds.y-pad,viewWidth,viewHeight].join(' '));
+  copy.setAttribute('width','900');copy.setAttribute('height',String(Math.round(900*viewHeight/viewWidth)));
+  return {svg:new XMLSerializer().serializeToString(copy),geometry};
+ },hex),5000,name+' SVG snapshot');
+ assert.ok(geometry.tile.width>0&&geometry.tile.height>0,'the sampled SVG tile must be visible');
+ console.log(name+' geometry '+JSON.stringify(geometry));
+ if(!vectorOnly){
+  let session;
+  try{
+   // The non-surface path is also used by the standalone SVG catch-up QA.
+   session=await bounded(page.context().newCDPSession(page),3000,name+' CDP session');
+   const {data}=await bounded(session.send('Page.captureScreenshot',{format:'png',fromSurface:false,captureBeyondViewport:false}),8000,name+' PNG');
+   const bytes=Buffer.from(data,'base64'),image=PNG.sync.read(bytes),{tile,viewport}=geometry;
+   const scaleX=image.width/viewport[0],scaleY=image.height/viewport[1];
+   const colors=new Set();
+   for(let y=Math.max(0,Math.floor(tile.y*scaleY));y<Math.min(image.height,(tile.y+tile.height)*scaleY);y+=5){
+    for(let x=Math.max(0,Math.floor(tile.x*scaleX));x<Math.min(image.width,(tile.x+tile.width)*scaleX);x+=5){
+     const offset=(y*image.width+x)*4;
+     colors.add((image.data[offset]<<16)|(image.data[offset+1]<<8)|image.data[offset+2]);
+    }
+   }
+   assert.ok(colors.size>=8,'the captured tile should contain painted board art');
+   await writeFile(evidence+'/'+name+'.png',bytes);
+   return;
+  }catch(error){
+   console.log(name+' retaining SVG evidence after PNG capture failed: '+String(error));
+  }finally{
+   if(session)void session.detach().catch(()=>{});
+  }
+ }
+ await writeFile(evidence+'/'+name+'.svg',svg);
 }
 
 async function verifySvgRobberArt(page,fixtureURL){
@@ -123,63 +184,100 @@ async function verifySvgRobberArt(page,fixtureURL){
   return !!(tile.compareDocumentPosition(settlement)&Node.DOCUMENT_POSITION_FOLLOWING);
  },vertex),'settlements paint over the robber target in SVG');
  await page.locator('#board .activity-alert').waitFor({state:'hidden',timeout:5000});
- await captureBoardView(page, `${evidence}/transparent-robber-2d.png`, hex);
+ await captureSvgView(page,'transparent-robber-2d',hex);
  await target.press('Enter');
  assert.equal(await page.locator('#board [data-robber="true"]').getAttribute('data-hex-id'),hex);
  assert.equal(await page.locator('#game-error').textContent(),'');
  check('Light SVG robber highlight preserves an adjacent settlement and keyboard placement');
 }
 
-async function verifyGrainArt(page,fixtureURL){
+async function verifyGrainArt(page,fixtureURL,renderer,piece){
  const place=async (kind,id)=>{
   await page.getByRole('button',{name:'Build '+kind,exact:true}).click();
   await clickBoardTarget(page,id);
   if(await page.locator('#pass').isVisible())await page.locator('#reveal').click();
   await settle(page);
  };
- for(const renderer of ['3d','2d']){
-  const read=async id=>{
-   if(renderer==='3d'){
-    const tile=(await inspect(page)).terrainArt.find(tile=>tile.id===id);
-    return {stems:tile.stems,faded:tile.fadedStems,opacity:tile.wheatOpacity};
-   }
-   return page.locator(`#board [data-hex-id="${id}"] .terrain-art-fields [data-wheat-stalk]`).evaluateAll(stalks=>
-    stalks.map(stalk=>Number(getComputedStyle(stalk).opacity)));
-  };
-  const verifyFade=(before,after,label)=>{
-   if(renderer==='3d'){
-    assert.equal(after.stems,before.stems,'wheat remains present on the field');
-    assert.ok(after.faded>before.faded&&after.faded<after.stems,label+' softens nearby but not every stem');
-    assert.ok(after.opacity>0&&after.opacity<=.22,label+' uses a low-opacity material');
-    return;
-   }
-   assert.equal(before.length,5,'the SVG field has five wheat stalk groups');
-   assert.equal(after.length,before.length);
-   assert.ok(after.some((opacity,index)=>opacity<before[index]&&opacity/before[index]<=.25),label+' visibly softens at least one nearby stalk');
-   assert.ok(after.some(opacity=>opacity>=.95),label+' keeps far-side stalks visible');
-  };
-  await start(page,renderer,fixtureURL);
-  let site=await page.evaluate(()=>window.__targetFixture.grainSite());
-  const clear=await read(site.tile),unchanged=await read(site.control);
-  await place('settlement',site.vertices[3]);
-  verifyFade(clear,await read(site.tile),renderer+' settlement');
-  assert.deepEqual(await read(site.control),unchanged,'placing a settlement does not fade a separate field');
-  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
-  await captureBoardView(page, `${evidence}/grain-settlement-${renderer}.png`, site.tile);
-
-  await start(page,renderer,fixtureURL);
-  site=await page.evaluate(()=>window.__targetFixture.grainSite());
-  // Choose an edge toward a different bundle from the setup settlement.
-  const [vertex,edge]=renderer==='3d'?[2,1]:[0,0];
-  await place('settlement',site.vertices[vertex]);
-  const withoutRoad=await read(site.tile),control=await read(site.control);
-  await place('road',site.edges[edge]);
-  verifyFade(withoutRoad,await read(site.tile),renderer+' road');
-  assert.deepEqual(await read(site.control),control,'placing a road does not fade a separate field');
-  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
-  await captureBoardView(page, `${evidence}/grain-road-${renderer}.png`, site.tile);
-  check(renderer+' grain art fades locally after actual settlement and road placement');
+ const read=async id=>{
+  if(renderer==='3d'){
+   const tile=(await inspect(page)).terrainArt.find(tile=>tile.id===id);
+   return {stems:tile.stems,faded:tile.fadedStems,opacity:tile.wheatOpacity};
+  }
+  return page.locator(`#board [data-hex-id="${id}"] .terrain-art-fields [data-wheat-stalk]`).evaluateAll(stalks=>
+   stalks.map(stalk=>Number(getComputedStyle(stalk).opacity)));
+ };
+ await start(page,renderer,fixtureURL);
+ const site=await page.evaluate(()=>window.__targetFixture.grainSite());
+ // Choose road endpoints toward a different grain bundle from its settlement.
+ const [vertex,edge]=renderer==='3d'?[2,1]:[0,0];
+ const settlementId=site.vertices[piece==='settlement'?3:vertex],edgeId=site.edges[edge];
+ const seat=await page.locator('#player-strip .local-player').getAttribute('data-seat');
+ if(piece==='road')await place('settlement',settlementId);
+ const before=await read(site.tile),control=await read(site.control);
+ await place(piece,piece==='road'?edgeId:settlementId);
+ const after=await read(site.tile),label=renderer+' '+piece;
+ if(renderer==='3d'){
+  assert.equal(after.stems,before.stems,'wheat remains present on the field');
+  assert.ok(after.faded>before.faded&&after.faded<after.stems,label+' softens nearby but not every stem');
+  assert.ok(after.opacity>0&&after.opacity<=.22,label+' uses a low-opacity material');
+ }else{
+  assert.equal(before.length,5,'the SVG field has five wheat stalk groups');
+  assert.equal(after.length,before.length);
+  assert.ok(after.some((opacity,index)=>opacity<before[index]&&opacity/before[index]<=.25),label+' visibly softens at least one nearby stalk');
+  assert.ok(after.some(opacity=>opacity>=.95),label+' keeps far-side stalks visible');
  }
+ assert.deepEqual(await read(site.control),control,label+' does not fade a separate field');
+ await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
+ const name='grain-'+piece+'-'+renderer;
+ check(label+' grain art fades locally after actual placement');
+ if(renderer==='3d'){
+  await captureWebGLView(page,`${evidence}/${name}.png`);
+  return;
+ }
+ if(piece!=='road'){
+  await captureSvgView(page,name,site.tile);
+  return;
+ }
+
+ const road=page.locator(`#board [data-road-id="${edgeId}"]`);
+ assert.ok(await road.isVisible(),'the chosen route was actually placed');
+ await captureSvgView(page,name,site.tile,{vectorOnly:true});
+ // A setup road passes the device. Hand it back to its owner to use real Undo.
+ page.once('dialog',dialog=>dialog.accept('Player '+seat));
+ await page.locator('#switch-player').click();
+ await page.locator('#reveal').click();
+ await page.getByRole('button',{name:'Undo last action',exact:true}).click();
+ if(await page.locator('#pass').isVisible())await page.locator('#reveal').click();
+ await road.waitFor({state:'detached',timeout:5000});
+ assert.deepEqual(await read(site.tile),before,'SVG Undo restores the exact prior grain opacities');
+ assert.deepEqual(await read(site.control),control,'SVG Undo leaves the separate field unchanged');
+ assert.ok(await page.locator(`#board [data-building-kind="settlement"][data-vertex-id="${settlementId}"]`).isVisible(),
+  'Undo removes the road and preserves its settlement');
+ assert.equal(await page.locator('#game-error').textContent(),'');
+ check('SVG road Undo restores the field while retaining the settlement');
+ await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
+ await captureSvgView(page,'grain-road-undo-2d',site.tile);
+}
+
+async function verifySvgFixtures(fixtureURL){
+ svgFixtureActive=true;
+ const svgBrowser=await chromium.launch({headless:true,args:['--disable-gpu']});
+ try{
+  for(const scenario of ['robber','settlement','road']){
+   const page=await svgBrowser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+   page.setDefaultTimeout(10000);
+   page.on('pageerror',error=>report.errors.push(String(error)));
+   try{
+    if(scenario==='robber')await verifySvgRobberArt(page,fixtureURL);
+    else await verifyGrainArt(page,fixtureURL,'2d',scenario);
+   }finally{
+    await page.close();
+   }
+  }
+ }finally{
+  await svgBrowser.close();
+ }
+ svgFixtureActive=false;
 }
 
 async function captureShipArt(page,renderer){
@@ -321,12 +419,15 @@ async function verifyTouchPlacement(browser,renderer){
  }
 }
 try{
+ if(svgOnly&&process.env.QA_URL)throw new Error('TARGET_SVG_ONLY uses the local Vite fixture; unset QA_URL');
  if(!process.env.QA_URL){
   const source=await readFile('src/game-ui.ts','utf8');await writeFile(fixturePath,source+fixture);
   const html=(await readFile('index.html','utf8')).replace('/src/game-ui.ts','/src/__target-feedback-fixture.ts');assert.ok(html.includes('__target-feedback-fixture.ts'));await writeFile(htmlPath,html);
   server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','4178','--strictPort'],{stdio:'pipe'});
   for(let i=0;i<100;i++){try{if((await fetch(url)).ok)break;}catch{}await delay(200);}
  }
+ if(svgOnly)await verifySvgFixtures(fixtureURL);
+ else{
  browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
  page=await browser.newPage({viewport:{width:1440,height:900}});page.on('pageerror',e=>report.errors.push(String(e)));
  await start(page);
@@ -346,7 +447,6 @@ try{
  await page.locator('#board-view-reset').click();
  point=await page.evaluate(()=>window.__hex3D.point(window.__hex3D.inspect().targets[0]));await page.mouse.click(point.x,point.y);await settle(page);assert.equal((await inspect(page)).roads.length,1);check('Direct canvas click still places one road');
  if(!process.env.QA_URL){
-  const fixtureURL=new URL('__target-feedback-fixture.html?qa3d=1',url);
   for(const [mode,card,label] of [['city',null,'Upgrade house to city'],['robber','knight','Move robber'],['free-road','road-building','Build road']]){
    await page.goto(fixtureURL.href,{waitUntil:'networkidle'});await page.evaluate(card=>window.__targetFixture.load(card),card);await ready(page);
    if(card)await page.getByRole('button',{name:card==='knight'?'Play Knight':'Play Road Building',exact:true}).click();
@@ -370,8 +470,8 @@ try{
    check(mode+': selected target remains correct through the actual reducer');
   }
   await verifyShipArt(page,fixtureURL);
-  await verifySvgRobberArt(page,fixtureURL);
-  await verifyGrainArt(page,fixtureURL);
+  for(const piece of ['settlement','road'])await verifyGrainArt(page,fixtureURL,'3d',piece);
+  await verifySvgFixtures(fixtureURL);
  }
  await start(page,'2d');await page.getByRole('button',{name:'Build settlement',exact:true}).click();
  const nodes=page.locator('#board [data-target-id]');assert.ok(await nodes.count()>1);
@@ -389,6 +489,7 @@ try{
  check('SVG keyboard placement and renderer switching work without any coordinate picker');
  await verifyTouchPlacement(browser,'3d');
  await verifyTouchPlacement(browser,'2d');
+ }
  assert.deepEqual(report.errors,[]);
-}catch(error){report.error=String(error.stack||error);console.error(report.error);process.exitCode=1;try{await page?.screenshot({path:`${evidence}/failure.png`,fullPage:true});}catch{}}
+}catch(error){report.error=String(error.stack||error);console.error(report.error);process.exitCode=1;try{if(!svgFixtureActive)await page?.screenshot({path:`${evidence}/failure.png`,timeout:5000});}catch{}}
 finally{await writeFile(`${evidence}/report.json`,JSON.stringify(report,null,2));await browser?.close();server?.kill('SIGTERM');if(!process.env.QA_URL){await rm(htmlPath,{force:true});await rm(fixturePath,{force:true});}}
