@@ -128,7 +128,7 @@ function localTimedAction():void {
 }
 
 let renderedRoadOwners=new Map<string,string>(),renderedBuildings=new Map<string,string>(),renderedRobberHex='';
-const BOT_DELAY_MS=3000,BOT_ACTION_LIMIT=20;
+const BOT_DELAY_MS=2000,BOT_ACTION_LIMIT=20;
 const PLAYER_PIECE_PALETTE=[{body:'#2868b2',edge:'#174679'},{body:'#c74a42',edge:'#8f2b27'},{body:'#f27ebd',edge:'#993a70'},{body:'#8b55a1',edge:'#633675'},{body:'#d48826',edge:'#9a5d12'},{body:'#2b9295',edge:'#176b70'}] as const;
 const reversibleActions=new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
 let localUndoState:GameState|null=null,localUndoPlayerId='',localUndoDeadlines:Map<string,number>|null=null,pendingLocalUndo:{state:GameState;playerId:string;deadlines:Map<string,number>}|null=null;
@@ -234,9 +234,21 @@ function incomingTradeCard(parent:HTMLElement,offer:NonNullable<GameState['offer
  }
  parent.append(card);
 }
-function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:Partial<Record<Resource,number>>){
+type ActionCost=Partial<Hand>|0;
+function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,cost?:ActionCost){
  const b=button(parent,'',run);b.className=`action-button action-${symbol}`;b.dataset.action=symbol;const text=document.createElement('span');text.className='action-label';setCompactActionLabel(b,text,label);b.append(icon(ACTION_PATHS[symbol]),text);
- if(cost){b.setAttribute('aria-description',`Cost: ${RESOURCES.filter(resource=>cost[resource]).map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);const list=document.createElement('span');list.className='action-cost';for(const resource of RESOURCES){const amount=cost[resource];if(amount)list.append(resourceChip(resource,amount));}b.append(list);}
+ if(cost!==undefined){
+  const list=document.createElement('span');list.className='action-cost';
+  if(cost===0){
+   b.setAttribute('aria-description','Cost: 0');
+   list.textContent='0';
+  }else{
+   const resources=RESOURCES.filter(resource=>cost[resource]);
+   b.setAttribute('aria-description',`Cost: ${resources.map(resource=>`${cost[resource]} ${resource}`).join(', ')}`);
+   for(const resource of resources)list.append(resourceChip(resource,cost[resource]!));
+  }
+  b.append(list);
+ }
  return b;
 }
 function enterGame(newMatch:boolean){
@@ -612,11 +624,16 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  };
  add('Roll dice','dice',()=>commit(applyTurnCommand(s,{type:'roll',playerId:viewer}),`${viewer} rolled.`),base.roll);
   const learning=document.createElement('section');learning.className='learn-action-panel';const learningTitle=document.createElement('h2');learningTitle.textContent=usesDevelopmentCards(s)?'Build & Development · Resource costs':'Build · Resource costs';const learningGrid=document.createElement('div');learningGrid.className='learn-action-grid';learning.append(learningTitle,learningGrid);actions.append(learning);
-  if(['setup-road','setup-settlement','setup-city','free-road'].includes(s.phase)){const note=document.createElement('p');note.className='learn-action-note';note.textContent='During setup and free road placement, the applicable placement is free.';learning.append(note);}
-  const learningAction=(label:string,symbol:ActionIcon,run:()=>void,a:{visible:boolean;enabled:boolean},cost:Partial<Record<Resource,number>>,why:string)=>{const b=action(learningGrid,label,symbol,run,cost);apply(b,a,why);};
-  learningAction('Build road','road',()=>mode('road'),base.road,{lumber:1,brick:1},'Need your turn, a legal road location, and 1 wood + 1 brick');
-  learningAction('Build settlement','settlement',()=>mode('settlement'),base.settlement,{lumber:1,brick:1,wool:1,grain:1},'Need your turn, a legal settlement location, and 1 wood + 1 brick + 1 wool + 1 grain');
-  learningAction('Upgrade house to city','city',()=>mode('city'),base.city,{grain:2,ore:3},'Need your turn, an eligible settlement, 2 grain + 3 ore');
+  const roadIsFree=s.phase==='setup-road'||s.phase==='free-road';
+  const settlementIsFree=s.phase==='setup-settlement';
+  const cityIsFree=s.phase==='setup-city';
+  const learningAction=(label:string,symbol:ActionIcon,run:()=>void,a:{visible:boolean;enabled:boolean},cost:ActionCost,why:string)=>{const b=action(learningGrid,label,symbol,run,cost);apply(b,a,why);};
+  learningAction('Build road','road',()=>mode('road'),base.road,roadIsFree?0:{lumber:1,brick:1},
+   roadIsFree?'Need your turn and a legal road location':'Need your turn, a legal road location, and 1 wood + 1 brick');
+  learningAction('Build settlement','settlement',()=>mode('settlement'),base.settlement,settlementIsFree?0:{lumber:1,brick:1,wool:1,grain:1},
+   settlementIsFree?'Need your turn and a legal settlement location':'Need your turn, a legal settlement location, and 1 wood + 1 brick + 1 wool + 1 grain');
+  learningAction('Upgrade house to city','city',()=>mode('city'),base.city,cityIsFree?0:{grain:2,ore:3},
+   cityIsFree?'Need your turn and a legal starting city location':'Need your turn, an eligible settlement, 2 grain + 3 ore');
   if(usesDevelopmentCards(s))learningAction('Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),base.buyDevelopment,{wool:1,grain:1,ore:1},'Need your turn, a card in the deck, 1 wool + 1 grain + 1 ore');
  add('Build trade station','trade',()=>mode('station'),base.station,stationCost(s));
  if(base.ship.enabled){const b=add(`Build ship · ${shipsRemaining(s,viewer)}/2 left · 1 VP · 2 wood + 2 brick + 2 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b)b.dataset.shipAvailability='ready';}

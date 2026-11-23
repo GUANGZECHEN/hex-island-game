@@ -102,6 +102,20 @@ try{
   assert.equal(chips.length,Object.keys(cost).length,name+' cost resource count');
   for(const [resource,amount] of Object.entries(cost))assert.ok(chips.some(chip=>chip.className.includes('resource-chip-'+resource)&&chip.text.endsWith(String(amount))),name+' '+resource+' cost');
  }
+ for(const [phase,name] of [
+  ['setup-settlement','Build settlement'],['setup-road','Build road'],['setup-city','Upgrade house to city'],['free-road','Build road'],
+ ]){
+  await page.evaluate(phase=>window.__persistentFixture.phase(phase),phase);
+  const freeButton=button(page,name),freeCost=freeButton.locator('.action-cost');
+  assert.equal(await freeCost.isVisible(),true,phase+' shows the free cost');
+  assert.equal(await freeCost.innerText(),'0',phase+' displays a numeric zero');
+  assert.match(await freeButton.getAttribute('aria-description'),/^Cost: 0(?:\.|$)/);
+  assert.equal(await freeCost.locator('.resource-chip').count(),0,phase+' has no paid chips on the free button');
+  const costs=await learning.locator('.action-cost').allTextContents();
+  assert.deepEqual(costs.filter(cost=>cost==='0'),['0'],phase+' has exactly one free cost');
+  assert.equal(await page.getByText('During setup and free road placement', {exact:false}).count(),0);
+ }
+ await page.evaluate(()=>window.__persistentFixture.phase('action'));
  const deadline=await page.evaluate(()=>window.__persistentFixture.deadline());
  assert.equal(await button(page,'Roll dice').count(),0,'roll is hidden outside roll phase');
  assert.equal(await page.locator('#actions button.action-button').filter({hasText:'End turn'}).count(),1,'only currently executable end turn is shown');

@@ -70,6 +70,7 @@ fixtureObserver.observe(el('board'),{childList:true});
   el('pass').hidden=true;el('game').hidden=false;enterGame();fixtureObserver.takeRecords();fixtureEvents.length=0;fixtureFailureArmed=fail3d;render();
   return {scores:next.players.map(p=>publicVictoryPoints(next,p.id)),ids:settings.ids};
  },
+ delayMs:BOT_DELAY_MS,
  events(){return structuredClone(fixtureEvents);},
  logs(){return [...log];},
  hideBoard(){el('board').style.transform='translateY(-10000px)';window.dispatchEvent(new Event('resize'));},
@@ -116,6 +117,7 @@ try{
   browser=await chromium.launch({headless:true,args:mode==='3d'?['--use-angle=swiftshader','--enable-unsafe-swiftshader']:['--disable-gpu']});
   page=await browser.newPage({viewport:{width:1600,height:900}});page.setDefaultTimeout(8000);page.on('pageerror',error=>errors.push(String(error)));
   await page.goto(url+(mode==='2d'?'&renderer=2d':''),{waitUntil:'networkidle'});await page.bringToFront();
+  assert.equal(await page.evaluate(()=>window.__botCatchUp.delayMs),2000,'bot actions use a two-second delay');
   await page.evaluate(async()=>{await document.fonts.ready;await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
   for(const [shape,scores,players] of [['reported',[6,3,8,6],['Bot 1']],['consecutive',[6,3,3,8],['Bot 1','Bot 2']]]){
    const initial=await page.evaluate(shape=>window.__botCatchUp.load(shape),shape);assert.deepEqual(initial.scores,scores);assert.deepEqual(initial.ids,['Player 1','Bot 1','Bot 2','Bot 3']);
@@ -135,13 +137,13 @@ try{
     assert.ok(end&&end.at-notices[0].at>=2150,'notice must remain visible for its full 2.2 second dwell');
     assert.ok(!events.some(e=>e.kind==='bot-action'&&e.at>rolls[i].at&&e.at<end.at),'bot must wait through dice and supplement presentation');
     const next=events.find(e=>e.kind==='bot-action'&&e.at>end.at);
-    assert.ok(next&&next.at-end.at>=2950,'next bot action must wait 3 seconds after the notice');
+    assert.ok(next&&next.at-end.at>=1950,'next bot action must wait 2 seconds after the notice');
     const expectedLog=players[i]+' gained supplement: '+Object.entries(gains).map(([r,n])=>n+' '+r).join(', ')+'.';
     const logs=await page.evaluate(()=>window.__botCatchUp.logs());
     assert.equal(logs.filter(item=>item===expectedLog).length,1,'one log entry must include the actual resources');
    }
    const actions=events.filter(e=>e.kind==='bot-action');
-   for(let i=1;i<actions.length;i++)assert.ok(actions[i].at-actions[i-1].at>=2999,'bot actions must be at least 3 seconds apart');
+   for(let i=1;i<actions.length;i++)assert.ok(actions[i].at-actions[i-1].at>=1999,'bot actions must be at least 2 seconds apart');
    const logsBefore=await page.evaluate(()=>window.__botCatchUp.logs());
    const refreshed=await page.evaluate(()=>window.__botCatchUp.refresh());assert.deepEqual(refreshed.after,refreshed.before,'render must not award resources again');await delay(500);
    events=await page.evaluate(()=>window.__botCatchUp.events());

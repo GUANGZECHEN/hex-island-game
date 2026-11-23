@@ -1638,7 +1638,6 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 .learn-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem}
 .learn-action-grid .action-button{min-width:0;min-height:62px}
 .learn-action-grid .action-button:disabled{opacity:1;filter:none;color:#596960;background:#f0f1ed;border-color:#d4dcd2}.learn-action-grid .action-button:disabled .action-cost{opacity:1}
-.learn-action-note{margin:.4rem 0 0;font-size:.72rem;line-height:1.35;color:#526a5d}
 @media(max-width:400px){.learn-action-grid{grid-template-columns:minmax(0,1fr)}}
 
 /* The supplement is a separate public award after the roll presentation. */

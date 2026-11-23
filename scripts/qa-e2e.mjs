@@ -215,9 +215,8 @@ try{
   // Complete Player 1's second setup pair, then exercise a real authoritative dice roll.
   await host.waitForFunction(()=>document.querySelector('#game-status')?.textContent?.includes("Player 1's turn; phase: setup-settlement"),null,{timeout:30000});
   await placeHumanSetupPair();
-  // Nine bot actions follow this seeded setup. Each waits 3 seconds and
-  // visible rolls add presentation time, so a fixed 30-second wait is short.
-  // Require observable game progress and retain an absolute upper bound.
+  // Nine bot actions follow this seeded setup. Each waits two seconds, and
+  // visible rolls add presentation time. Require progress and bound the wait.
   const botWait=await host.evaluate(()=>new Promise(resolve=>{
     const start=Date.now(),deadline=start+75000,stallLimit=12000;
     let lastProgress=start,lastKey='';
