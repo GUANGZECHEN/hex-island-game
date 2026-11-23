@@ -1654,6 +1654,46 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
 .music-panel button{font-size:.83rem}
 .music-panel [role="status"]{margin:.3rem 0 0;font-size:.78rem;color:#284c3e;overflow-wrap:anywhere}
 .music-panel [role="status"]:empty{display:none}
+.music-panel:has(#music-playlist:not([hidden])) {
+ width: min(19rem, calc(100vw - 2rem));
+ max-block-size: calc(100dvh - 5rem);
+ overflow: auto;
+ overscroll-behavior: contain;
+}
+#music-playlist:not([hidden]) {
+ display: grid;
+ grid-template-columns: minmax(0, 1fr);
+ gap: .4rem;
+ margin-top: .55rem;
+ padding-top: .5rem;
+ border-top: 1px solid #d5e0d2;
+}
+#music-playlist label { margin: 0; font-size: .87rem; }
+#music-queue {
+ width: 100%;
+ min-width: 0;
+ padding: .2rem;
+ border: 1px solid #aabdae;
+ border-radius: .35rem;
+ color: #243e32;
+ background: #fff;
+ font-size: 1rem;
+}
+#music-queue option { padding: .16rem .3rem; text-overflow: ellipsis; }
+.music-queue-actions {
+ display: grid;
+ grid-template-columns: repeat(2, minmax(0, 1fr));
+ gap: .35rem;
+}
+.music-queue-actions button { margin: 0; min-height: 44px; padding: .3rem; }
+@media (max-height: 32rem) {
+ .music-controls[open]:has(#music-playlist:not([hidden])) {
+  position: fixed;
+  z-index: 31;
+  inset-block-start: max(.4rem, env(safe-area-inset-top));
+  inset-inline-end: max(.6rem, env(safe-area-inset-right));
+ }
+}
 
 /* Preserve the seat number beside the same ink emblem painted on its ships. */
 .player-summary .player-marker.with-emblem {

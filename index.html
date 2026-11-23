@@ -8,6 +8,16 @@
     <button id="music-toggle" type="button" hidden>Play music</button>
     <input id="music-files" type="file" webkitdirectory multiple hidden>
     <p id="music-status" role="status"></p>
+    <div id="music-playlist" hidden>
+      <label for="music-queue">Match playlist</label>
+      <select id="music-queue" size="4"></select>
+      <div class="music-queue-actions">
+        <button id="music-play-now" type="button">Play now</button>
+        <button id="music-shuffle" type="button">Shuffle</button>
+        <button id="music-up" type="button">Move up</button>
+        <button id="music-down" type="button">Move down</button>
+      </div>
+    </div>
     <audio id="music-player" preload="none" hidden></audio>
   </div>
 </details>

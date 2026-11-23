@@ -58,8 +58,10 @@ async function checkMusic(browser) {
   const directory = await mkdtemp(join(tmpdir(), 'hex-music-'));
   const page = await browser.newPage();
   try {
+    const lobbyTrack = 'M01001.wav';
+    const matchTracks = ['m01002.wav', 'm01003.wav', 'm01004.wav'];
     const sampleRate = 8000;
-    const samples = sampleRate * 3;
+    const samples = sampleRate * 30;
     const wav = Buffer.alloc(44 + samples * 2);
     wav.write('RIFF', 0);
     wav.writeUInt32LE(wav.length - 8, 4);
@@ -73,8 +75,11 @@ async function checkMusic(browser) {
     wav.writeUInt16LE(16, 34);
     wav.write('data', 36);
     wav.writeUInt32LE(samples * 2, 40);
-    for (let n = 0; n < samples; n++) wav.writeInt16LE(Math.round(150 * Math.sin(n * 2 * Math.PI * 220 / sampleRate)), 44 + n * 2);
-    for (const name of ['M01001.wav', 'm01002.wav', 'm01003.wav']) await writeFile(join(directory, name), wav);
+    for (const [index, name] of [lobbyTrack, ...matchTracks].entries()) {
+      const frequency = 220 + index * 55;
+      for (let n = 0; n < samples; n++) wav.writeInt16LE(Math.round(150 * Math.sin(n * 2 * Math.PI * frequency / sampleRate)), 44 + n * 2);
+      await writeFile(join(directory, name), wav);
+    }
     await writeFile(join(directory, 'notes.txt'), 'not an audio track');
 
     const musicUrl = new URL(url);
@@ -82,11 +87,47 @@ async function checkMusic(browser) {
     const summary = page.locator('#music-controls summary');
     const toggle = page.locator('#music-toggle');
     const audio = page.locator('#music-player');
-    const waitForTrack = name => page.waitForFunction(name => {
-      const player = document.querySelector('#music-player');
-      return document.querySelector('#music-status')?.textContent?.includes('Playing ' + name)
-        && player.currentSrc.startsWith('blob:') && !player.paused && player.readyState >= 2;
-    }, name, { timeout: 15000 });
+    const queue = page.locator('#music-queue');
+    const playNow = page.locator('#music-play-now');
+    const moveUp = page.locator('#music-up');
+    const moveDown = page.locator('#music-down');
+    const shuffle = page.locator('#music-shuffle');
+    const waitForPlaying = async names => {
+      const result = await page.waitForFunction(names => {
+        const player = document.querySelector('#music-player');
+        const status = document.querySelector('#music-status')?.textContent ?? '';
+        return player?.currentSrc.startsWith('blob:') && !player.paused && player.readyState >= 2
+          && names.find(name => status.startsWith('Playing ' + name));
+      }, names, { timeout: 15000 });
+      return result.jsonValue();
+    };
+    const options = () => queue.locator('option').evaluateAll(nodes => nodes.map(node => ({ name: node.textContent.trim(), value: node.value })));
+    const queueOrder = async () => (await options()).map(option => option.name);
+    const choose = async name => {
+      const option = (await options()).find(option => option.name === name);
+      assert.ok(option, 'the track is available in the match queue: ' + name);
+      await queue.selectOption(option.value);
+    };
+    const matchQueue = async () => {
+      const order = await queueOrder();
+      assert.deepEqual([...order].sort(), matchTracks, 'the queue contains each imported match track exactly once');
+      return order;
+    };
+    const assertQueueHidden = async () => {
+      for (const control of [queue, playNow, moveUp, moveDown, shuffle]) assert.equal(await control.isVisible(), false);
+    };
+    const playback = () => audio.evaluate(player => ({ source: player.src, time: player.currentTime, paused: player.paused }));
+    const assertUninterrupted = async before => {
+      const after = await playback();
+      assert.equal(after.source, before.source, 'editing the queue must not replace the current media source');
+      assert.equal(after.paused, false, 'editing the queue must not pause the current track');
+      assert.ok(after.time >= before.time, 'editing the queue must not reset the current track position');
+    };
+    const finishCurrentTrack = () => audio.evaluate(player => {
+      if (player.paused || !Number.isFinite(player.duration)) throw new Error('No playing track to finish');
+      player.currentTime = player.duration - .15;
+    });
+
     await page.goto(musicUrl.href, { waitUntil: 'networkidle' });
     await summary.click();
     const [chooser] = await Promise.all([
@@ -95,31 +136,97 @@ async function checkMusic(browser) {
     await chooser.setFiles(directory);
     await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
     assert.equal(await audio.getAttribute('src'), null, 'the home screen waits until a room is opened');
+    await assertQueueHidden();
 
     await summary.click();
     await page.locator('#local-room-create').click();
-    await waitForTrack('M01001.wav');
+    await waitForPlaying([lobbyTrack]);
     assert.equal(await audio.evaluate(player => player.loop), true, 'the waiting-room track loops');
     const lobbySource = await audio.getAttribute('src');
+    await summary.click();
+    await assertQueueHidden();
+    await summary.click();
+
     await page.locator('#start').click();
-    await waitForTrack('m01002.wav');
+    await reveal(page);
+    const first = await waitForPlaying(matchTracks);
     assert.notEqual(await audio.getAttribute('src'), lobbySource);
     assert.equal(await audio.evaluate(player => player.loop), false);
-    await waitForTrack('m01003.wav');
-
     await summary.click();
+    const original = await matchQueue();
+    assert.equal(original[0], first, 'the first randomized queue entry plays when the match begins');
+    const [, second, third] = original;
+
+    await page.waitForFunction(() => document.querySelector('#music-player').currentTime > .2);
+    const beforeReorder = await playback();
+    await choose(third);
+    await moveUp.click();
+    assert.deepEqual(await queueOrder(), [first, third, second]);
+    await choose(third);
+    await moveDown.click();
+    assert.deepEqual(await queueOrder(), original);
+    await choose(third);
+    await moveUp.click();
+    assert.deepEqual(await queueOrder(), [first, third, second]);
+    await assertUninterrupted(beforeReorder);
+
+    await toggle.click();
+    assert.equal(await audio.evaluate(player => player.paused), true);
+    await choose(third);
+    assert.equal(await audio.getAttribute('src'), beforeReorder.source, 'selecting an option by itself does not change playback');
+    assert.equal(await audio.evaluate(player => player.paused), true);
+    await playNow.click();
+    await waitForPlaying([third]);
+    await finishCurrentTrack();
+    await waitForPlaying([second]);
+    await finishCurrentTrack();
+    const newFirst = await waitForPlaying(matchTracks.filter(name => name !== second));
+    const freshPass = await matchQueue();
+    assert.equal(freshPass[0], newFirst, 'the next pass starts at its queue head without repeating the last track');
+
+    const [, shuffleWhilePlaying] = freshPass;
+    await choose(shuffleWhilePlaying);
+    await playNow.click();
+    await waitForPlaying([shuffleWhilePlaying]);
+    const beforeShuffle = await playback();
+    await shuffle.click();
+    assert.equal((await matchQueue())[0], shuffleWhilePlaying, 'manual shuffle starts a fresh pass with the current track');
+    await assertUninterrupted(beforeShuffle);
+    await toggle.click();
+    await choose(shuffleWhilePlaying);
+    await playNow.click();
+    await waitForPlaying([shuffleWhilePlaying]);
+
+    const previousMatchSource = await audio.getAttribute('src');
+    await summary.click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#local-restart').click();
+    await reveal(page);
+    const restartedFirst = await waitForPlaying(matchTracks);
+    assert.notEqual(await audio.getAttribute('src'), previousMatchSource, 'restarting a match begins a fresh playback pass');
+    await summary.click();
+    assert.equal((await matchQueue())[0], restartedFirst);
+
     await toggle.click();
     assert.equal(await audio.evaluate(player => player.paused), true);
     await page.reload({ waitUntil: 'networkidle' });
     await summary.click();
     await page.waitForFunction(() => document.querySelector('#music-status')?.textContent === 'Music loaded.');
+    await assertQueueHidden();
     await summary.click();
     await page.locator('#local-room-create').click();
     await summary.click();
+    await assertQueueHidden();
     assert.equal(await audio.evaluate(player => player.paused), true, 'the music pause preference survives reload');
     await toggle.click();
-    await waitForTrack('M01001.wav');
-    check('Local music folder plays m01001 in the waiting room, advances through gameplay tracks, and survives reload');
+    await waitForPlaying([lobbyTrack]);
+    await summary.click();
+    await page.locator('#start').click();
+    await reveal(page);
+    const restoredFirst = await waitForPlaying(matchTracks);
+    await summary.click();
+    assert.equal((await matchQueue())[0], restoredFirst, 'all match tracks are available again after reload');
+    check('Imported music keeps the lobby loop and cache, shuffles passes, and follows match-only queue controls');
   } finally {
     await page.close();
     await rm(directory, { recursive: true, force: true });

@@ -94,7 +94,7 @@ The expanded table admits up to six player seats before game start and uses the 
 
 ## Background music
 
-Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. The match plays the other audio tracks in filename order and loops the playlist. Music and its pause setting are stored in the browser on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
+Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. Each new match shuffles the other tracks. Once all tracks have played, the next pass shuffles again. With multiple tracks, the first song of a new pass differs from the one that just ended. During a match, open **Music** and select a track. **Play now** starts it immediately, including when music is paused. **Move up** and **Move down** change the playback order. **Shuffle** keeps the current song playing and shuffles the remaining tracks for a fresh pass. These controls affect only your own browser. Music and its pause setting are stored in the browser on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
 
 ## Local test bots
 

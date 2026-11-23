@@ -1,3 +1,5 @@
+import { MusicQueue } from './music-queue.ts';
+
 type MusicScene = 'menu' | 'lobby' | 'match';
 type MusicLibrary = { lobby: File; match: File[] };
 
@@ -38,8 +40,10 @@ export class GameMusic {
   private scene: MusicScene = 'menu';
   private library: MusicLibrary | null = null;
   private source: string | null = null;
-  private trackIndex = 0;
-  private failures = 0;
+  private matchId = '';
+  private queue: MusicQueue | null = null;
+  private trackLabels: string[] = [];
+  private failedTracks = new Set<File>();
   private muted = false;
   private blocked = false;
   private savingFailed = false;
@@ -48,6 +52,12 @@ export class GameMusic {
   private folder = document.querySelector<HTMLButtonElement>('#music-folder')!;
   private toggle = document.querySelector<HTMLButtonElement>('#music-toggle')!;
   private status = document.querySelector<HTMLElement>('#music-status')!;
+  private playlist = document.querySelector<HTMLElement>('#music-playlist')!;
+  private list = document.querySelector<HTMLSelectElement>('#music-queue')!;
+  private playNow = document.querySelector<HTMLButtonElement>('#music-play-now')!;
+  private up = document.querySelector<HTMLButtonElement>('#music-up')!;
+  private down = document.querySelector<HTMLButtonElement>('#music-down')!;
+  private shuffle = document.querySelector<HTMLButtonElement>('#music-shuffle')!;
 
   constructor() {
     try { this.muted = localStorage.getItem(muteKey) === 'true'; } catch { /* Storage is optional. */ }
@@ -56,8 +66,7 @@ export class GameMusic {
     this.folder.addEventListener('click', () => this.input.click());
     this.input.addEventListener('change', () => this.importTracks());
     this.toggle.addEventListener('click', () => {
-      this.muted = !this.audio.paused;
-      try { localStorage.setItem(muteKey, String(this.muted)); } catch { /* Storage is optional. */ }
+      this.setMuted(!this.audio.paused);
       if (this.muted) {
         this.blocked = false;
         this.audio.pause();
@@ -66,8 +75,26 @@ export class GameMusic {
         this.play();
       }
     });
+    this.list.addEventListener('change', () => this.updateQueueButtons());
+    this.up.addEventListener('click', () => this.moveSelected(-1));
+    this.down.addEventListener('click', () => this.moveSelected(1));
+    this.shuffle.addEventListener('click', () => {
+      if (this.scene !== 'match' || !this.queue) return;
+      this.queue.shuffle();
+      this.showQueue(this.queue.current);
+    });
+    this.playNow.addEventListener('click', () => {
+      if (!this.queue || this.scene !== 'match' || this.list.selectedIndex < 0) return;
+      const selected = Number(this.list.value);
+      const sameTrack = this.queue.current === selected && !!this.source;
+      this.queue.select(selected);
+      this.failedTracks.clear();
+      this.setMuted(false);
+      if (sameTrack) this.play();
+      else this.loadTrack();
+    });
     this.audio.addEventListener('playing', () => {
-      this.failures = 0;
+      this.failedTracks.clear();
       this.blocked = false;
       this.paint();
     });
@@ -81,17 +108,37 @@ export class GameMusic {
     document.addEventListener('keydown', retry);
     void musicStore<MusicLibrary | undefined>('readonly', store => store.get('library')).then(saved => {
       if (saved && !this.library) {
-        this.library = saved;
-        this.loadTrack();
+        this.useLibrary(saved);
       }
     }).catch(() => { /* Keep music optional if storage is unavailable. */ });
   }
 
-  setScene(scene: MusicScene): void {
-    if (scene === this.scene) return;
+  setScene(scene: MusicScene, matchId = ''): void {
+    const newMatch = scene === 'match' && matchId !== this.matchId;
+    if (this.scene === scene && !newMatch) return;
     this.scene = scene;
-    this.trackIndex = 0;
-    this.failures = 0;
+    if (scene === 'match' && this.library && (newMatch || !this.queue)) {
+      this.queue = new MusicQueue(this.library.match.length, Math.random, this.queue?.current);
+    }
+    if (scene === 'match') this.matchId = matchId;
+    this.failedTracks.clear();
+    this.showQueue(this.queue?.current);
+    this.loadTrack();
+  }
+
+  private setMuted(value: boolean): void {
+    this.muted = value;
+    try { localStorage.setItem(muteKey, String(value)); } catch { /* Storage is optional. */ }
+  }
+
+  private useLibrary(library: MusicLibrary): void {
+    this.library = library;
+    const counts = new Map<string, number>();
+    for (const file of library.match) counts.set(file.name, (counts.get(file.name) ?? 0) + 1);
+    this.trackLabels = library.match.map((file, index) => counts.get(file.name) === 1 ? file.name : `${file.name} (${index + 1})`);
+    this.queue = this.scene === 'match' ? new MusicQueue(library.match.length) : null;
+    this.failedTracks.clear();
+    this.showQueue(this.queue?.current);
     this.loadTrack();
   }
 
@@ -102,11 +149,8 @@ export class GameMusic {
       this.status.textContent = 'Choose a folder with m01001 and at least one gameplay audio track.';
       return;
     }
-    this.library = library;
-    this.trackIndex = 0;
-    this.failures = 0;
     this.savingFailed = false;
-    this.loadTrack();
+    this.useLibrary(library);
     void musicStore('readwrite', store => store.put(library, 'library')).catch(() => {
       if (this.library === library) {
         this.savingFailed = true;
@@ -115,9 +159,38 @@ export class GameMusic {
     });
   }
 
-  private tracks(): readonly File[] {
-    if (!this.library || this.scene === 'menu') return [];
-    return this.scene === 'lobby' ? [this.library.lobby] : this.library.match;
+  private currentTrack(): File | undefined {
+    if (this.scene === 'lobby') return this.library?.lobby;
+    if (this.scene === 'match' && this.queue) return this.library?.match[this.queue.current];
+  }
+
+  private showQueue(selected?: number): void {
+    const queue = this.queue;
+    const visible = this.scene === 'match' && !!queue;
+    this.playlist.hidden = !visible;
+    if (!queue || !visible) {
+      this.list.replaceChildren();
+      return;
+    }
+    const options = queue.order.map(id => new Option(this.trackLabels[id], String(id)));
+    this.list.replaceChildren(...options);
+    this.list.value = String(selected ?? queue.current);
+    this.updateQueueButtons();
+  }
+
+  private updateQueueButtons(): void {
+    const row = this.list.selectedIndex, count = this.list.length;
+    this.playNow.disabled = row < 0;
+    this.up.disabled = row <= 0;
+    this.down.disabled = row < 0 || row === count - 1;
+    this.shuffle.disabled = count < 2;
+  }
+
+  private moveSelected(direction: -1 | 1): void {
+    if (this.scene !== 'match' || !this.queue || this.list.selectedIndex < 0) return;
+    const id = Number(this.list.value);
+    this.queue.move(id, direction);
+    this.showQueue(id);
   }
 
   private clearTrack(): void {
@@ -134,11 +207,10 @@ export class GameMusic {
 
   private loadTrack(): void {
     this.clearTrack();
-    const tracks = this.tracks();
-    const track = tracks[this.trackIndex];
+    const track = this.currentTrack();
     if (track) {
       this.source = URL.createObjectURL(track);
-      this.audio.loop = tracks.length === 1;
+      this.audio.loop = this.scene === 'lobby' || this.library?.match.length === 1;
       this.audio.src = this.source;
     }
     this.paint();
@@ -161,19 +233,25 @@ export class GameMusic {
   }
 
   private advance(): void {
-    const count = this.tracks().length;
-    if (!count) return;
-    this.trackIndex = (this.trackIndex + 1) % count;
+    if (!this.queue || !this.library || !this.source || this.scene !== 'match') return;
+    const selected = this.list.selectedIndex < 0 ? undefined : Number(this.list.value);
+    const previous = this.queue.current;
+    do {
+      this.queue.advance();
+    } while (this.failedTracks.has(this.library.match[this.queue.current]));
+    this.showQueue(selected === previous ? this.queue.current : selected);
     this.loadTrack();
   }
 
   private onTrackError(): void {
-    if (++this.failures < this.tracks().length) {
+    const track = this.currentTrack();
+    if (!this.source || !track) return;
+    this.failedTracks.add(track);
+    if (this.scene === 'match' && this.library && this.failedTracks.size < this.library.match.length) {
       this.advance();
     } else {
       this.clearTrack();
       this.paint();
-      this.status.textContent = 'The browser could not play this music. Try MP3, WAV, or Ogg files.';
     }
   }
 
@@ -181,10 +259,15 @@ export class GameMusic {
     this.toggle.hidden = this.source === null;
     const playing = !!this.source && !this.audio.paused;
     this.toggle.textContent = playing ? 'Pause music' : 'Play music';
-    const track = this.source ? this.tracks()[this.trackIndex] : undefined;
+    const track = this.source ? this.currentTrack() : undefined;
+    if (!this.source && this.failedTracks.size) {
+      this.status.textContent = 'The browser could not play this music. Try MP3, WAV, or Ogg files.';
+      return;
+    }
+    const title = this.scene === 'match' && this.queue ? this.trackLabels[this.queue.current] : track?.name;
     const suffix = this.savingFailed ? ' Choose the folder again after reloading to keep using it.' : '';
     this.status.textContent = track
-      ? (playing ? 'Playing ' + track.name : this.blocked ? 'Select Play music to start.' : 'Ready to play ' + track.name) + suffix
+      ? (playing ? 'Playing ' + title : this.blocked ? 'Select Play music to start.' : 'Ready to play ' + title) + suffix
       : (this.library ? 'Music loaded.' + suffix : '');
   }
 }

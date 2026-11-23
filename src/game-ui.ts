@@ -38,6 +38,7 @@ import { applyBotCommand } from './game/bot/runner';
 const el = <T extends HTMLElement>(id:string) => document.getElementById(id) as T;
 const diceSound=new DiceSound(el<HTMLButtonElement>('sound-toggle'));
 const music=new GameMusic();
+let localMusicRound = 0;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
 let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
@@ -256,7 +257,7 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function enterGame(newMatch:boolean){
- music.setScene('match');
+ music.setScene('match', projection ? `online:${projection.gameId}` : `local:${localMusicRound}`);
  if(newMatch){draftCounts.clear();draftChoices.clear();tradeDrafts.clear();}
  const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
@@ -757,6 +758,7 @@ function refreshLocalMapPreview(){
  }catch(error){preview.textContent=error instanceof Error?error.message:'Invalid local room settings.';}
 }
 function startLocalRound(settings:LocalRoomSettings){
+ localMusicRound++;
  clearBotTimer();remote=null;projection=null;networkRevision=0;localPaused=false;localPauseAt=0;localActionDeadlines.clear();pendingClockCommand=null;
  localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;targetMode=null;
  renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';
