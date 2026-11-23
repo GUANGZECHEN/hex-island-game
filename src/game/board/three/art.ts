@@ -169,7 +169,7 @@ export function makeBuilding(assets: ArtAssets, kind: 'settlement' | 'city' | 's
       const geo=new THREE.ExtrudeGeometry(shape,{depth:.14,bevelEnabled:true,bevelSize:.02,bevelThickness:.018,bevelSegments:1});
       geo.rotateX(-Math.PI/2);return geo;
     });
-    assets.mesh(g,hull,assets.material('#8c6343'),0,.32,0).name='player-ship-hull';
+    assets.mesh(g,hull,assets.material(color),0,.32,0).name='player-ship-hull';
     assets.box(g,color,[.55,.075,.20],0,.34,0).name='player-ship-stripe';
     assets.box(g,'#6c513a',[.032,.55,.035],0,.57,0).name='player-ship-mast';
     const sail=assets.geometry('player-ship-sail',()=>{

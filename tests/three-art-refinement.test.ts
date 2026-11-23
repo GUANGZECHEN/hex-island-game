@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ArtAssets, makeTerrain, makeBoatPort } from '../src/game/board/three/art.ts';
+import { ArtAssets, makeTerrain, makeBoatPort, makeBuilding } from '../src/game/board/three/art.ts';
 import { generateBoardSetup } from '../src/game/board/setup.ts';
 import { worldGeometry, portBoatPlan } from '../src/game/board/three/model.ts';
 import { ART_REVISION, refineTerrain, inspectTerrainArt, makeOcean, coastline, coastDistance, disposeArtInstances } from '../src/game/board/three/refinement.ts';
@@ -93,6 +93,20 @@ test('boat ports keep their deck origins and display trade information on larger
       resource: port.type === 'generic' ? null : port.type,
     });
     assert.ok(sail.scale.x >= .9 && sail.scale.y >= .9);
+  }
+  assets.dispose();
+});
+
+test('player-built ship hulls display their owners’ colors', () => {
+  const assets = new ArtAssets();
+  for (const color of ['#2868b2', '#c74a42']) {
+    const ship = makeBuilding(assets, 'ship', color);
+    const hull = ship.getObjectByName('player-ship-hull');
+    assert.ok(hull instanceof THREE.Mesh && hull.material instanceof THREE.MeshStandardMaterial);
+    assert.equal(hull.material.color.getHexString(), color.slice(1));
+    const sail = ship.getObjectByName('player-ship-sail');
+    assert.ok(sail instanceof THREE.Mesh && sail.material instanceof THREE.MeshStandardMaterial);
+    assert.equal(sail.material.color.getHexString(), 'fff1d8');
   }
   assets.dispose();
 });
