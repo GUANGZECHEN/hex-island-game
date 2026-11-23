@@ -1560,7 +1560,7 @@ html.invite-entry body.room-table.room-configuring #room-reconnect{display:none!
  .room-table #game-change-map{width:100%}
 }
 
-/* Shared 45-second active-player clock, pinned over the board's top-right edge.
+/* Shared active-player clock, pinned over the board's top-right edge.
    Works in both WebGL and SVG, with no new Three meshes or hit targets. */
 .board-workspace .board-map-column{position:relative}
 .board-workspace .turn-action-clock{

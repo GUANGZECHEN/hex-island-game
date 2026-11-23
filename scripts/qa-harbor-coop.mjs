@@ -264,8 +264,9 @@ try{
   check('Host full-page shutdown and saved-game resume preserves cooperative mode, exact orders and pause');
   rh.once('dialog',d=>d.accept());await rh.locator('#game-restart').click();await rg.waitForFunction(()=>document.querySelector('#game-status')?.textContent.includes('Revision 0'));assert.match(await rg.locator('#turn-banner').textContent(),/Harbor Co-op/);assert.equal(await rg.locator('.harbor-order').count(),1);
   assert.equal(await rh.locator('#turn-clock-pause').getAttribute('aria-pressed'),'false','new game clears saved pause');
-  const restartedSeconds=Number((await rh.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
-  assert.ok(restartedSeconds>=40&&restartedSeconds<=45,'new game starts a fresh 45-second clock');
+  const [minutes,seconds]=(await rh.locator('#turn-action-clock-seconds').textContent()).split(':').map(Number);
+  const restartedSeconds=minutes*60+seconds;
+  assert.ok(restartedSeconds>=55&&restartedSeconds<=60,'new game starts a fresh 60-second clock');
   check('Live same-room restart begins a new unpaused cooperative match with a fresh clock');
   await hc.close();await gc.close();await sc.close();
  }

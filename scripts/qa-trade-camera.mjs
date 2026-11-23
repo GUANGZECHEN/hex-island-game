@@ -54,7 +54,10 @@ function unchanged(a,b,label){
  assert.equal(b.height,a.height,label+' board-stage height shifted');
  assert.ok(dist(b.board,a.board)<1e-4,label+' board dimensions shifted');
 }
-const clockSeconds=async p=>Number((await p.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+const clockSeconds=async p=>{
+ const [minutes,seconds]=(await p.locator('#turn-action-clock-seconds').textContent()).split(':').map(Number);
+ return minutes*60+seconds;
+};
 const settle=p=>p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 async function orbit(p){
  const b=await p.locator('#board canvas').boundingBox();
@@ -84,7 +87,7 @@ try{
  const before=await inspect(page);
  assert.ok(before.camera.manualView);
  await delay(1500);
- const beforeBankClock=await clockSeconds(page);assert.ok(beforeBankClock<45);
+ const beforeBankClock=await clockSeconds(page);assert.ok(beforeBankClock<60);
  const oldHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  await page.locator('#trade-actions [aria-label="Trade 4 lumber for 1 brick"]').click();
  await settle(page);
@@ -92,10 +95,10 @@ try{
  unchanged(before,after,'Bank trade');
  const newHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  assert.equal(newHand.lumber,oldHand.lumber-4);assert.equal(newHand.brick,oldHand.brick+1);
- assert.ok(await clockSeconds(page)>=44,'completed bank trade resets the clock');
+ assert.ok(await clockSeconds(page)>=59,'completed bank trade resets the clock');
  console.log('PASS bank trade preserves zoom, angle, fit, map and canvas',JSON.stringify({height:after.height,scroll:after.pageScroll}));
  await delay(1500);
- const beforeOfferClock=await clockSeconds(page);assert.ok(beforeOfferClock<45);
+ const beforeOfferClock=await clockSeconds(page);assert.ok(beforeOfferClock<60);
  const offerBefore=await inspect(page);
  await page.locator('#trade-actions .domestic-trade-card summary').click();
  await page.locator('#trade-actions .domestic-trade-card fieldset').nth(0).getByRole('button',{name:'Add one lumber'}).click();
@@ -109,19 +112,19 @@ try{
  await page.evaluate(()=>window.__tradeCameraFixture.view('Player 2'));
  await settle(page);
  await delay(1500);
- const beforeAcceptClock=await clockSeconds(page);assert.ok(beforeAcceptClock<45);
+ const beforeAcceptClock=await clockSeconds(page);assert.ok(beforeAcceptClock<60);
  const acceptBefore=await inspect(page);
  await page.getByRole('button',{name:'Accept trade'}).click();
  await settle(page);
  unchanged(acceptBefore,await inspect(page),'Domestic trade acceptance');
  assert.equal(await page.evaluate(()=>window.__tradeCameraFixture.offer()),null);
- assert.ok(await clockSeconds(page)>=44,'other-seat acceptance resets the active proposer clock');
+ assert.ok(await clockSeconds(page)>=59,'other-seat acceptance resets the active proposer clock');
  console.log('PASS domestic offer and acceptance preserve the 3D view');
  await page.evaluate(()=>window.__tradeCameraFixture.load('harbor-coop'));
  await settle(page);
  await orbit(page);
  await delay(1500);
- assert.ok(await clockSeconds(page)<45);
+ assert.ok(await clockSeconds(page)<60);
  const transferBefore=await inspect(page);
  const prevHand=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  await page.locator('#harbor-panel [data-send-resource]').first().click();
@@ -129,7 +132,7 @@ try{
  unchanged(transferBefore,await inspect(page),'Co-op station resource transfer');
  const remaining=await page.evaluate(()=>window.__tradeCameraFixture.hand('Player 1'));
  assert.equal(Object.values(prevHand).reduce((a,b)=>a+b,0)-Object.values(remaining).reduce((a,b)=>a+b,0),1);
- assert.ok(await clockSeconds(page)>=44,'completed Harbor gift resets the clock');
+ assert.ok(await clockSeconds(page)>=59,'completed Harbor gift resets the clock');
  console.log('PASS co-op station gift preserves the 3D view');
  assert.deepEqual(errors,[]);
 }finally{

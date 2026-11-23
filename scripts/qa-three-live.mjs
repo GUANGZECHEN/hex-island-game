@@ -11,6 +11,11 @@ await mkdir(evidence, { recursive: true });
 const report = { scope: 'Actual integrated game, not the disconnected prototype; software WebGL is not a hardware performance measurement', checks: [], errors: [], renderer: null };
 const check = (name, details = {}) => { report.checks.push({ name, ...details, pass: true }); console.log('PASS', name, JSON.stringify(details)); };
 const inspect = page => page.evaluate(() => window.__hex3D?.inspect());
+const parseClockSeconds = text => {
+  const [minutes, seconds] = (text ?? '').split(':').map(Number);
+  return minutes * 60 + seconds;
+};
+const readClockSeconds = async page => parseClockSeconds(await page.locator('#turn-action-clock-seconds').textContent());
 const settle = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const moved = (a, b) => Math.hypot(...a.map((x, i) => x - b[i]));
 function assertCameraUnchanged(before,after,reason){
@@ -56,25 +61,25 @@ try {
   await startLocal(page, 3);
   const actionTimer=page.locator('#turn-action-clock');
   assert.equal(await actionTimer.isVisible(),true,'the clock must be visible on the board');
-  const startingSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
-  assert.ok(startingSeconds>=42&&startingSeconds<=45);
+  const startingSeconds=await readClockSeconds(page);
+  assert.ok(startingSeconds>=57&&startingSeconds<=60);
   await delay(1220);
-  const laterSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  const laterSeconds=await readClockSeconds(page);
   assert.ok(laterSeconds<startingSeconds,'the clock must count down live');
   await page.locator('#board-view-reset').click();
-  const cameraSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  const cameraSeconds=await readClockSeconds(page);
   assert.ok(cameraSeconds<=laterSeconds,'camera interaction must not reset the clock');
   await canvasPlace(page, 'Build settlement');
-  const buildSeconds=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
-  assert.ok(buildSeconds>=43&&buildSeconds<=45,'completed settlement must reset the clock to 45 seconds');
+  const buildSeconds=await readClockSeconds(page);
+  assert.ok(buildSeconds>=58&&buildSeconds<=60,'completed settlement must reset the clock to 60 seconds');
   await delay(1300);
-  const beforeUndo=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  const beforeUndo=await readClockSeconds(page);
   await page.getByRole('button', { name: 'Undo last action', exact: true }).click();
-  const afterUndo=Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1]);
+  const afterUndo=await readClockSeconds(page);
   assert.ok(afterUndo<=beforeUndo,'Undo must not reset the clock');
   const timerBounds=await actionTimer.boundingBox(),boardBounds=await page.locator('#board').boundingBox();
   assert.ok(timerBounds&&boardBounds&&timerBounds.x+timerBounds.width<=boardBounds.x+boardBounds.width+6&&timerBounds.y<=boardBounds.y+60,'timer stays in the board upper-right corner');
-  check('45-second clock ignores camera and Undo while a completed settlement resets it');
+  check('60-second clock ignores camera and Undo while a completed settlement resets it');
   await page.locator('#turn-clock-pause').click();
   assert.equal(await page.locator('#turn-clock-pause').getAttribute('aria-pressed'),'true');
   const frozen=await page.locator('#turn-action-clock-seconds').textContent();
@@ -152,7 +157,7 @@ try {
   await page.locator('#turn-clock-pause').click();
   assert.equal(await page.locator('#turn-clock-pause').getAttribute('aria-pressed'),'false');
   await delay(1300);
-  assert.ok(Number((await page.locator('#turn-action-clock-seconds').textContent()).split(':')[1])<Number(frozen.split(':')[1]),'resumed clock continues from its frozen remaining time');
+  assert.ok(await readClockSeconds(page)<parseClockSeconds(frozen),'resumed clock continues from its frozen remaining time');
   await drag(page, 35, 0); const cameraBeforeBuild = (await inspect(page)).camera;
   const placed = await canvasPlace(page, 'Build settlement');
   info = await inspect(page); assert.ok(info.buildings.some(([id]) => id === placed)); assert.ok(moved(cameraBeforeBuild, info.camera) < .001);
@@ -222,7 +227,7 @@ try {
   await unsupported.goto(url.href); await unsupported.locator('#local-room-create').click(); await unsupported.locator('#start').click(); await reveal(unsupported);
   assert.equal(await unsupported.locator('#board svg.island-board').count(), 1); await unsupported.close();
   check('A device without WebGL2 starts a playable SVG game automatically');
-  // Wait for the real 45-second deadline in a separate game; no accelerated clock
+  // Wait for the real 60-second deadline in a separate game; no accelerated clock
   // or synthetic activity is used, so this exercises the browser timeout path.
   const timeoutPage=watch(await browser.newPage({viewport:{width:1280,height:900}}));
   const timeoutUrl=new URL(url);timeoutUrl.searchParams.set('renderer','2d');
@@ -231,11 +236,11 @@ try {
   await timeoutPage.locator('#seats').selectOption('2');
   await timeoutPage.locator('#start').click();await reveal(timeoutPage);
   const timeoutStart=Date.now();
-  await timeoutPage.waitForFunction(()=>document.querySelectorAll('#board [data-building-kind]').length===1,null,{timeout:55000});
-  assert.ok(Date.now()-timeoutStart>=40000,'inactivity fallback must not fire early');
+  await timeoutPage.waitForFunction(()=>document.querySelectorAll('#board [data-building-kind]').length===1,null,{timeout:70000});
+  assert.ok(Date.now()-timeoutStart>=55000,'inactivity fallback must not fire early');
   assert.match(await timeoutPage.locator('#game-status').textContent(),/phase: setup-road/);
   await timeoutPage.close();
-  check('A real 45-second local inactivity deadline performs the legal setup fallback');
+  check('A real 60-second local inactivity deadline performs the legal setup fallback');
   if (process.env.QA_SIGNALING_URL) {
     // Animated local art has already been verified above. Free SwiftShader GPU
     // budget before spinning up three independent live multiplayer windows.

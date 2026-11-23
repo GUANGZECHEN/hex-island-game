@@ -372,7 +372,7 @@ try{
   for(const page of [guest,spectator])await page.waitForFunction(()=>document.querySelector('#room-seed')?.value==='24680',null,{timeout:15000});
 
   // Pause immediately so the real 25-second heartbeat can be observed without
-  // gameplay commands or the 45-second action deadline advancing the game.
+  // gameplay commands or the 60-second action deadline advancing the game.
   for(const page of reliabilityPages)await page.locator('#room-ready').click();
   await host.waitForFunction(()=>!document.querySelector('#room-start')?.disabled,null,{timeout:15000});
   await host.locator('#room-start').click();
@@ -396,13 +396,17 @@ try{
   }
   await host.locator('#turn-clock-pause').click();
   await host.waitForFunction(()=>!document.querySelector('#turn-action-clock-player')?.textContent?.includes('Paused'),null,{timeout:15000});
-  const running=await host.evaluate(()=>({
-    at:performance.now(),seconds:Number(document.querySelector('#turn-action-clock-seconds')?.textContent?.slice(-2)),
-    status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount,
-    sent:globalThis.__hexHeartbeat.sent.length,received:globalThis.__hexHeartbeat.received.length
-  }));
+  const readRunningClock=()=>host.evaluate(()=>{
+    const [minutes,seconds]=(document.querySelector('#turn-action-clock-seconds')?.textContent??'').split(':').map(Number);
+    return {
+      at:performance.now(),seconds:minutes*60+seconds,
+      status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount,
+      sent:globalThis.__hexHeartbeat.sent.length,received:globalThis.__hexHeartbeat.received.length
+    };
+  });
+  const running=await readRunningClock();
   await host.waitForFunction(before=>performance.now()-before.at>=5000&&globalThis.__hexHeartbeat.sent.slice(before.sent).some(id=>globalThis.__hexHeartbeat.received.slice(before.received).includes(id)),running,{timeout:35000});
-  const runningAfter=await host.evaluate(()=>({at:performance.now(),seconds:Number(document.querySelector('#turn-action-clock-seconds')?.textContent?.slice(-2)),status:document.querySelector('#game-status')?.textContent,commands:globalThis.__hexVisualMessageCount}));
+  const runningAfter=await readRunningClock();
   const elapsed=(runningAfter.at-running.at)/1000;
   if(!Number.isFinite(running.seconds)||!Number.isFinite(runningAfter.seconds)||runningAfter.seconds>running.seconds-elapsed+2||runningAfter.status!==running.status||runningAfter.commands!==running.commands)throw new Error(`Heartbeat refreshed the running action clock or changed the game: ${JSON.stringify({before:running,after:runningAfter})}`);
   if(reliabilityErrors.length)throw new Error(`Browser errors during host reconnect/heartbeat: ${reliabilityErrors.join(' | ')}`);

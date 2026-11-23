@@ -139,3 +139,7 @@ Architect classification: complex because rules, recovery and multi-client prese
 ## 2026-11-22: Harbor Ship cost reduction amendment
 
 D034: The Product Owner further reduced the optional Classic Harbor Ships cost from D026's 2 lumber + 2 brick + 3 ore to **2 lumber + 2 brick + 2 ore**. This supersedes D026 for cost only. The already-owned port prerequisite, no-road remote placement, settlement-distance spacing, two-ship supply cap, 1 VP, settlement-level production, port trading and the rule that ships cannot anchor or extend roads remain unchanged. The authoritative reducer, Actions affordability, resource display and tests must apply the 2 lumber + 2 brick + 2 ore cost. Harbor Co-op and all other game rules remain unchanged.
+
+## 2026-11-23: Effective action clock duration
+
+D035: The Product Owner increased the effective gameplay action window from 45 to 60 seconds for local and multiplayer games. Starting or restarting a match and completing an effective action grant a full 60-second window to the relevant player. Each simultaneous discard has its own window. Pause, resume, and checkpoint recovery preserve the recorded remaining time.

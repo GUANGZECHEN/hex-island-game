@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HostSession } from '../src/game/network/session.ts';
+import { ACTION_WINDOW_MS } from '../src/game/rules/turn-clock.ts';
 
 test('only host controls pause, checkpoint and reconnect preserve it',()=>{
  const sent=new Map<string,any[]>(),published:any[]=[];let serial=0;
@@ -28,6 +29,11 @@ test('saved clock rejects invalid remaining time and old saves remain readable',
  host.receive('guest',JSON.stringify({protocol:1,type:'hello'}));host.receive('guest',JSON.stringify({protocol:1,type:'ready',ready:true}));host.setHostReady(true);host.start(5);
  const saved=host.recovery(),old=structuredClone(saved);delete old.authority.clock;
  assert.doesNotThrow(()=>HostSession.fromRecovery(()=>{},()=>{},()=>'',()=>0,old));
- const bad=structuredClone(saved);bad.authority.clock!.remaining[Object.keys(bad.authority.clock!.remaining)[0]]=45_001;
+ const previous=structuredClone(saved);
+ const player=Object.keys(previous.authority.clock!.remaining)[0];
+ previous.authority.clock={paused:true,remaining:{[player]:45_000}};
+ const restored=HostSession.fromRecovery(()=>{},()=>{},()=>'',()=>0,previous);
+ assert.deepEqual(restored.recovery().authority.clock,previous.authority.clock);
+ const bad=structuredClone(saved);bad.authority.clock!.remaining[player]=ACTION_WINDOW_MS+1;
  assert.throws(()=>HostSession.fromRecovery(()=>{},()=>{},()=>'',()=>0,bad),/Invalid saved clock/);
 });

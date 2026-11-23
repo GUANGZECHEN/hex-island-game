@@ -6,7 +6,7 @@ import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { DiceSound } from './game/ui/dice-sound.ts';
-import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
+import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, formatClockSeconds, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
 import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
@@ -104,7 +104,7 @@ function actionClockDisplay():void {
  tag.hidden=false;
  el('turn-action-clock-player').textContent=isPaused()?`Paused · ${name}`:name;
  const pauseButton=el<HTMLButtonElement>('turn-clock-pause');pauseButton.hidden=!!remote&&!remote.canPause();pauseButton.textContent=isPaused()?'Resume':'Pause';pauseButton.setAttribute('aria-pressed',String(isPaused()));
- el('turn-action-clock-seconds').textContent='00:'+String(seconds).padStart(2,'0');
+ el('turn-action-clock-seconds').textContent=formatClockSeconds(seconds);
  tag.classList.toggle('running-out',seconds<=10);
  tag.setAttribute('aria-label',`${isPaused()?'Paused. ':''}${name} has ${seconds} seconds left to act`);
  const seat=player?.seat??0;
