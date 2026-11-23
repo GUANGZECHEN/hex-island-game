@@ -43,6 +43,7 @@ export class HostSession {
  isRecovering():boolean{return this.recovering;}
  setMusicSharing(enabled:boolean):void{this.music.setSharing(enabled);}
  publishMusicFrame(base64:string):void{this.music.frame(base64);}
+ resetMusicPlayback():void{this.music.resetPlayback();}
  allSeatsConnected():boolean{return this.seats.length>0&&this.seats.every(seat=>seat.connected);}
  recovery():SessionRecovery {
   if(!this.authority)throw new Error('Game not started.');

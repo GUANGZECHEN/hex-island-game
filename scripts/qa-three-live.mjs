@@ -243,10 +243,82 @@ async function checkMusic(browser) {
   }
 }
 
-function observeRoomAudio() {
+function observeRoomAudio({ renderClock = false } = {}) {
   const taps = [];
+  let heardOutput;
   const byOutput = new WeakMap();
   const connect = AudioNode.prototype.connect;
+  async function attachRecorder(output) {
+    const code = `
+      class RoomAudioMeter extends AudioWorkletProcessor {
+        constructor() {
+          super();
+          this.port.onmessage = ({ data: seconds }) => {
+            this.remaining = Math.ceil(seconds * sampleRate);
+            this.total = 0;
+            this.audible = 0;
+            this.silentRun = 0;
+            this.longestSilent = 0;
+          };
+        }
+        process(inputs, outputs) {
+          const block = outputs[0][0];
+          block.fill(0);
+          if (this.remaining > 0) {
+            const samples = inputs[0][0];
+            const count = Math.min(block.length, this.remaining);
+            let energy = 0;
+            if (samples) for (let n = 0; n < count; n++) energy += samples[n] ** 2;
+            if (energy >= count * .004 ** 2) {
+              this.audible += count;
+              this.silentRun = 0;
+            } else {
+              this.silentRun += count;
+              this.longestSilent = Math.max(this.longestSilent, this.silentRun);
+            }
+            this.total += count;
+            this.remaining -= count;
+            if (this.remaining === 0) this.port.postMessage({
+              measuredMs: 1000 * this.total / sampleRate,
+              audibleRatio: this.audible / this.total,
+              longestSilentMs: 1000 * this.longestSilent / sampleRate,
+            });
+          }
+          return true;
+        }
+      }
+      registerProcessor('hex-qa-room-audio-meter', RoomAudioMeter);
+    `;
+    const moduleUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    try {
+      const context = output.context;
+      await context.audioWorklet.addModule(moduleUrl);
+      const meter = new AudioWorkletNode(context, 'hex-qa-room-audio-meter', { outputChannelCount: [1] });
+      connect.call(output, meter);
+      // Force processing without changing the sound: the meter always emits zeros.
+      connect.call(meter, context.destination);
+      return { meter };
+    } catch (error) {
+      return { error: String(error) };
+    } finally {
+      URL.revokeObjectURL(moduleUrl);
+    }
+  }
+  if (renderClock) window.__hexQaMeasureRoomAudio = async seconds => {
+    if (!heardOutput) throw new Error('No rendered room audio has been heard');
+    const result = await attachRecorder(heardOutput);
+    if (!result.meter) throw new Error(result.error);
+    const { port } = result.meter;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('The room audio render clock did not finish sampling')), (seconds + 10) * 1000);
+      port.onmessage = ({ data }) => {
+        clearTimeout(timeout);
+        port.onmessage = null;
+        resolve(data);
+      };
+      port.postMessage(seconds);
+    });
+  };
   AudioNode.prototype.connect = function (...args) {
     const result = connect.apply(this, args);
     if (args[0] !== this.context.destination || !(this instanceof GainNode || this instanceof AudioBufferSourceNode)) return result;
@@ -255,7 +327,7 @@ function observeRoomAudio() {
       const analyser = this.context.createAnalyser();
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0;
-      tap = { analyser, wave: new Float32Array(analyser.fftSize), spectrum: new Float32Array(analyser.frequencyBinCount) };
+      tap = { output: this, analyser, wave: new Float32Array(analyser.fftSize), spectrum: new Float32Array(analyser.frequencyBinCount) };
       byOutput.set(this, tap);
       taps.push(tap);
       if (taps.length > 12) taps.shift();
@@ -266,7 +338,7 @@ function observeRoomAudio() {
   };
   window.__hexQaRoomAudio = () => {
     let loudest = { rms: 0, frequency: 0 };
-    for (const { analyser, wave, spectrum } of taps) {
+    for (const { output, analyser, wave, spectrum } of taps) {
       if (analyser.context.state !== 'running') continue;
       analyser.getFloatTimeDomainData(wave);
       const rms = Math.sqrt(wave.reduce((energy, value) => energy + value * value, 0) / wave.length);
@@ -278,6 +350,7 @@ function observeRoomAudio() {
         if (spectrum[bin] > spectrum[peak]) peak = bin;
       }
       loudest = { rms, frequency: peak * binWidth };
+      if (rms >= .004) heardOutput = output;
     }
     return loudest;
   };
@@ -305,6 +378,98 @@ async function waitForRoomSilence(page) {
     return window.__hexQaQuietSince !== null && now - window.__hexQaQuietSince >= 800;
   }, null, { timeout: 10000, polling: 40 });
 }
+
+function batchIncomingRoomMusic() {
+  let timer = null;
+  let pending = [];
+  let deliveries = [];
+  let lastDelivery;
+  function flush() {
+    const batch = pending;
+    pending = [];
+    if (!batch.length) return;
+    const now = performance.now();
+    deliveries.push({ frames: batch.length, intervalMs: lastDelivery === undefined ? 0 : now - lastDelivery });
+    lastDelivery = now;
+    for (const deliver of batch) deliver();
+  }
+  function isMusicFrame(event) {
+    try {
+      const relay = JSON.parse(event.data);
+      if (relay.type !== 'relay' || relay.from !== 'host' || typeof relay.data !== 'string') return false;
+      const message = JSON.parse(relay.data);
+      return message.type === 'room-music' && message.action === 'frame';
+    } catch {
+      return false;
+    }
+  }
+  const OriginalSocket = window.WebSocket;
+  window.WebSocket = class extends OriginalSocket {
+    get onmessage() { return this.roomHandler ?? null; }
+    set onmessage(handler) {
+      this.roomHandler = handler;
+      super.onmessage = handler && (event => {
+        if (timer === null || !isMusicFrame(event)) {
+          handler.call(this, event);
+          return;
+        }
+        pending.push(() => {
+          if (this.readyState === OriginalSocket.OPEN && this.roomHandler === handler) handler.call(this, event);
+        });
+      });
+    }
+  };
+  window.__hexQaRoomJitter = {
+    start() {
+      if (timer !== null) return;
+      deliveries = [];
+      lastDelivery = undefined;
+      // The host normally emits 150ms frames. Release in order once per 1.05s.
+      timer = setInterval(flush, 1050);
+    },
+    deliveries: () => deliveries.slice(),
+    stop() {
+      clearInterval(timer);
+      timer = null;
+      flush();
+    }
+  };
+}
+async function verifyBatchedRoomAudio(host, guest) {
+  await guest.evaluate(() => window.__hexQaRoomJitter.start());
+  try {
+    await guest.waitForFunction(() => window.__hexQaRoomJitter.deliveries().filter(batch =>
+      batch.frames >= 4 && batch.intervalMs >= 850
+    ).length >= 3, null, { timeout: 12000, polling: 50 });
+    const measuredFrom = await guest.evaluate(() => window.__hexQaRoomJitter.deliveries().length);
+    const checkGameplay = async () => {
+      const settlement = { name: 'Build settlement', exact: true };
+      const actor = await host.getByRole('button', settlement).isEnabled() ? host : guest;
+      const observer = actor === host ? guest : host;
+      await actor.getByRole('button', settlement).click();
+      const target = await clickBoardTarget(actor);
+      const piece = observer.locator(`#board [data-building-kind="settlement"][data-vertex-id="${target}"]`);
+      await piece.waitFor({ state: 'visible', timeout: 10000 });
+      await actor.getByRole('button', { name: 'Undo last action', exact: true }).click();
+      await piece.waitFor({ state: 'detached', timeout: 10000 });
+    };
+    const [audio] = await Promise.all([
+      guest.evaluate(() => window.__hexQaMeasureRoomAudio(8.4)),
+      checkGameplay()
+    ]);
+    const batches = await guest.evaluate(from => window.__hexQaRoomJitter.deliveries().slice(from), measuredFrom);
+    const impairedBatches = batches.filter(batch => batch.frames >= 4 && batch.intervalMs >= 850);
+    assert.ok(impairedBatches.length >= 6, 'the guest must actually receive repeated late frame batches during audio measurement');
+    assert.ok(audio.measuredMs >= 8400 && audio.audibleRatio >= .98 && audio.longestSilentMs < 100,
+      'batched audio should stay continuous on the actual render clock: ' + JSON.stringify(audio));
+    check('Guest audio remains continuous through ordered 1.05-second frame bursts while gameplay syncs', {
+      ...audio, impairedBatches: impairedBatches.length,
+      maxBatchSize: Math.max(...impairedBatches.map(batch => batch.frames)),
+    });
+  } finally {
+    await guest.evaluate(() => window.__hexQaRoomJitter.stop());
+  }
+}
 async function checkSharedMusic(browser) {
   const directory = await mkdtemp(join(tmpdir(), 'hex-room-music-'));
   let hostContext, listenerBrowser;
@@ -314,7 +479,11 @@ async function checkSharedMusic(browser) {
     listenerBrowser = await chromium.launch({ headless: true });
     const guestContext = await listenerBrowser.newContext();
     const lateContext = await listenerBrowser.newContext();
-    await Promise.all([guestContext, lateContext].map(context => context.addInitScript(observeRoomAudio)));
+    await Promise.all([
+      guestContext.addInitScript(observeRoomAudio, { renderClock: true }),
+      guestContext.addInitScript(batchIncomingRoomMusic),
+      lateContext.addInitScript(observeRoomAudio)
+    ]);
     const host = watch(await hostContext.newPage());
     const guest = watch(await guestContext.newPage());
     const musicUrl = new URL(url);
@@ -357,6 +526,7 @@ async function checkSharedMusic(browser) {
     await guest.waitForFunction(() => document.querySelector('#game-status')?.textContent?.includes('Revision 0'), null, { timeout: 20000 });
     const first = await waitForPlayingMusic(host, matchMusicTracks);
     await waitForRoomTone(guest, first, true);
+    await verifyBatchedRoomAudio(host, guest);
 
     const next = matchMusicTracks.find(name => name !== first);
     await summary(host).click();

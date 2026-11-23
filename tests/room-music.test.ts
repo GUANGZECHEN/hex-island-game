@@ -64,21 +64,77 @@ test('only an admitted, listening peer receives media and no client can publish 
   host.setSharing(false); host.frame(sample); assert.equal(sent.at(-1)!.message.enabled,false);
 });
 
-test('a stalled listener has at most six unacknowledged frames and resumes at the live sequence', () => {
+test('a stalled listener is capped at twelve ACKs and skips to live after its recovery horizon', () => {
   const {host,sent} = hostHarness();
   host.setSharing(true); host.admit('slow'); host.admit('fast');
   const gen=sent.at(-1)!.message.generation;
   for(const id of ['slow','fast']) host.receive(id,wire('listen',gen,{enabled:true,subscription:1}));
-  for(let n=1;n<=11;n++){
+  for(let n=1;n<=24;n++){
     host.frame(sample);
     host.receive('fast',wire('ack',gen,{subscription:1,sequence:n}));
   }
   const seqs=(peer:string)=>sent.filter(item=>item.frame&&item.peer===peer).map(item=>item.message.sequence);
-  assert.deepEqual(seqs('slow'),[1,2,3,4,5,6]); assert.equal(seqs('fast').length,11);
+  const window=Array.from({length:12},(_,i)=>i+1);
+  assert.deepEqual(seqs('slow'),window); assert.equal(seqs('fast').length,24);
   for(const [subscription,sequence] of [[2,4],[1,99],[1,-1],[1,3.1]]) host.receive('slow',wire('ack',gen,{subscription,sequence}));
-  host.frame(sample); assert.equal(seqs('slow').length,6);
-  host.receive('slow',wire('ack',gen,{subscription:1,sequence:6}));
-  host.frame(sample); assert.deepEqual(seqs('slow'),[1,2,3,4,5,6,13]);
+  host.frame(sample); assert.equal(seqs('slow').length,12);
+  host.receive('slow',wire('ack',gen,{subscription:1,sequence:12}));
+  assert.deepEqual(seqs('slow'),[...window,25]);
+});
+
+test('an ordered delayed ACK stream still delivers every 150 ms frame at capture time', () => {
+  const {host,sent}=hostHarness();
+  host.setSharing(true); host.admit('a');
+  const generation=sent.at(-1)!.message.generation;
+  host.receive('a',wire('listen',generation,{enabled:true,subscription:1}));
+  for(let sequence=1;sequence<=30;sequence++){
+    // Nine capture intervals of ACK delay (1.35 seconds round trip).
+    if(sequence>9)host.receive('a',wire('ack',generation,{subscription:1,sequence:sequence-9}));
+    host.frame(sample);
+    assert.equal(sent.filter(item=>item.frame).length,sequence);
+  }
+});
+
+test('a ten-frame capture burst drains in order across a shared twelve-message socket budget', () => {
+  let budget=12, now=0;
+  const sent: {id:string;seq:number}[]=[];
+  const gen=2, members=['a','b','spectator'];
+  const host=new RoomMusicHost((id,text,frame)=>{
+    if(!frame)return true;
+    if(budget===0)return false;
+    budget--; sent.push({id,seq:JSON.parse(text).sequence}); return true;
+  },undefined,()=>now);
+  host.setSharing(true);
+  for(const id of members){
+    host.admit(id); host.receive(id,wire('listen',gen,{enabled:true,subscription:1}));
+  }
+  for(let n=0;n<10;n++)host.frame(sample);
+  assert.equal(sent.length,12);
+  for(const id of members)assert.equal(sent.filter(item=>item.id===id).length,4);
+  // ACK callbacks drive catch-up even before the next capture is available.
+  for(let i=0;i<sent.length;i++){
+    const {id,seq}=sent[i]; now+=8; budget++;
+    host.receive(id,wire('ack',gen,{subscription:1,sequence:seq}));
+  }
+  for(const id of members)assert.deepEqual(sent.filter(item=>item.id===id).map(item=>item.seq),Array.from({length:10},(_,i)=>i+1));
+});
+
+test('wall-clock-stale frames are released on a delayed ACK and a late subscriber starts live', () => {
+  let now=0, blocked=false;
+  const sent: {id:string;seq:number}[]=[];
+  const host=new RoomMusicHost((id,text,frame)=>{
+    if(frame && blocked)return false;
+    if(frame)sent.push({id,seq:JSON.parse(text).sequence});
+  },undefined,()=>now);
+  host.setSharing(true);host.admit('a');host.receive('a',wire('listen',2,{enabled:true,subscription:1}));
+  host.frame(sample);blocked=true;host.frame(sample);host.frame(sample);
+  host.admit('b');host.receive('b',wire('listen',2,{enabled:true,subscription:1}));
+  blocked=false;now=2100;
+  host.receive('a',wire('ack',2,{subscription:1,sequence:1}));
+  assert.deepEqual(sent,[{id:'a',seq:1}]);
+  host.frame(sample);
+  assert.deepEqual(sent.filter(item=>item.id==='a').map(item=>item.seq),[1,4]);
+  assert.deepEqual(sent.filter(item=>item.id==='b').map(item=>item.seq),[4]);
 });
 
 test('backpressured frame sends are dropped without using ACK slots or interfering with control messages', () => {
@@ -133,4 +189,34 @@ test('wire reset clears pending playback and retains this guest’s preference w
   ])guest.receive(invalid);
   assert.deepEqual(frames,[]);assert.equal(controls.some(msg=>msg.action==='ack'),false);
   guest.receive(wire('frame',1,{subscription:2,sequence:5,data:sample}));assert.deepEqual(frames,[5]);
+});
+
+test('intentional host playback boundary flushes queued sound without resetting the subscription', () => {
+  let blocked=false;
+  const sent: {id:string; media:boolean; message:ReturnType<typeof JSON.parse>}[]=[];
+  const host=new RoomMusicHost((id,text,frame)=>{
+    if(frame && blocked)return false;
+    sent.push({id,media:!!frame,message:JSON.parse(text)});
+  });
+  const {guest,offers,controls,frames,events}=guestHarness();
+  host.admit('listener');host.admit('observer');host.setSharing(true);
+  const offer=sent.at(-1)!.message;
+  guest.receive(offer);host.receive('listener',controls.at(-1));
+  host.frame(sample);const first=sent.at(-1)!.message;
+  guest.receive(first);blocked=true;host.frame(sample);
+  const before=events.length;
+  host.receive('listener',wire('reset',offer.generation,{subscription:1,sequence:880}));
+  assert.equal(sent.at(-1)!.message,first);
+  host.resetPlayback();
+  const resets=sent.filter(item=>item.message.action==='reset');
+  assert.equal(resets.length,1);assert.equal(resets[0].id,'listener');assert.equal(resets[0].media,false);
+  const fence=resets[0].message;assert.equal(fence.sequence,3);
+  guest.receive(fence);guest.receive(fence);
+  guest.receive({...first,sequence:2});assert.deepEqual(events.slice(before),['reset']);
+  assert.deepEqual(offers,[true]);assert.deepEqual(frames,[1]);
+  blocked=false;
+  host.receive('listener',controls.at(-1)); // pre-boundary ACK cannot release an old buffered frame
+  host.frame(sample);
+  const next=sent.at(-1)!.message;assert.equal(next.sequence,4);assert.equal(next.subscription,1);
+  guest.receive(next);assert.deepEqual(frames,[1,4]);assert.ok(host.hasListeners);
 });

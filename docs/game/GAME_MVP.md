@@ -99,7 +99,7 @@ Open **Music** and choose the local folder containing `m01001` and the gameplay 
 
 In an online private room, the host can turn on **Music → Share music with this room**. Everyone admitted to the room, including spectators, can hear the host’s waiting-room song, current match track and playlist changes. Guests can mute **Listen to room music** independently. If a browser needs a gesture, open **Music → Play room music**. The host can stop playback with **Pause music** or withdraw sharing at any time.
 
-The host sends a live mono mix of the music player through the authenticated room connection. Music files, track names, microphone audio and dice sounds stay out of the stream. Guests can join mid-song with an empty music library. The room service forwards short audio frames in memory. Slow listeners drop frames and resume with current audio when their connection catches up. Leaving the room stops the stream.
+The host sends a live mono mix of the music player through the authenticated room connection. Music files, track names, microphone audio and dice sounds stay out of the stream. Guests can join mid-song with an empty music library. The room service forwards short audio frames in memory. Guests hear the music about a second behind the host so that short bursts of delayed packets can play continuously. Longer interruptions can still cause a gap. The player resumes automatically when audio arrives. Pausing or changing tracks clears the previous audio for listeners. Leaving the room stops the stream.
 
 ## Local test bots
 

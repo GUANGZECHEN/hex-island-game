@@ -27,6 +27,7 @@ export interface BrowserGame {
  setMusicSharing:(enabled:boolean)=>void;
  setMusicListening:(enabled:boolean)=>void;
  publishMusicFrame:(base64:string)=>void;
+ resetMusicPlayback:()=>void;
 }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
@@ -445,5 +446,6 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   },
   setMusicListening(enabled){if(musicRoomRole==='guest')guestMusic.setListening(enabled);},
   publishMusicFrame(base64){if(musicState.role==='host'&&musicState.offered)host?.publishMusicFrame(base64);},
+  resetMusicPlayback(){if(musicState.role==='host'&&musicState.offered)host?.resetMusicPlayback();},
   canPause(){return role==='host'&&!!host;},setPaused(paused){if(role!=='host'||!host)throw new Error('Only the host can pause.');host.setPaused(paused);},submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

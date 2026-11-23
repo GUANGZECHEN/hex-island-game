@@ -59,3 +59,51 @@ test('room music reaches only listening participants and evicts a replaced seat 
  assert.deepEqual(frames(),[]);
  assert.deepEqual(subscribers,[true,false,true,false]);
 });
+
+test('host audio boundaries reset current listeners and fence off older frames',()=>{
+ const sent:Array<{peer:string; message:unknown; bestEffort?:boolean}>=[];
+ const subscriberChanges:boolean[]=[];
+ const host=new HostSession(
+  (peer,text,bestEffort)=>{sent.push({peer,message:JSON.parse(text),bestEffort});},
+  event=>{const value=event as {type:string; data:boolean};if(value.type==='music-subscribers')subscriberChanges.push(value.data);},
+  ()=>'s'.repeat(43),()=>0,
+ );
+ let resetCount=0;
+ const received:string[]=[];
+ const guest=new RoomMusicGuest(text=>host.receive('listener',text),{
+  availability:()=>{},frame:data=>received.push(data),reset:()=>{resetCount++;},
+ });
+ const hello=(peer:string,role:string)=>host.receive(peer,JSON.stringify({protocol:1,type:'hello',role}));
+ host.setMusicSharing(true);
+ host.resetMusicPlayback();
+ assert.deepEqual(sent,[]);
+
+ hello('listener','player');
+ hello('not-listening','spectator');
+ for(const {peer,message} of sent)if(peer==='listener'&&isRoomMusicMessage(message))guest.receive(message);
+ const baselineResets=resetCount;
+ sent.length=0;
+
+ const staleData='A'.repeat(4800);
+ host.publishMusicFrame(staleData);
+ const staleFrame=sent.pop();
+ assert.ok(staleFrame);
+ assert.equal(staleFrame.peer,'listener');
+
+ host.resetMusicPlayback();
+ assert.equal(sent.length,1);
+ const reset=sent.pop()!;
+ assert.equal(reset.peer,'listener');
+ assert.notEqual(reset.bestEffort,true);
+ guest.receive(reset.message);
+ assert.equal(resetCount,baselineResets+1);
+
+ guest.receive(staleFrame.message);
+ assert.deepEqual(received,[]);
+ const freshData='B'.repeat(4800);
+ host.publishMusicFrame(freshData);
+ assert.equal(sent.length,1);
+ guest.receive(sent[0].message);
+ assert.deepEqual(received,[freshData]);
+ assert.deepEqual(subscriberChanges,[true]);
+});

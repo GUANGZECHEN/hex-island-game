@@ -22,9 +22,11 @@ export class RoomMusicControls {
 
   constructor(music: GameMusic) {
     this.music = music;
-    this.capture = new RoomMusicCapture(document.querySelector<HTMLAudioElement>('#music-player')!, data => {
-      this.network?.publishMusicFrame(data);
-    });
+    this.capture = new RoomMusicCapture(
+      document.querySelector<HTMLAudioElement>('#music-player')!,
+      data => this.network?.publishMusicFrame(data),
+      () => this.network?.resetMusicPlayback(),
+    );
     this.playback = new RoomMusicPlayback(status => {
       this.playbackStatus = status;
       this.paint();

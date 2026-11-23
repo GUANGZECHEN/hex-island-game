@@ -3,12 +3,10 @@ import { isRoomMusicFrame, ROOM_MUSIC_FRAME_SAMPLES, ROOM_MUSIC_SAMPLE_RATE } fr
 export type RoomMusicPlaybackStatus = 'waiting' | 'needs-click' | 'playing';
 
 const FRAME_SECONDS = ROOM_MUSIC_FRAME_SAMPLES / ROOM_MUSIC_SAMPLE_RATE;
-const START_LEAD = .12;
-const MAX_SOURCES = 4;
-const MAX_LEAD = FRAME_SECONDS * MAX_SOURCES;
-const STALL_MS = MAX_LEAD * 1000;
-// A browser waking from throttling can deliver many old relay messages in the same task.
-const WAKE_BURST_MS = 40;
+// Keep enough audio scheduled to bridge short relay bursts without delaying game messages.
+const START_LEAD = FRAME_SECONDS * 8;
+const MAX_START_LEAD = FRAME_SECONDS * 12;
+const MAX_LEAD = FRAME_SECONDS * 20;
 
 const muLaw = Float32Array.from({ length: 256 }, (_, code) => {
   const bits = ~code & 255;
@@ -32,7 +30,7 @@ export class RoomMusicPlayback {
   private readonly now: () => number;
   private context: AudioContext | null = null;
   private output: GainNode | null = null;
-  private sources = new Set<AudioBufferSourceNode>();
+  private sources = new Map<AudioBufferSourceNode, number>();
   private subscribed = false;
   private muted = false;
   private disposed = false;
@@ -40,7 +38,7 @@ export class RoomMusicPlayback {
   private previousStatus: RoomMusicPlaybackStatus = 'waiting';
   private lastSeq = 0;
   private lastArrival: number | null = null;
-  private dropUntil = 0;
+  private startLead = START_LEAD;
   private nextStart = 0;
 
   constructor(notify: (status: RoomMusicPlaybackStatus) => void = () => {}, options: PlaybackOptions = {}) {
@@ -64,18 +62,19 @@ export class RoomMusicPlayback {
   }
 
   private clearScheduled(): void {
-    for (const source of this.sources) {
+    for (const source of this.sources.keys()) {
       source.onended = null;
       source.stop();
       source.disconnect();
     }
     this.sources.clear();
     this.nextStart = 0;
+    this.startLead = START_LEAD;
+    this.lastArrival = null;
   }
 
   private onStateChange = (): void => {
     if (this.context?.state !== 'running') this.clearScheduled();
-    else if (this.frameSeen) this.dropUntil = this.now() + WAKE_BURST_MS;
     this.publish();
   };
 
@@ -127,31 +126,38 @@ export class RoomMusicPlayback {
     this.clearScheduled();
     this.frameSeen = false;
     this.lastSeq = 0;
-    this.lastArrival = null;
-    this.dropUntil = 0;
     this.publish();
   }
 
   push(seq: number, data: string): void {
     if (!this.subscribed || !Number.isSafeInteger(seq) || seq <= this.lastSeq || !isRoomMusicFrame(data)) return;
-    const gap = this.lastSeq !== 0 && seq !== this.lastSeq + 1;
-    const arrived = this.now();
-    if (this.lastArrival !== null && arrived - this.lastArrival > STALL_MS) {
-      this.clearScheduled();
-      this.dropUntil = arrived + WAKE_BURST_MS;
-    }
     this.lastSeq = seq;
-    this.lastArrival = arrived;
     this.frameSeen = true;
     const context = this.context;
-    if (this.muted || !context || !this.output || context.state !== 'running' || arrived < this.dropUntil) {
+    if (this.muted || !context || !this.output || context.state !== 'running') {
       this.publish();
       return;
     }
+
     const now = context.currentTime;
-    if (gap || this.sources.size >= MAX_SOURCES || this.nextStart + FRAME_SECONDS - now > MAX_LEAD) {
-      this.clearScheduled();
+    const arrived = this.now();
+    // onended runs on the main thread and can trail the audio device after a stall.
+    for (const [source, end] of this.sources) {
+      if (end > now) break;
+      source.onended = null;
+      source.stop();
+      source.disconnect();
+      this.sources.delete(source);
     }
+    if (this.nextStart > 0 && this.nextStart < now && this.lastArrival !== null) {
+      const gap = (arrived - this.lastArrival) / 1000;
+      this.startLead = Math.min(MAX_START_LEAD, Math.max(this.startLead, gap));
+    }
+    this.lastArrival = arrived;
+    const start = this.nextStart > now ? this.nextStart : now + this.startLead;
+    const end = start + FRAME_SECONDS;
+    // Keep already scheduled sound when delivery runs ahead or skips a sequence.
+    if (end - now > MAX_LEAD + 1e-8) return;
     const buffer = context.createBuffer(1, ROOM_MUSIC_FRAME_SAMPLES, ROOM_MUSIC_SAMPLE_RATE);
     const samples = buffer.getChannelData(0);
     const bytes = atob(data);
@@ -164,10 +170,9 @@ export class RoomMusicPlayback {
       this.sources.delete(source);
       this.publish();
     };
-    const start = this.nextStart > now ? this.nextStart : now + START_LEAD;
     source.start(start);
-    this.sources.add(source);
-    this.nextStart = start + FRAME_SECONDS;
+    this.sources.set(source, end);
+    this.nextStart = end;
     this.publish();
   }
 
