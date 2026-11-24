@@ -2,7 +2,7 @@ import { ThreeBoardRenderer, type BoardCameraView } from './renderer.ts';
 import { staticBoardKey, type BoardSceneView } from './model.ts';
 import { BoardRollOverlay } from './roll-overlay.ts';
 import type { RollPresentation } from './roll-presentation.ts';
-import { TargetFeedback, TAP_MAX_DISTANCE, TAP_MAX_DURATION_MS, isPlacement, type PlacementKind } from '../target-feedback.ts';
+import { TargetFeedback, TAP_MAX_DISTANCE, isPlacement, type PlacementKind } from '../target-feedback.ts';
 import '../../../three-board.css';
 import '../../../target-feedback.css';
 
@@ -48,7 +48,7 @@ export class BoardRendererController {
       this.preview.hover(element?.dataset.targetId ?? null);
       this.paintSVG();
     };
-    let press: { element: SVGElement; pointer: number; x: number; y: number; time: number } | null = null;
+    let press: { element: SVGElement; pointer: number; x: number; y: number } | null = null;
     let touchInput = false;
     const cancel = () => {
       if (press) { press = null; hover(null); }
@@ -77,7 +77,7 @@ export class BoardRendererController {
       const element = target(event.target);
       const id = element?.dataset.targetId;
       if (!element || !id || !this.last?.legalTargets.includes(id)) return;
-      press = { element, pointer: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp };
+      press = { element, pointer: event.pointerId, x: event.clientX, y: event.clientY };
       hover(element);
     }, { signal });
     this.host.addEventListener('pointermove', event => {
@@ -87,10 +87,9 @@ export class BoardRendererController {
       if (!press || event.pointerId !== press.pointer) return;
       const start = press;
       const id = start.element.dataset.targetId;
-      const elapsed = event.timeStamp - start.time;
       const release = target(document.elementFromPoint(event.clientX, event.clientY));
       cancel();
-      if (!blocked() && event.isPrimary && event.button === 0 && elapsed >= 0 && elapsed < TAP_MAX_DURATION_MS &&
+      if (!blocked() && event.isPrimary && event.button === 0 &&
           Math.hypot(event.clientX - start.x, event.clientY - start.y) <= TAP_MAX_DISTANCE &&
           release === start.element && id && this.last?.legalTargets.includes(id)) this.choose(id);
     }, { signal });

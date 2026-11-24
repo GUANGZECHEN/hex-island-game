@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { grainClearance, MODELED_WHEAT } from '../grain-clearance.ts';
 import { setWheatClearance } from './wheat-batches.ts';
 import { PlacementPreview } from './placement-preview.ts';
-import { TargetFeedback, TARGET_COLORS, TAP_MAX_DISTANCE, TAP_MAX_DURATION_MS } from '../target-feedback.ts';
+import { TargetFeedback, TARGET_COLORS, TAP_MAX_DISTANCE } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain, PORT_SAIL } from './art.ts';
@@ -77,7 +77,7 @@ export class ThreeBoardRenderer {
   private withinViewport = true;
   private visibilityObserver: IntersectionObserver | null = null;
   private down: {
-    pointerId: number; x: number; y: number; started: number; touch: boolean; target: string | null;
+    pointerId: number; x: number; y: number; touch: boolean; target: string | null;
   } | null = null;
   private abort = new AbortController();
   private observer: ResizeObserver;
@@ -123,7 +123,7 @@ export class ThreeBoardRenderer {
       if (event.button === 1) event.preventDefault();
       if (!event.isPrimary || event.button !== 0 || this.adjustTouch) return;
       this.down = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
-        started: event.timeStamp, touch: event.pointerType === 'touch', target: null };
+        touch: event.pointerType === 'touch', target: null };
       this.hover(event);
       if (this.down) this.down.target = this.preview.active;
     }, { signal });
@@ -135,6 +135,9 @@ export class ThreeBoardRenderer {
       if (this.down?.pointerId === event.pointerId) this.leaveTarget();
     }, { signal });
     this.canvas.addEventListener('contextmenu', this.leaveTarget, { signal });
+    window.addEventListener('scroll', () => {
+      if (this.down?.touch) this.leaveTarget();
+    }, { capture: true, passive: true, signal });
     this.canvas.addEventListener('auxclick', event => { if (event.button === 1) event.preventDefault(); }, { signal });
     this.canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault(); queueMicrotask(() => { if (!this.disposed) this.failed('3D connection to the graphics device was lost. Switched to 2D.'); });
@@ -540,8 +543,7 @@ export class ThreeBoardRenderer {
     if (!event.isPrimary || !down || event.pointerId !== down.pointerId) return;
     this.down = null;
     if (this.disposed || event.button !== 0 || this.adjustTouch || document.body.classList.contains('network-resyncing')
-      || Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_MAX_DISTANCE
-      || (down.touch && event.timeStamp - down.started >= TAP_MAX_DURATION_MS)) {
+      || Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_MAX_DISTANCE) {
       if (down.touch && !this.disposed) this.leaveTarget();
       return;
     }

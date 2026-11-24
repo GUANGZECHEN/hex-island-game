@@ -359,12 +359,28 @@ async function verifyTouchPlacement(browser,renderer){
  const offset=point=>({...point,x:point.x+(point.x<phone.viewportSize().width-40?32:-32)});
  const touch=await context.newCDPSession(phone);
  const send=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
- const tapTarget=async id=>{
+ const tapTarget=async (id,hold=false)=>{
   const before=await pieces();
   const point=await pointOf(id);
-  await phone.touchscreen.tap(point.x,point.y);
+  if(hold){
+   // Exercise a slow stationary release without Chromium's native long-press menu.
+   const elapsed=await phone.evaluate(async ({x,y})=>{
+    const target=document.elementFromPoint(x,y);
+    if(!target?.closest('#board'))throw new Error('The held pointer needs a board target');
+    const event={pointerId:9001,pointerType:'touch',isPrimary:true,button:0,
+      clientX:x,clientY:y,bubbles:true,cancelable:true};
+    const start=performance.now();
+    target.dispatchEvent(new PointerEvent('pointerdown',{...event,buttons:1}));
+    await new Promise(resolve=>setTimeout(resolve,650));
+    target.dispatchEvent(new PointerEvent('pointerup',{...event,buttons:0}));
+    return performance.now()-start;
+   },point);
+   assert.ok(elapsed>=600,'the successful held release lasts longer than the former duration cutoff');
+  }else{
+   await phone.touchscreen.tap(point.x,point.y);
+  }
   await settle(phone);
-  if(renderer==='3d')assert.equal((await pieces()).picks,before.picks+1,'one physical tap emits one canvas pick');
+  if(renderer==='3d')assert.equal((await pieces()).picks,before.picks+1,'one valid release emits one canvas pick');
   assert.equal(await phone.locator('#game-error').textContent(),'');
  };
  const undo=async owner=>{
@@ -421,10 +437,16 @@ async function verifyTouchPlacement(browser,renderer){
   await send('touchEnd');
   await noPlacement('second finger');
 
-  await send('touchStart',[await pointOf(first)]);
-  await delay(600);
+  point=await pointOf(first);
+  await send('touchStart',[point]);
+  await phone.evaluate(({x,y})=>{
+   const target=document.elementFromPoint(x,y);
+   if(!target?.closest('#board'))throw new Error('The context-menu cancellation needs a board target');
+   target.dispatchEvent(new PointerEvent('contextmenu',{pointerType:'touch',button:2,
+     clientX:x,clientY:y,bubbles:true,cancelable:true}));
+  },point);
   await send('touchEnd');
-  await noPlacement('long press');
+  await noPlacement('browser context menu');
 
   if(renderer==='3d'){
    const adjust=phone.locator('#board-adjust-view');
@@ -457,8 +479,8 @@ async function verifyTouchPlacement(browser,renderer){
   await undo(owner);
   assert.deepEqual((await pieces()).settlements,[],'one Undo removes the only settlement');
   await buildSettlement.tap();
-  await tapTarget(first);
-  assert.deepEqual((await pieces()).settlements,[first],'the next tap can choose another settlement vertex');
+  await tapTarget(first,true);
+  assert.deepEqual((await pieces()).settlements,[first],'a steady held release can choose another settlement after Undo');
 
   await buildRoad.tap();
   const [edge]=await boardTargetIds(phone);assert.ok(edge);
@@ -472,7 +494,7 @@ async function verifyTouchPlacement(browser,renderer){
   await tapTarget(edge);
   await reveal();
   assert.deepEqual((await pieces()).roads,[edge],'the undone road can be placed with one tap again');
-  check(renderer+' one tap places each phone piece; Undo and retap work, while non-tap gestures never build');
+  check(renderer+' phone placement accepts quick and steady releases, supports Undo and retap, and rejects interrupted gestures');
  }finally{
   await context.close();
  }

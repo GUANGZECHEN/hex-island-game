@@ -15,9 +15,8 @@ export function adjacentPlacementHexes(board: Board, kind: PlacementKind, id: st
 /** Local presentation only: a preview never validates or submits a game command. */
 export const TARGET_COLORS = Object.freeze({ legal: '#fff3a0', active: '#ff981f' });
 
-// Both board renderers use the same touch gesture thresholds in CSS pixels and milliseconds.
+// Both board renderers use the same movement tolerance in CSS pixels.
 export const TAP_MAX_DISTANCE = 5;
-export const TAP_MAX_DURATION_MS = 500;
 
 export class TargetFeedback {
   private scope = '';

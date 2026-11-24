@@ -101,7 +101,15 @@ async function touch(session, type, point) {
 // Native release timestamp to the first post-render task showing the new piece.
 // The browser measures feedback before the physical display scans it out.
 async function measureConstruction(page, session, point, id, kind) {
-  await page.evaluate(({ id, kind }) => {
+  await page.evaluate(({ point, id, kind }) => {
+    const canvas = document.querySelector('#board canvas');
+    const describeTarget = node => node && ({ tag: node.localName, id: node.id || undefined,
+      classes: node.getAttribute?.('class') || undefined, canvas: node === canvas });
+    const startTarget = document.elementFromPoint(point.x, point.y);
+    const trace = { point, scroll: [scrollX, scrollY], hit: describeTarget(startTarget), events: [] };
+    if (!canvas || startTarget !== canvas) {
+      throw new Error('The legal ' + kind + ' target at ' + id + ' is not over the game board canvas: ' + JSON.stringify(trace));
+    }
     window.__boardTap = new Promise((resolve, reject) => {
       const listener = new AbortController();
       const channel = new MessageChannel();
@@ -113,14 +121,25 @@ async function measureConstruction(page, session, point, id, kind) {
         channel.port1.close();
         channel.port2.close();
       }
-      const timer = setTimeout(() => {
+      function fail(reason) {
         stop();
-        reject(new Error('Timed out waiting for the tapped ' + kind + ' to render at ' + id));
-      }, 8000);
+        reject(new Error(reason + ': ' + JSON.stringify(trace)));
+      }
+      const timer = setTimeout(() => fail('Timed out waiting for the tapped ' + kind + ' to render at ' + id), 8000);
+      let press;
+      const capture = { capture: true, signal: listener.signal };
+      for (const type of ['pointerdown', 'pointerup', 'pointermove', 'pointercancel', 'pointerleave', 'lostpointercapture', 'contextmenu']) {
+        document.addEventListener(type, event => {
+          if (type === 'pointerdown') press = { id: event.pointerId, timestamp: event.timeStamp };
+          if (trace.events.length === 16) trace.events.shift();
+          trace.events.push({ type, pointer: event.pointerId, kind: event.pointerType, primary: event.isPrimary,
+            button: event.button, buttons: event.buttons, x: event.clientX, y: event.clientY, target: describeTarget(event.target),
+            elapsedMs: press && press.id === event.pointerId ? Math.round(event.timeStamp - press.timestamp) : undefined });
+        }, capture);
+      }
       document.addEventListener('pointerup', event => {
-        if (event.pointerType !== 'touch' || event.target !== document.querySelector('#board canvas')) {
-          stop();
-          reject(new Error('Expected the touch release on the game board canvas'));
+        if (event.pointerType !== 'touch' || event.target !== canvas) {
+          fail('Expected the touch release on the game board canvas');
           return;
         }
         const before = window.__hex3D.renderedFrames();
@@ -140,11 +159,12 @@ async function measureConstruction(page, session, point, id, kind) {
           checkNextFrame();
         };
         checkNextFrame();
-      }, { once: true, capture: true, signal: listener.signal });
+      }, { ...capture, once: true });
     });
-  }, { id, kind });
-  await touch(session, 'touchStart', point);
-  await touch(session, 'touchEnd');
+  }, { point, id, kind });
+  // Queue the native pair in order. Waiting for the first acknowledgement can
+  // stretch a tap while software WebGL is busy drawing the board.
+  await Promise.all([touch(session, 'touchStart', point), touch(session, 'touchEnd')]);
   return page.evaluate(() => window.__boardTap);
 }
 
