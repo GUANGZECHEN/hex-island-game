@@ -1,5 +1,5 @@
 import { createIslandBoard, type BoardLayout } from '../geometry.ts';
-import { createBoardView } from '../presentation.ts';
+import { createBoardView, lakeDividers } from '../presentation.ts';
 import type { BoardSetup, Port } from '../setup.ts';
 import type { TargetMode } from '../../rules/legal.ts';
 
@@ -22,14 +22,14 @@ export interface PortBoatPlan {
   tangent: GroundPoint;
   decks: readonly { vertexId: string; start: GroundPoint; end: GroundPoint }[];
 }
-export function worldGeometry(layout: BoardLayout) {
-  const topology = createIslandBoard(layout), view = createBoardView(topology);
+export function worldGeometry(layout: BoardLayout, version?: string) {
+  const topology = createIslandBoard(layout, version), view = createBoardView(topology);
   const xs = view.vertices.map(v => v.point.x), zs = view.vertices.map(v => v.point.y);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
   const vertices = new Map(view.vertices.map(v => [v.id, { x: v.point.x - cx, z: v.point.y - cz }]));
   const hexes = new Map(view.hexes.map(h => [h.id, { x: h.center.x - cx, z: h.center.y - cz }]));
   const edges = new Map(topology.edges.map(e => [e.id, { a: vertices.get(e.vertexIds[0])!, b: vertices.get(e.vertexIds[1])! }]));
-  return { topology, vertices, edges, hexes };
+  return { topology, vertices, edges, hexes, lakeDividers: lakeDividers(layout, version, vertices) };
 }
 /** Two bridges start at the original owned vertices; the boat is outside the coastal hex. */
 export function portBoatPlan(port: Port, geometry: ReturnType<typeof worldGeometry>): PortBoatPlan {

@@ -35,7 +35,7 @@ type ShippingView=Pick<GameState,'board'|'buildings'|'roads'|'mode'|'harbor'>;
  * archived Harbor v1 games retain the old team-road transport rule. */
 export function shippingRoute(state:ShippingView,playerId:string,destinations:readonly string[]):{missing:number;path:string[]} {
  const shared=state.mode==='harbor-coop'&&state.harbor?.version===1;
- const board=createIslandBoard(state.board.layout),dist=new Map<string,number>(),paths=new Map<string,string[]>(),queue:string[]=[];
+ const board=createIslandBoard(state.board.layout, state.board.version),dist=new Map<string,number>(),paths=new Map<string,string[]>(),queue:string[]=[];
  for(const [v,b] of Object.entries(state.buildings))if(b.playerId===playerId){dist.set(v,0);paths.set(v,[]);queue.push(v);}
  while(queue.length){
   queue.sort((a,b)=>dist.get(a)!-dist.get(b)!||a.localeCompare(b));const v=queue.shift()!,cost=dist.get(v)!;

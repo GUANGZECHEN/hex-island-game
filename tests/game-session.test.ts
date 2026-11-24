@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HostSession } from '../src/game/network/session.ts';
+import { createGame } from '../src/game/rules/state.ts';
+import { generateBoardSetup, GENERATOR_VERSION, TWIN_CAPES_VERSION } from '../src/game/board/setup.ts';
+import { parseSessionRecovery, type SessionRecovery } from '../src/game/network/recovery.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 for(const count of [2,3,4])test(`${count}-player lobby starts, projects private state and restores a guest seat`,()=>{
@@ -403,4 +406,89 @@ test('Twin Capes room synchronizes the board, seat range and mandatory ships acr
   host.setMapSelection(count>4?'expanded-5-6':'standard',42);
   assert.deepEqual(heard('p2','lobby').rules,{catchUp:true,ships:false});
  }
+});
+
+test('an original Twin Capes checkpoint resumes its 29 land tiles and restarts on the new 25-tile board',()=>{
+ const seed=107,old=generateBoardSetup(seed,'twin-capes',GENERATOR_VERSION);
+ assert.equal(old.hexes.length,29);assert.equal(old.version,GENERATOR_VERSION);
+ const game=createGame(seed,['Player 1','Player 2'],()=>0,{boardLayout:'twin-capes'});
+ game.board=old;game.phase='pirate';game.currentSeat=0;game.turn=3;game.resumePhase='action';
+ const port=old.ports.find(p=>p.edgeId!==old.piratePortEdgeId)!;
+ game.buildings[port.vertexIds[0]]={playerId:'Player 2',kind:'settlement'};game.players[1].hand.grain=2;
+ const saved:SessionRecovery={version:1,qaTwoPlayers:false,boardLayout:'twin-capes',authority:{version:1,gameId:'legacy-twin',revision:12,state:game},seats:[{id:'Player 1',token:''},{id:'Player 2',token:'w'.repeat(43)}]};
+ const corrupt=structuredClone(saved);corrupt.authority.state.board.version=TWIN_CAPES_VERSION;
+ assert.throws(()=>parseSessionRecovery(corrupt),/Twin Capes map/);
+ const spurious=structuredClone(saved);spurious.authority.state.phase='steal';spurious.authority.state.victims=['Player 2'];
+ assert.throws(()=>parseSessionRecovery(spurious),/legacy pirate harbor/);
+ const messages=new Map<string,any[]>();let serial=0;
+ const send=(peer:string,message:string)=>{messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(message)]);};
+ const host=HostSession.fromRecovery(send,()=>{},()=>String(++serial).padStart(43,'q'),()=>0,JSON.parse(JSON.stringify(saved)));
+ const last=(kind:string)=>messages.get('guest')?.filter(m=>m.type===kind).at(-1)?.data;
+ host.receive('guest',JSON.stringify({protocol:1,type:'hello',token:saved.seats[1].token}));
+ assert.equal(last('lobby').mapVersion,GENERATOR_VERSION);
+ const other=structuredClone(saved);other.authority.state.board=generateBoardSetup(seed,'twin-capes');other.authority.state.phase='robber';other.authority.state.buildings={};
+ assert.throws(()=>host.resume(other),/board does not belong/);
+ host.resume(saved);
+ assert.deepEqual(last('snapshot').public.board,old);assert.deepEqual(last('snapshot').public.buildings,game.buildings);
+ assert.equal(host.submit({type:'move-pirate',edgeId:port.edgeId},'close',12).ok,true);
+ assert.equal(last('snapshot').public.phase,'action','the original edition has no pirate theft');
+ assert.equal(last('snapshot').private.hand.grain,2);
+ host.restart();
+ assert.equal(last('lobby').mapVersion,TWIN_CAPES_VERSION);assert.equal(last('snapshot').public.board.version,TWIN_CAPES_VERSION);
+ assert.equal(last('snapshot').public.board.hexes.length,25);assert.equal(host.recovery().boardLayout,'twin-capes');
+});
+
+test('remote dice deliver exact private resources and public per-seat counts to the roller, phones and spectators after sync',()=>{
+ const ids=['Player 1','Player 2','Player 3','Player 4'],seed=71;
+ const game=createGame(seed,ids,()=>0,{boardLayout:'twin-capes'});game.turn=4;game.phase='roll';game.currentSeat=1;
+ const geometry=createIslandBoard(game.board.layout,game.board.version);
+ const tile=game.board.hexes.find(tile=>tile.token!==null&&tile.resource!==null&&tile.hexId!==game.board.robberHexId)!;
+ const home=geometry.hexes.find(hex=>hex.id===tile.hexId)!;const total=tile.token!,resource=tile.resource!;
+ game.buildings[home.vertexIds[0]]={playerId:ids[0],kind:'settlement'};
+ game.buildings[home.vertexIds[2]]={playerId:ids[1],kind:'settlement'};
+ game.buildings[home.vertexIds[4]]={playerId:ids[2],kind:'city'};
+ game.players[2].hand.wool=2;game.bank.wool-=2;
+ const expected=game.players.map(p=>({...p.hand}));
+ const gains:Record<string,number>=Object.fromEntries(ids.map(id=>[id,0]));
+ for (const hex of geometry.hexes) {
+  const producing=game.board.hexes.find(cell=>cell.hexId===hex.id)!;
+  if(producing.token!==total||!producing.resource||producing.hexId===game.board.robberHexId)continue;
+  for(const vertex of hex.vertexIds){
+   const building=game.buildings[vertex];if(!building)continue;
+   const count=building.kind==='city'?2:1;
+   expected[ids.indexOf(building.playerId)][producing.resource]+=count;gains[building.playerId]+=count;
+  }
+ }
+ assert.ok(expected[2][resource]>=game.players[2].hand[resource]+2);
+ const messages=new Map<string,any[]>(),published:any[]=[];
+ const saved:SessionRecovery={version:1,qaTwoPlayers:false,boardLayout:'twin-capes',authority:{version:1,gameId:'phone-yield',revision:3,state:game},
+  seats:ids.map((id,i)=>({id,token:i?String(i).repeat(43):''}))};
+ const dice:[number,number]=[Math.min(total-1,6),total-Math.min(total-1,6)];
+ const entropy=dice.map(d=>d-1);
+ const room=HostSession.fromRecovery((id,text)=>messages.set(id,[...(messages.get(id)??[]),JSON.parse(text)]),
+  value=>published.push(value),()=>'v'.repeat(43),()=>entropy.shift()??0,saved);
+ const receive=(peer:string,data:object)=>room.receive(peer,JSON.stringify({protocol:1,...data}));
+ const join=(peer:string,index:number)=>receive(peer,{type:'hello',token:saved.seats[index].token});
+ const snapshot=(peer:string)=>messages.get(peer)!.filter(m=>m.type==='snapshot').at(-1).data;
+ join('roller',1);join('phone',2);join('idle',3);receive('watch',{type:'hello',role:'spectator'});room.resume(saved);
+ const roll=JSON.stringify({protocol:1,gameId:'phone-yield',revision:3,commandId:'actual-roll',sender:ids[1],command:{type:'roll',playerId:ids[1]}});
+ receive('roller',{type:'command',command:roll});
+ const host=published.filter(m=>m.type==='snapshot').at(-1).data;
+ const receipt={turn:4,dice,playerId:ids[1],gains};assert.equal(gains[ids[3]],0);
+ for(const [i,view] of [host,snapshot('roller'),snapshot('phone'),snapshot('idle')].entries()){
+  assert.equal(view.revision,4);assert.deepEqual(view.private.hand,expected[i]);
+  assert.deepEqual(view.public.lastRollPayout,receipt);assert.ok(view.public.players.every((p:{hand?:unknown})=>!('hand' in p)));
+ }
+ const spectator=snapshot('watch');assert.deepEqual(spectator.public.lastRollPayout,receipt);assert.equal(spectator.private,null);
+ receive('roller',{type:'command',command:roll});assert.equal(room.recovery().authority.revision,4);
+ room.disconnect('phone');
+ const end=JSON.stringify({protocol:1,gameId:'phone-yield',revision:4,commandId:'end',sender:ids[1],command:{type:'end-turn',playerId:ids[1]}});
+ receive('roller',{type:'command',command:end});join('phone-returned',2);
+ const rejoined=snapshot('phone-returned');assert.equal(rejoined.public.turn,5);assert.equal(rejoined.public.dice,null);
+ assert.deepEqual(rejoined.private.hand,expected[2]);assert.deepEqual(rejoined.public.lastRollPayout,receipt);
+ receive('phone-returned',{type:'sync'});
+ assert.deepEqual(snapshot('phone-returned'),rejoined,'repeat sync does not credit a second hand or create a new roll event');
+ assert.deepEqual(parseSessionRecovery(room.recovery()).authority.state.lastRollPayout,receipt);
+ const invalid=room.recovery();invalid.authority.state.lastRollPayout!.gains[ids[0]]=-1;
+ assert.throws(()=>parseSessionRecovery(invalid),/roll payout/);
 });

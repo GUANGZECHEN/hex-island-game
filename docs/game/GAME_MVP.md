@@ -8,13 +8,17 @@ The setup reducer validates settlement distance and a connected road in clockwis
 
 ## Twin Capes
 
-Choose **Classic → Twin Capes** in local room setup or in the host's private-room map selector. Two to six players share two capes joined by a single land hex. All 29 land hexes produce resources. The 16 harbors offer routes to either coast.
+Choose **Classic → Twin Capes** in local room setup or in the host's private-room map selector. Two to six players share 25 land hexes and 16 harbors. The middle crossing and two three-hex outer corridors enclose two lakes of two hexes each. The desert has no number. The 24 productive tiles use the standard tokens plus **5, 9, 4, 10, 3, 11**.
 
-**Unlimited ships.** Establish a foothold at a port, then spend 2 lumber, 2 brick and 2 ore to place a ship on an eligible empty port junction. Settlement spacing still applies. Each ship earns 1 public victory point and gives access to its port rate while the harbor is open. The supply indicator shows ∞. A ship can earn its point even while its harbor is closed.
+**Unlimited ships.** Establish a foothold at a port, then spend 2 lumber, 2 brick and 2 ore to place a ship on an eligible empty port junction. Settlement spacing still applies. Each ship earns 1 public victory point and gives access to its port rate at that harbor. The supply indicator shows ∞.
 
-**The pirate.** Look for the dark sail marking the closed harbor. After normal discards on a seven, select **Move pirate** and choose another harbor. A Knight also lets you move it. The old harbor reopens immediately. The pirate suspends only the occupied harbor's trading rate. Adjacent tiles still produce, players keep their cards, and the bank and all other ports continue trading.
+**The robber.** The robber starts on the desert. Sevens and Knights move it under the normal Classic rules, including ordinary discards on a seven and a one-card steal from an eligible neighboring opponent. The occupied tile stops producing. All harbors continue trading.
+
+Saved 29-hex Twin Capes matches retain their original single crossing and blockade-only pirate. A new match uses the lake map.
 
 ## Gameplay interface
+
+Every roll adds a game-log entry with the dice result and the number of resource cards each player received, including zero. The totals reflect the cards actually credited after production, bank shortages and any applicable roll bonuses.
 
 The board remains the primary surface. On desktop, the adjacent panel keeps connection status, private hand and current actions together; on narrow screens the same panel is a compact bottom control surface. Each multiplayer player may choose a display nickname before game start. Nicknames are presentation-only: stable Player IDs continue to drive authority, seat credentials, commands and recovery. Resource and building iconography uses compact local SVGs: wool is represented by a fluffy wool-bundle glyph; board settlements use a B3 house glyph and cities use a B3 town-hall/clock-tower glyph, colored by player identity. The visual system follows [ART-A01 / ART-B01 / ART-C01 / ART-FINAL](ART_DIRECTION.md): terrain hexes use original layered gradients and low-contrast natural illustrations over a muted ocean, number tokens use warm tabletop-chip styling with probability pips, roads render as wooden player-color pieces, and settlements/cities use solid tabletop materials with short placement motion. The control surface continues the same tabletop language with paper player boards, resource-specific hand tokens, award badges, tactile action controls, segmented tabs and exchange-tray trade controls. Motion uses the same short tabletop language: authoritative dice values tumble briefly in the public action alert, public development-card plays flip into view, hidden purchases use a generic card back, and board-piece/turn transitions remain decorative and non-blocking.
 

@@ -1,7 +1,7 @@
 import { PIRATE_CLOTH, PIRATE_COLORS, PIRATE_CROSS, PIRATE_PENNANT, portDescription } from './pirate-art.ts';
 import { createIslandBoard, type Board } from './geometry.ts';
 import { DRAWN_WHEAT, grainPreviewMask, SVG_WHEAT_OFFSETS } from './grain-clearance.ts';
-import { createSetupView } from './presentation.ts';
+import { createSetupView, lakeDividers } from './presentation.ts';
 import type { BoardSetup, HexSetup, PortType } from './setup.ts';
 import { desertIcon, resourceIcon } from '../ui/icons.ts';
 import type { Resource } from '../rules/state.ts';
@@ -159,9 +159,10 @@ function appendPirateBoat(face: SVGElement): void {
 }
 
 export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): void {
-  const board = createIslandBoard(setup.layout);
+  const board = createIslandBoard(setup.layout, setup.version);
   const view = createSetupView(board, setup);
   const twin = setup.layout === 'twin-capes';
+  const pirate = Boolean(setup.piratePortEdgeId);
   const svg = document.createElementNS(SVG_NS, 'svg');
   const [x, y, width, height] = view.viewBox.split(' ').map(Number);
   const margin = twin ? 1.65 : 1.05;
@@ -203,12 +204,19 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
   }
 
   const vertices = new Map(view.vertices.map(vertex => [vertex.id, vertex.point]));
+  const dividers = lakeDividers(setup.layout, setup.version, vertices);
+  for (const { a, b } of dividers) {
+    svg.append(node('line', { x1: String(a.x), y1: String(a.y + .08), x2: String(b.x), y2: String(b.y - .08),
+      stroke: '#d9f4f2', 'stroke-opacity': '.70', 'stroke-width': '.025', 'stroke-dasharray': '.13 .10',
+      'pointer-events': 'none', 'data-lake-divider': 'true' }));
+  }
+  if (dividers.length) details.setAttribute('aria-label', 'Twin Capes land and number tokens, with two lakes of two water hexes each');
   const islandCenter={x:view.hexes.reduce((sum,hex)=>sum+hex.center.x,0)/view.hexes.length,y:view.hexes.reduce((sum,hex)=>sum+hex.center.y,0)/view.hexes.length};
   const ports = document.createElement('ul');ports.className = 'sr-only';ports.setAttribute('aria-label', 'Coastal ports');
 
   for (const port of setup.ports) {
     const a = vertices.get(port.vertexIds[0])!, b = vertices.get(port.vertexIds[1])!,mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-    // On the concave bay, offshore points away from this edge's own land hex.
+    // At an outer coast or lake, offshore points away from this edge's own land hex.
     const landId = twin ? board.edges.find(edge => edge.id === port.edgeId)?.hexIds[0] : undefined;
     const land = twin ? view.hexes.find(hex => hex.id === landId)!.center : islandCenter;
     const dx=mid.x-land.x,dy=mid.y-land.y,length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
@@ -226,8 +234,8 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     const aAlong=(a.x-mid.x)*tx+(a.y-mid.y)*ty,bAlong=(b.x-mid.x)*tx+(b.y-mid.y)*ty;
     const aDock=aAlong<=bAlong?leftDock:rightDock,bDock=aAlong<=bAlong?rightDock:leftDock;
     const group=node('g',{'data-port-edge':port.edgeId,'data-port-type':port.type,class:`port-piece port-${port.type}`});
-    const closed = twin && port.edgeId === setup.piratePortEdgeId;
-    if (twin) group.setAttribute('data-port-closed', String(closed));
+    const closed = pirate && port.edgeId === setup.piratePortEdgeId;
+    if (pirate) group.setAttribute('data-port-closed', String(closed));
     const description = portDescription(port.type, closed);
     const portTitle=document.createElementNS(SVG_NS,'title');portTitle.textContent=description;group.append(portTitle);
 
@@ -244,7 +252,7 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
 
     // Keep trade information upright even when the dock rotates around the coast.
     const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
-    if (twin) face.append(node('rect', {
+    if (pirate) face.append(node('rect', {
       x: '-.63', y: '-.70', width: '1.26', height: '1.36', rx: '.23', class: 'pirate-target-ring',
     }));
     if (closed) appendPirateBoat(face);

@@ -55,6 +55,8 @@ New Co-op games use rule version 3. Saved v1/v2 games retain their recorded rule
 
 ## Twin Capes
 
-Twin Capes is a selectable Classic map for two to six players. Two productive capes share a narrow land bridge. Harbors line both shores, and ships are always available with unlimited supply per player. A ship still requires a port foothold, a legal coastal port destination and the normal cost of two lumber, two brick and two ore. Each ship earns one public victory point.
+Twin Capes is a selectable Classic map for two to six players. Its 25 land hexes surround two lakes of two water hexes each. The capes retain their middle crossing. Three consecutive land hexes connect the north ends and three connect the south ends. One land hex is a desert. The other 24 are productive and use the 18 standard number tokens plus 5, 9, 4, 10, 3 and 11.
 
-Twin Capes has no desert or land robber. A pirate occupies one harbor and suspends that harbor's trade rate. After the usual discards on a seven, or when playing a Knight, the active player moves the pirate to another harbor. The previous harbor immediately reopens. Production, hands, domestic trades and access to other trade rates are unaffected.
+The normal Classic robber starts on the desert. A seven requires the usual discards followed by a robber move. Playing a Knight also moves the robber. The occupied tile produces no resources, and the active player steals one random resource from an eligible opponent adjacent to the destination under the ordinary Classic rules. Harbors retain their trading rates.
+
+Sixteen harbors serve the map. Each player has unlimited ships. A ship requires an existing port foothold, a legal port destination and two lumber, two brick and two ore. Each ship earns one public victory point. Games already in progress on the original 29-hex Twin Capes retain their recorded map and blockade-only pirate rules.

@@ -72,7 +72,7 @@ fixtureObserver.observe(el('board'),{childList:true});
  },
  delayMs:BOT_DELAY_MS,
  events(){return structuredClone(fixtureEvents);},
- logs(){return [...log];},
+ logs(){return log.map(entry=>typeof entry==='string'?entry:entry.text);},
  hideBoard(){el('board').style.transform='translateY(-10000px)';window.dispatchEvent(new Event('resize'));},
  showBoard(){el('board').style.transform='';window.dispatchEvent(new Event('resize'));},
  refresh(){const before=structuredClone(state);state=structuredClone(state);render();return {before,after:structuredClone(state)};},

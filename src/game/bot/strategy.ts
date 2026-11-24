@@ -1,7 +1,7 @@
 import { createIslandBoard } from '../board/geometry.ts';
 import { longestRoute } from '../rules/build.ts';
 import { bankTradeRate, legalTargetIds } from '../rules/legal.ts';
-import { isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
+import { usesHarborPirate, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 
 export const PIPS:Readonly<Record<number,number>>={2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1};
@@ -18,7 +18,7 @@ const size=(hand:Hand)=>RESOURCES.reduce((sum,r)=>sum+hand[r],0);
 export const affordable=(hand:Hand,cost:Hand)=>RESOURCES.every(r=>hand[r]>=cost[r]);
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 
-function geometry(state:GameState){return createIslandBoard(state.board.layout);}
+function geometry(state:GameState){return createIslandBoard(state.board.layout,state.board.version);}
 function setupById(state:GameState){return new Map(state.board.hexes.map(hex=>[hex.hexId,hex]));}
 function hexesAtVertex(state:GameState,vertexId:string){
  const board=geometry(state);return board.hexes.filter(hex=>hex.vertexIds.includes(vertexId));
@@ -315,7 +315,7 @@ export function shouldPlayKnight(state:GameState,playerId:string){
  const armySwing=next>=3&&next>maxOther&&state.armyHolder!==playerId;
  const leader=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>publicVictoryPoints(state,p.id)));
  if(armySwing||leader>=publicVictoryPoints(state,playerId)+2)return true;
- if(isTwinCapes(state)){
+ if(usesHarborPirate(state)){
   const closedPort=state.board.ports.find(port=>port.edgeId===state.board.piratePortEdgeId);
   return closedPort?.vertexIds.some(id=>state.buildings[id]?.playerId===playerId)??false;
  }

@@ -62,7 +62,7 @@ test('room creation exposes standard and 5-6 player board versions and six-playe
  assert.ok(html.includes('value="expanded-5-6"'));
  assert.ok(html.includes('<option value="5">5</option>'));
  assert.ok(html.includes('<option value="6">6</option>'));
- assert.ok(ui.includes("generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard')"));
+ assert.ok(ui.includes("generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard',input.dataset.generatorVersion)"));
  assert.ok(html.includes('id="local-board-version"'));
  assert.equal((html.match(/<option value="twin-capes">/g)||[]).length,2);
  assert.ok(browser.includes('boardPlayerRange(boardLayout)'));
@@ -162,7 +162,7 @@ test('local test bot selector supports one through five bots and expands the boa
  assert.ok(ui.includes('pendingLocalBot'));
  assert.ok(ui.includes('scheduleLocalBot()'));
  assert.ok(targets.includes("from '../rules/legal.ts'"));
- assert.ok(legal.includes('createIslandBoard(state.board.layout)'));
+ assert.match(legal,/createIslandBoard\(state\.board\.layout,\s*state\.board\.version\)/);
 });
 
 

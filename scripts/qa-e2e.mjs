@@ -675,8 +675,59 @@ try{
     turn=await readTurn();
   }
   if(turn.phase!=='roll')throw new Error('Classic setup did not reach the first roll.');
-  await turn.page.getByRole('button',{name:'Roll dice'}).click();
+  // Use the real recovered private room and choose a roll touching the phone guest's settlement.
+  const payoutViewport=guestRecovered.viewportSize();
+  await guestRecovered.setViewportSize({width:390,height:844});
+  const matchingTotal=await guestRecovered.evaluate(()=>{
+    const homes=[...document.querySelectorAll('#board .game-building-piece.player-2')].map(node=>
+      [Number(node.dataset.boardX),Number(node.dataset.boardY)]);
+    for(const tile of document.querySelectorAll('#board [data-token][data-robber="false"]')){
+      const total=Number(tile.dataset.token);
+      if(!Number.isInteger(total)||total<2||total>12||total===7)continue;
+      const corners=tile.querySelector('.island-cell').points;
+      if(homes.some(([x,y])=>Array.from(corners).some(p=>Math.hypot(p.x-x,p.y-y)<.001)))return total;
+    }
+    throw new Error('Expected a numbered tile at the recovered guest settlement.');
+  });
+  const handTotal=page=>page.locator('#hand .resource-count').evaluateAll(nodes=>{
+    if(nodes.length!==5)throw new Error('Expected all five resources in the private hand.');
+    return nodes.reduce((sum,node)=>sum+Number(node.textContent),0);
+  });
+  const handsBefore=await Promise.all(recoveredPages.map(handTotal));
+  // Constrain just the two die draws in this isolated QA host. All other entropy
+  // requests still use the browser implementation.
+  await hostRecovered.evaluate(total=>{
+    const first=Math.min(6,total-1),draws=[first-1,total-first-1];
+    const original=crypto.getRandomValues.bind(crypto);
+    Object.defineProperty(crypto,'getRandomValues',{configurable:true,value(array){
+      if(array instanceof Uint32Array&&array.length===1&&draws.length){
+        array[0]=draws.shift();
+        if(!draws.length)delete crypto.getRandomValues;
+        return array;
+      }
+      return original(array);
+    }});
+  },matchingTotal);
+  const payoutRoll=turn.page.getByRole('button',{name:'Roll dice',exact:true});
+  if(turn.page===guestRecovered)await payoutRoll.tap();else await payoutRoll.click();
   await waitForRevision(turn.revision+1);
+  const handsAfter=await Promise.all(recoveredPages.map(handTotal));
+  const creditedCounts=handsAfter.map((total,i)=>total-handsBefore[i]);
+  if(creditedCounts[1]<1)throw new Error('The phone guest did not receive cards for its matching number.');
+  for(const [index,page] of recoveredPages.entries()){
+    const entry=page.locator('#log li[data-roll-turn]').first();
+    await entry.waitFor({state:'attached'});
+    const receipt=(await entry.textContent())??'';
+    if(!receipt.includes('Roll '+matchingTotal+' ·')||creditedCounts.some((n,i)=>!receipt.includes('Player '+(i+1)+' +'+n)))
+      throw new Error('Roll log does not report the actual gain for each player.');
+    const rollTurn=await entry.getAttribute('data-roll-turn');
+    if(await page.locator('#log li[data-roll-turn="'+rollTurn+'"]').count()!==1)
+      throw new Error('Duplicate log entries for the same roll.');
+    const ownReceipt=page.locator('#roll-payout[data-turn="'+rollTurn+'"][data-gain="'+creditedCounts[index]+'"]');
+    if(!await ownReceipt.isVisible())throw new Error('Missing private hand payout on the recovered client.');
+  }
+  if(payoutViewport)await guestRecovered.setViewportSize(payoutViewport);
+  console.log('Mobile guest received the matching-tile payout and both clients logged all player totals.');
   turn=await readTurn();
   if(turn.phase==='robber'){
     await turn.page.getByRole('button',{name:'Move robber'}).click();

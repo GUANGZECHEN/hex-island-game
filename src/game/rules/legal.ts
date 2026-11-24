@@ -11,7 +11,7 @@ export type TargetMode = 'settlement'|'road'|'city'|'robber'|'pirate'|'station'|
 /** Compute legal board targets with the same deterministic reducers used by gameplay. */
 export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):string[]{
   if(state.players[state.currentSeat]?.id!==playerId)return [];
-  const board=createIslandBoard(state.board.layout);
+  const board=createIslandBoard(state.board.layout, state.board.version);
   const ids=mode==='pirate'?state.board.ports.map(port=>port.edgeId):mode==='road'?board.edges.map(edge=>edge.id):mode==='robber'?board.hexes.map(hex=>hex.id):board.vertices.map(vertex=>vertex.id);
   return ids.filter(id=>{
     try{

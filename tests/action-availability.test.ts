@@ -5,6 +5,7 @@ import { legalTargetIds, bankTradeRate } from '../src/game/rules/legal.ts';
 import { applyEconomyCommand } from '../src/game/rules/economy.ts';
 import { getActionAvailability as availability, createActionAvailabilityReader } from '../src/game/ui/action-availability.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
+import { generateBoardSetup, GENERATOR_VERSION } from '../src/game/board/setup.ts';
 import { shipActionAvailability, shipActionLabel } from '../src/game/ui/ship-action.ts';
 const hand=(h:Partial<Hand>={}):Hand=>({lumber:0,brick:0,wool:0,grain:0,ore:0,...h});
 const game=()=>{const s=createGame(3,['a','b','c']);s.currentSeat=0;s.phase='action';s.turn=2;s.players[0].hand=hand({lumber:5,brick:5,wool:5,grain:5,ore:5});return s;};
@@ -117,8 +118,9 @@ test('the reader reuses legal target IDs for availability and board highlights',
  assert.deepEqual(nextRead.targetIds('robber'),legalTargetIds(next,'a','robber'));
 });
 
-test('Twin Capes exposes pirate moves and unlimited ships through the UI helpers',()=>{
+test('archived Twin Capes exposes pirate moves and unlimited ships through the UI helpers',()=>{
  const s=createGame(3,['a','b','c'],undefined,{boardLayout:'twin-capes'});
+ s.board=generateBoardSetup(3,'twin-capes',GENERATOR_VERSION);
  s.currentSeat=0;s.phase='action';
  s.players[0].hand=hand({lumber:2,brick:2,ore:2});
  const owned=s.board.ports[0];
@@ -145,8 +147,24 @@ test('Twin Capes exposes pirate moves and unlimited ships through the UI helpers
  assert.equal(availability(game(),'a').pirate.visible,false);
 });
 
-test('the pirate only removes the occupied port rate from trade availability',()=>{
+test('Twin Capes lakes use ordinary robber and steal controls with unlimited ships',()=>{
  const s=createGame(3,['a','b','c'],undefined,{boardLayout:'twin-capes'});
+ s.currentSeat=0;s.phase='robber';s.resumePhase='action';
+ const read=createActionAvailabilityReader(s,'a');
+ assert.deepEqual(read().robber,{visible:true,enabled:true});
+ assert.equal(read().pirate.visible,false);
+ assert.equal(read.targetIds('robber').length,24);
+ assert.ok(!read.targetIds('robber').includes(s.board.robberHexId));
+ assert.equal(shipActionAvailability(s,'a').remaining,Infinity);
+ s.phase='steal';s.victims=['b'];
+ assert.equal(availability(s,'a',{victimId:'b'}).steal.enabled,true);
+ assert.equal(availability(s,'a',{victimId:'c'}).steal.enabled,false);
+ assert.equal(availability(s,'c',{victimId:'b'}).steal.enabled,false);
+});
+
+test('the archived pirate only removes the occupied port rate from trade availability',()=>{
+ const s=createGame(3,['a','b','c'],undefined,{boardLayout:'twin-capes'});
+ s.board=generateBoardSetup(3,'twin-capes',GENERATOR_VERSION);
  s.currentSeat=0;s.phase='action';
  const owned=s.board.ports.find(port=>port.type!=='generic');
  assert.ok(owned&&owned.type!=='generic');

@@ -173,7 +173,14 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     assert.equal(markerCircle.attributes.get('cy'),token.attributes.get('cy'));
     assert.ok(moved.attributes.get('class')?.includes('robber-occupied'));
 
-    const twin = generateBoardSetup(42, 'twin-capes');
+    const currentTwin = generateBoardSetup(42, 'twin-capes');
+    renderIslandBoard(container as unknown as HTMLElement, currentTwin);
+    const currentTiles = descendants(container.children[0]);
+    assert.equal(currentTiles.filter(node => node.attributes.has('data-robber-marker')).length, 1);
+    assert.equal(currentTiles.filter(node => node.attributes.get('class')?.split(' ').includes('island-number')).length, 24);
+    assert.ok(!currentTiles.some(node => node.attributes.get('data-pirate') === 'true'));
+
+    const twin = generateBoardSetup(42, 'twin-capes', GENERATOR_VERSION);
     const nextPort = twin.ports.find(port => port.edgeId !== twin.piratePortEdgeId)!;
     for (const piratePortEdgeId of [twin.piratePortEdgeId!, nextPort.edgeId]) {
       renderIslandBoard(container as unknown as HTMLElement, { ...twin, piratePortEdgeId });

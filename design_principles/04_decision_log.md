@@ -149,3 +149,11 @@ D035: The Product Owner increased the effective gameplay action window from 45 t
 D036: The Product Owner selected Twin Capes as the first additional map and approved unlimited ships on this map. It features two productive capes connected by a narrow land bridge, many harbors, no desert, and a pirate that closes the harbor it occupies. The map uses the existing Classic ship cost, placement rules and victory points.
 
 On a seven, resolve ordinary discards before the active player relocates the pirate. Playing a Knight also relocates the pirate. One harbor's trade rate closes at a time, with no theft or loss of tile production.
+
+## 2026-11-24: Twin Capes lakes and Classic robber
+
+D037: The Product Owner approved a 25-land-hex revision of Twin Capes. Remove the outermost land hex on both sides of each of the original five rows. Add a three-hex land corridor at the top and another at the bottom. The existing middle crossing separates two lakes of two adjacent water hexes each.
+
+One desert replaces the proposed extra 6. The 24 productive tiles use the standard 18 number tokens plus 5, 9, 4, 10, 3 and 11. New matches use the ordinary Classic robber, production blocking, discard and theft rules. Harbors stay open and ships remain unlimited. Previously started 29-hex games retain their original board and rules.
+
+After each roll the game log shows the actual resource card count credited to every player, including zero. This applies to desktop and mobile play. Public payout entries disclose counts only.

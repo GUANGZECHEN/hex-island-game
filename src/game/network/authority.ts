@@ -3,7 +3,7 @@ import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
 import { applyHarborCommand, validateHarborState, type HarborCommand } from '../rules/harbor.ts';
-import { validateSavedBoard, type AuthorityRecovery } from './recovery.ts';
+import { validateSavedBoard, validateSavedRollPayout, type AuthorityRecovery } from './recovery.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, timeoutCommand, type TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
@@ -26,7 +26,7 @@ const fields: Record<string,string[]> = {
 };
 /** Public state is shared with every player and spectator; private trade details remain viewer-scoped. */
 function publicProjection(state:GameState, viewer?:string, tradeSummary:PublicTradeSummary|null=null, undoPlayerId:string|null=null) {
- return {mode:state.mode??'classic',harbor:state.harbor??null,rules:state.rules??{catchUp:false,ships:false},catchUpReward:state.catchUpReward??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,setupRoadEdges:state.setupRoadEdges,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,paused:false,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
+ return {lastRollPayout:state.lastRollPayout??null,mode:state.mode??'classic',harbor:state.harbor??null,rules:state.rules??{catchUp:false,ships:false},catchUpReward:state.catchUpReward??null,playedDevelopment:state.playedDevelopment,resumePhase:state.resumePhase,version:state.version,board:state.board,players:state.players.map(p=>({id:p.id,name:p.id,seat:p.seat,resources:Object.values(p.hand).reduce((a,b)=>a+b,0),developmentCards:p.cards.length,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:state.bank,deckCount:state.deck.length,playedCards:state.playedCards,startingSeat:state.startingSeat,currentSeat:state.currentSeat,turn:state.turn,phase:state.phase,setupStep:state.setupStep,setupRoadEdges:state.setupRoadEdges,pendingSettlement:state.pendingSettlement,buildings:state.buildings,roads:state.roads,longestHolder:state.longestHolder,armyHolder:state.armyHolder,dice:state.dice,discards:state.discards,victims:state.victims,freeRoads:state.freeRoads,winner:state.winner,paused:false,offer:viewer&&state.offer&&(state.offer.proposer===viewer||state.offer.targets.includes(viewer))?state.offer:null,undoPlayerId,tradeSummary};
 }
 /** Only public quantities and this viewer's own cards are serialized. */
 export function projectState(state:GameState, viewer:string, revision:number, gameId:string, tradeSummary:PublicTradeSummary|null=null) {
@@ -48,6 +48,7 @@ export class HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
   validateHarborState(value.state);
   validateSavedBoard(value.state);
+  validateSavedRollPayout(value.state);
   const restored=new HostAuthority(value.gameId,value.state,random,value.revision,clockNow);
   const pending=value.pendingDiscards??{};
   if(!pending||typeof pending!=='object'||Array.isArray(pending))throw new Error('Invalid saved pending discards.');
@@ -105,6 +106,7 @@ export class HostAuthority {
  checkpoint():AuthorityRecovery {this.refreshClock();const now=this.clockNow();return {version:1,gameId:this.gameId,revision:this.revision,state:structuredClone(this.state),pendingDiscards:structuredClone(this.pendingDiscards),clock:{paused:this.clockPaused,remaining:Object.fromEntries([...this.clockDeadlines].map(([id,deadline])=>[id,Math.max(0,this.clockPaused?deadline:deadline-now)]))}};}
  hasPendingDiscard(playerId:string):boolean{return this.state.phase==='discard'&&Object.hasOwn(this.pendingDiscards,playerId);}
  currentRevision():number{return this.revision;}
+ boardVersion(){return this.state.board.version;}
  snapshot(playerId:string){const result=projectState(this.state,playerId,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
  spectatorSnapshot(){const result=projectSpectatorState(this.state,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
  receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number;pending?:boolean} {

@@ -1,6 +1,7 @@
 import { RoomClient, RoomError, type CheckpointMeta, type StoredCheckpoint } from '../../rooms';
 import { HostSession } from './session';
 import type { projectState, projectSpectatorState } from './authority';
+import { GENERATOR_VERSION } from '../board/setup';
 import { parseSessionRecovery } from './recovery';
 import { isTwoPlayerQa } from './qa';
 import type { GameMode } from '../rules/harbor';
@@ -112,13 +113,22 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const saveSyncPoint=(snapshot:Snapshot)=>{if(room)safeSet(gameKey(room),JSON.stringify({gameId:snapshot.gameId,revision:snapshot.revision}));};
  const requestSync=()=>{
   if(role!=='guest'||!open||(!playerId&&!spectator))return;
-  try{send('host',JSON.stringify({protocol:1,type:'sync'}));}catch{return;}
+  try{send('host',JSON.stringify({protocol:1,type:'sync'}));}catch{/* A waking relay may need the retry below. */}
   if(!awaitingSnapshot)return;
   clearSyncTimer();
   if(syncAttempts>=5){status('Connected, but game state could not resynchronize. Use Rejoin previous room to retry.');return;}
   syncAttempts++;
   syncTimer=window.setTimeout(()=>requestSync(),1200);
  };
+
+ // A mobile browser can resume with an open socket and a stale private hand.
+ // Request the seated player's absolute snapshot even when no reconnect event fires.
+ const resyncVisibleGame=()=>{
+  if(document.hidden||role!=='guest'||!open||acceptedRevision<0||awaitingSnapshot||(!playerId&&!spectator))return;
+  syncAttempts=0;setSynchronizing(true);requestSync();
+ };
+ document.addEventListener('visibilitychange',resyncVisibleGame);
+ window.addEventListener('pageshow',resyncVisibleGame);
 
  const renderRecovery=()=>{
   const panel=el('room-recovery-panel'),options=el('room-recovery-options'),message=el('room-recovery-status');
@@ -138,7 +148,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
 
  let confirmedMap:{layout:BoardLayout;seed:number}|null=null;
  const showLobby=(data:unknown)=>{
-  const lobby=data as {mode?:GameMode;rules?:unknown;seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
+  const lobby=data as {mode?:GameMode;rules?:unknown;seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;mapVersion?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
   if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean'||!isBoardLayout(lobby.boardLayout))return;
   const seats=lobby.seats as Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
@@ -146,6 +156,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   const boardLayout=lobby.boardLayout,boardVersion=el<HTMLSelectElement>('room-board-version');boardVersion.value=boardLayout;
   const mapSeed=el<HTMLInputElement>('room-seed');
   if(Number.isSafeInteger(lobby.mapSeed)&&Number(lobby.mapSeed)>=0&&Number(lobby.mapSeed)<=0xffffffff)mapSeed.value=String(lobby.mapSeed);
+  // Older Twin Capes hosts did not advertise a generator version.
+  if(boardLayout==='twin-capes')mapSeed.dataset.generatorVersion=typeof lobby.mapVersion==='string'?lobby.mapVersion:GENERATOR_VERSION;
+  else delete mapSeed.dataset.generatorVersion;
   confirmedMap={layout:boardLayout,seed:mapSeed.valueAsNumber};
   const canEditMap=role==='host'&&!lobby.started&&!lobby.recovering;
   const rules=validateOptionalRules(lobby.rules),canEditRules=canEditMap&&lobby.mode!=='harbor-coop';

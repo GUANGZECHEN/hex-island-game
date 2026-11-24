@@ -17,14 +17,14 @@ export function usesTradeStations(state: Pick<GameState,'mode'|'harbor'>): boole
 }
 /** A station is attached to a shared junction, not a producing/VP building. */
 export function isTradeJunction(state: Pick<GameState,'board'|'players'|'roads'>, vertexId: string): boolean {
-  const board = createIslandBoard(state.board.layout);
+  const board = createIslandBoard(state.board.layout, state.board.version);
   if (!board.vertices.some(vertex => vertex.id === vertexId) || state.players.length !== 2) return false;
   const owners = new Set(board.edges.filter(edge => edge.vertexIds.includes(vertexId)).map(edge => state.roads[edge.id]));
   return state.players.every(player => owners.has(player.id));
 }
 export function tradeStationIds(state: GameState): string[] {
   if (!usesTradeStations(state)) return [];
-  return createIslandBoard(state.board.layout).vertices.map(v=>v.id).filter(id=>!state.harbor!.stations?.[id] && isTradeJunction(state,id));
+  return createIslandBoard(state.board.layout, state.board.version).vertices.map(v=>v.id).filter(id=>!state.harbor!.stations?.[id] && isTradeJunction(state,id));
 }
 export function availableTradeStations(state: GameState, playerId: string): TradeStation[] {
   if (!usesTradeStations(state) || state.phase !== 'action' || state.players[state.currentSeat]?.id !== playerId) return [];

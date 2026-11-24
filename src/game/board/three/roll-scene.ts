@@ -138,9 +138,11 @@ export class BoardDiceScene {
   readonly event:RollPresentation;
   private vertexAt:(id:string)=>{x:number;z:number}|undefined;
   private playerColor:(id:string)=>string;
+  private gainHeight:number;
 
   constructor(event:RollPresentation,vertexAt:(id:string)=>{x:number;z:number}|undefined,
-              playerColor:(id:string)=>string){
+              playerColor:(id:string)=>string, gainHeight=.54){
+    this.gainHeight=gainHeight;
     this.event=event;this.vertexAt=vertexAt;this.playerColor=playerColor;
     this.root.name='dice-roll-scene';
     // Temporary lights emphasize real convex bevels and concave pip rims
@@ -214,7 +216,10 @@ export class BoardDiceScene {
       if(!ctx)continue;
       const playerColor=this.playerColor(gains[0].playerId);
       ctx.fillStyle='#fffdf0';ctx.strokeStyle=playerColor;ctx.lineWidth=8;
-      ctx.beginPath();ctx.roundRect(7,8,width-14,96,20);ctx.fill();ctx.stroke();
+      ctx.beginPath();
+      if(typeof ctx.roundRect==='function')ctx.roundRect(7,8,width-14,96,20);
+      else ctx.rect(7,8,width-14,96);
+      ctx.fill();ctx.stroke();
       for(const [index,gain] of gains.entries()){
         const offset=24+186*index;
         ctx.save();ctx.translate(offset,32);ctx.scale(2.15,2.15);
@@ -227,7 +232,7 @@ export class BoardDiceScene {
       const material=new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,opacity:0});
       const sprite=new THREE.Sprite(material);sprite.name='building-resource-gain';sprite.renderOrder=30;
       const baseY=gains[0].kind==='city'?1.14:.88;
-      sprite.position.set(point.x,baseY+.10,point.z);sprite.scale.set(width*.0047,.54,1);
+      sprite.position.set(point.x,baseY+.10,point.z);sprite.scale.set(width*.0047*this.gainHeight/.54,this.gainHeight,1);
       sprite.userData={vertexId,playerId:gains[0].playerId,gains:gains.map(g=>({resource:g.resource,count:g.count})),color:playerColor};
       this.root.add(sprite);this.labels.push({sprite,baseY,material,texture});
     }
@@ -264,7 +269,7 @@ export class BoardDiceScene {
     return {dice:this.event.dice,top:this.dice.map(d=>visibleTopFace(d.quaternion)),
       visibleFaces:this.dice.map(d=>visibleDieFaces(d.quaternion,this.viewDirection)),
       cameraDirection:this.viewDirection.toArray(),
-      landed:this.landed,gainLabels:this.labels.map(({sprite})=>sprite.userData),
+      landed:this.landed,gainLabels:this.labels.map(({sprite})=>({...sprite.userData,heightWorld:sprite.scale.y})),
       shown:this.dice.map(d=>d.visible),elapsed:this.lastElapsed};
   }
   dispose():void {

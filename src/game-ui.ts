@@ -6,6 +6,7 @@ import { applyHarborCommand as localHarbor, isHarbor, partnersConnected, type Ga
 import './compact-actions.css';
 import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
+import { logRollPayout, ownPayoutLabel, type GameLogEntry } from './game/ui/roll-payout.ts';
 import { DiceSound } from './game/ui/dice-sound.ts';
 import { GameMusic } from './game/ui/music.ts';
 import { RoomMusicControls } from './game/ui/room-music-controls.ts';
@@ -28,7 +29,7 @@ import { generateBoardSetup } from './game/board/setup';
 import { createLocalRoomSettings, type LocalRoomSettings } from './game/ui/local-room';
 import { createBoardView } from './game/board/presentation';
 import { paintGrainPreview, renderIslandBoard } from './game/board/render';
-import { createGame, isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
+import { createGame, isTwinCapes, usesHarborPirate, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
 import { applyTurnCommand as localTurn } from './game/rules/turn';
 import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
@@ -44,7 +45,7 @@ const roomMusic = new RoomMusicControls(music);
 let localMusicRound = 0;
 let remote:BrowserGame | null=null, networkRevision=0, projection:(ReturnType<typeof projectState>|ReturnType<typeof projectSpectatorState>) | null=null;
 let localRoomOpen=false,activeLocalRoom:LocalRoomSettings|null=null;
-let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:string[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
+let state:GameState | null=null, viewer='', targetMode:TargetMode|null=null, discardSubmitted=false, log:GameLogEntry[]=[], publicActivity='', lastTurnCue='', pendingActivityAlert='', pendingRollPresentation:RollPresentation|null=null, lastWinnerAlert='', turnAlertTimer:number|null=null, activityAlertTimer:number|null=null, victoryAlertTimer:number|null=null, localBotIds=new Set<string>(), botTimer:number|null=null, botTurnKey='', botActionCount=0;
 let pendingSupplement:RollPresentation['supplement'];
 let supplementTimer:number|null=null;
 let rollGeneration=0,rollPlaying=false;
@@ -164,7 +165,7 @@ function activityState(s:GameState):PublicActivityState {
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
 function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|moved the pirate|stole 1 card|played |traded /i.test(message);}
-function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice){clearSupplement();pendingRollPresentation=describeRoll(old,next.dice,next);logSupplement(`local:${next.turn}`,next.catchUpReward,playerName);}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
+function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(next.lastRollPayout?.turn!==old.lastRollPayout?.turn)logRollPayout(log,next.lastRollPayout,next.players,playerName);if(isNewRoll(old,next)&&next.dice){clearSupplement();pendingRollPresentation=describeRoll(old,next.dice,next);logSupplement(`local:${next.turn}`,next.catchUpReward,playerName);}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
 function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameState){if(!command)return 'Bot acted.';if(command.type==='accept-offer'&&before.offer)return domesticTradeMessage(before.offer,command.playerId);if(command.type==='reject-offer')return `${playerName(command.playerId)} rejected a trade.`;return `${playerName(command.playerId)} acted.`;}
@@ -206,7 +207,7 @@ function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURC
  refresh();parent.append(field);return ()=>selected;
 }
 function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number],availability:ActionAvailability,reason:string){
- const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent=isTwinCapes(s)?'The pirate closes the marked harbor. Your other ports and the bank still offer trades.':'Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
+ const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent=usesHarborPirate(s)?'The pirate closes the marked harbor. Your other ports and the bank still offer trades.':'Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
  for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give||!availability.bankTrades[`${give}:${receive}`]?.enabled)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
    const from=document.createElement('span');from.className='bank-trade-side';const rateBadge=document.createElement('span');rateBadge.className='bank-trade-rate';rateBadge.textContent=String(rate);from.append(rateBadge,resourceIcon(give));
    const arrow=document.createElement('span');arrow.className='bank-trade-arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');const to=document.createElement('span');to.className='bank-trade-side';to.append(resourceIcon(receive));
@@ -344,7 +345,7 @@ let lobbyPreviewBoard: ReturnType<typeof generateBoardSetup>|null=null;
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  const boardVersion=el<HTMLSelectElement>('room-board-version').value;
- const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard');
+ const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard',input.dataset.generatorVersion);
  renderIslandBoard(preview,setup);const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
  // Reuse the live Three.js renderer from lobby through gameplay.
  if(document.body.classList.contains('room-configuring')){
@@ -529,7 +530,7 @@ function drawBoard(legalTargets:readonly string[]){
   stations:state.harbor?.stations,harborPorts:isHarbor(state),placementPlayerId:viewer,targetMode,legalTargets});
 }
 function drawSvgBoard(legalTargets:readonly string[]){
- const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const topology=createIslandBoard(s.board.layout),view=createBoardView(topology);const NS='http://www.w3.org/2000/svg';
+ const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const topology=createIslandBoard(s.board.layout,s.board.version),view=createBoardView(topology);const NS='http://www.w3.org/2000/svg';
  const legal=new Set(legalTargets);
  const roadPiece=(edge:typeof view.edges[number],owner:string,fresh=false)=>{
    const seat=byId(owner).seat+1,piece=document.createElementNS(NS,'g');
@@ -644,6 +645,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
  el('classic-how-to-play').hidden=isHarbor(s);
  el('mainland-how-to-play').hidden=isTwinCapes(s);el('twin-capes-how-to-play').hidden=!isTwinCapes(s);
+ el('twin-capes-robber-help').hidden=usesHarborPirate(s);el('twin-capes-pirate-help').hidden=!usesHarborPirate(s);
  renderHarborPanel(el('harbor-panel'),s,viewer,c=>attempt(()=>commit(applyHarborCommand(s,c),'Supplies delivered.')),playerName);
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
@@ -652,7 +654,18 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  el('players').textContent=s.players.map(p=>`${playerName(p.id)}: ${publicVictoryPoints(s,p.id)} public VP${usesDevelopmentCards(s)&&p.id===viewer?` (${publicVictoryPoints(s,p.id)+p.cards.filter(c=>c.type==='victory-point').length} total)`:''}${usesDevelopmentCards(s)?`, ${p.knights} knights played${s.armyHolder===p.id?' (Largest Army)':''}`:''}, longest road ${longestRoute(s,p.id)}, ${p.roads} roads, ${p.settlements} settlements, ${p.cities} cities remaining, ${projection?.public.players.find(x=>x.id===p.id)?.resources ?? RESOURCES.reduce((n,r)=>n+p.hand[r],0)} resources${usesDevelopmentCards(s)?`, ${projection?.public.players.find(x=>x.id===p.id)?.developmentCards ?? p.cards.length} cards`:''}`).join(' | ');
  const bank=el('bank');bank.replaceChildren(document.createTextNode('Bank: '),...RESOURCES.map(r=>resourceChip(r,s.bank[r])),...(usesDevelopmentCards(s)?[document.createTextNode(` · Deck: ${projection?.public.deckCount ?? s.deck.length}`)]:[]));el('bonuses').textContent=`Longest route: ${s.longestHolder?playerName(s.longestHolder):'none'}${usesDevelopmentCards(s)?`; largest army: ${s.armyHolder?playerName(s.armyHolder):'none'}`:''}.`;el('cards').hidden=!usesDevelopmentCards(s);
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));if(usesDevelopmentCards(s))renderDevelopmentCards(el('cards'),actor.cards,s.turn);else el('cards').replaceChildren();}else{el('hand').replaceChildren();el('cards').replaceChildren();}
- el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+ const payout=el('roll-payout'),receipt=s.lastRollPayout;
+ payout.hidden=!actor||!receipt;
+ if(actor&&receipt){
+  payout.dataset.turn=String(receipt.turn);payout.dataset.gain=String(receipt.gains[actor.id]);
+  const label=ownPayoutLabel(receipt,actor.id);if(payout.textContent!==label)payout.textContent=label;
+ }else{payout.textContent='';delete payout.dataset.turn;delete payout.dataset.gain;}
+ el('log').replaceChildren(...log.slice(0,30).map(entry=>{
+  const li=document.createElement('li');
+  if(typeof entry==='string')li.textContent=entry;
+  else{li.dataset.rollTurn=String(entry.rollTurn);li.textContent=entry.text;}
+  return li;
+ }));
  el('turn-hint').textContent=isPaused()?(remote?'Paused by host.':'Game paused.'):spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
  if(!isPaused()&&viewer===active.id&&s.phase==='pirate')el('turn-hint').textContent='Choose a harbor for the pirate.';
  if(!isPaused()&&usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
@@ -765,7 +778,7 @@ function refreshLocalMapPreview(){
  const input=el<HTMLInputElement>('seed'),preview=el('local-map-preview');
  const bots=Number(el<HTMLSelectElement>('local-bot-count').value),selected=Number(el<HTMLSelectElement>('seats').value);
  const count=bots>0?bots+1:selected;
- const boardLabel=localBoardChoice()==='twin-capes'?'Twin Capes · ships always on · unlimited ship supply':count>=5?'expanded 24-hex board':'standard 19-hex board';
+ const boardLabel=localBoardChoice()==='twin-capes'?'Twin Capes · 25 land hexes · two lakes · unlimited ship supply':count>=5?'expanded 24-hex board':'standard 19-hex board';
  el('local-board-layout').textContent=`${count} players · ${boardLabel}`;
  if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  try{
@@ -856,8 +869,9 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
 },reset:()=>{
   clearSupplement();loggedSupplements.clear();remoteActionClock=null;localActionDeadlines.clear();localPaused=false;localPauseAt=0;pendingClockCommand=null;discardSubmitted=false;clearBotTimer();localBotIds=new Set();botTurnKey='';botActionCount=0;activeLocalRoom=null;localUndoState=null;localUndoPlayerId='';localUndoDeadlines=null;pendingLocalUndo=null;el('local-restart').hidden=true;el('pass-local-restart').hidden=true;renderedRoadOwners=new Map();renderedBuildings=new Map();renderedRobberHex='';projection=null;networkRevision=0;state=null;targetMode=null;log=[];publicActivity='';lastTurnCue='';pendingActivityAlert='';pendingRollPresentation=null;boardRenderer?.clearRoll();lastWinnerAlert='';if(turnAlertTimer!==null){window.clearTimeout(turnAlertTimer);turnAlertTimer=null;}if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}if(victoryAlertTimer!==null){window.clearTimeout(victoryAlertTimer);victoryAlertTimer=null;}document.querySelector('.turn-alert')?.remove();document.querySelector('.activity-alert')?.remove();document.querySelector('.victory-alert')?.remove();el('game').hidden=!document.body.classList.contains('room-table');
 },snapshot:(value,playerId)=>{
-  if(projection&&value.gameId===projection.gameId&&(value.revision<networkRevision||(value.revision===networkRevision&&value.public.paused===projection.public.paused)))return;
+  if(projection&&value.gameId===projection.gameId&&value.revision<networkRevision)return;
   const sameGame=projection?.gameId===value.gameId;
+  if(!sameGame){log=[];publicActivity='';}
   if(projection&&!sameGame){clearSupplement();loggedSupplements.clear();pendingRollPresentation=null;boardRenderer?.clearRoll();}
   const gameplayUpdate=!sameGame||value.revision>networkRevision;
   const previousPublic=(sameGame?projection?.public:null) as unknown as PublicActivityState|null;
@@ -869,12 +883,13 @@ const network=initializeNetwork({status:connectionStatus,enterRoom:enterNetworkR
   const activity=gameplayUpdate?((value.public.harbor&&value.public.harbor.event!==(sameGame?projection?.public.harbor?.event:null)?value.public.harbor.event:null)??tradeActivity??derivePublicActivity(previousPublic,nextPublic)):null;
   if(gameplayUpdate&&projection?.gameId===value.gameId&&isNewRoll(projection.public,value.public)&&value.public.dice){clearSupplement();pendingRollPresentation=describeRoll(projection.public,value.public.dice,value.public);}
   if(activity){log.unshift(activity);publicActivity=activity;if(centralActivity(activity))pendingActivityAlert=activity;}else if(!projection&&!publicActivity)publicActivity='Game synchronized.';
+  if(!sameGame||projection?.public.lastRollPayout?.turn!==value.public.lastRollPayout?.turn)logRollPayout(log,value.public.lastRollPayout,value.public.players,publicName);
   if(gameplayUpdate&&value.public.catchUpReward)logSupplement(`${value.gameId}:${value.public.catchUpReward.turn}`,value.public.catchUpReward,publicName);
   if(!projection||value.gameId!==projection.gameId||value.revision!==networkRevision)targetMode=null;
   projection=value;networkRevision=value.revision;viewer=playerId;remote=network;
   const pub=value.public;
   const privateView=value.private;
-  state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
+  state={mode:pub.mode,harbor:pub.harbor??undefined,rules:pub.rules,catchUpReward:pub.catchUpReward??undefined,lastRollPayout:pub.lastRollPayout??undefined,version:pub.version,board:pub.board,players:pub.players.map(p=>({id:p.id,seat:p.seat,hand:privateView&&p.id===playerId?privateView.hand:{lumber:0,brick:0,wool:0,grain:0,ore:0},cards:privateView&&p.id===playerId?privateView.cards:[],roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights})),bank:pub.bank,deck:[],randomState:0,playedCards:pub.playedCards,startingSeat:pub.startingSeat,currentSeat:pub.currentSeat,turn:pub.turn,phase:pub.phase,setupStep:pub.setupStep,setupRoadEdges:pub.setupRoadEdges,pendingSettlement:pub.pendingSettlement,buildings:pub.buildings,roads:pub.roads,longestHolder:pub.longestHolder,armyHolder:pub.armyHolder,playedDevelopment:pub.playedDevelopment,resumePhase:pub.resumePhase,freeRoads:pub.freeRoads,winner:pub.winner,offer:pub.offer,dice:pub.dice,discards:pub.discards,victims:pub.victims};
   el('pass').hidden=true;el('game').hidden=false;el('switch-player').hidden=true;enterGame(!sameGame);render();
 }});
 roomMusic.attach(network);

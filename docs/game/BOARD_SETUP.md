@@ -2,7 +2,7 @@
 
 The island uses the stable hex IDs and edge-based neighbor relationships in [board geometry](BOARD_GEOMETRY.md). The standard setup has 19 cells: four forests, three hills, four pastures, four fields, three mountains and one desert. The expanded 5–6 player setup has 24 cells: five forests, four hills, five pastures, four fields, four mountains and two deserts. Desert cells have no number token; the robber starts on one of the deserts. Both layouts reject assignments where two 6 or 8 tokens share an edge.
 
-Twin Capes has 29 productive land hexes. Each cape contains every resource and has the same total production probability. Each shore has five specialty and three generic ports. The seed also selects the pirate’s starting harbor. See [Twin Capes rules](GAME_MVP.md#twin-capes).
+Twin Capes has 25 land hexes. The robber starts on the unnumbered desert. The 24 productive tiles use the standard 18 number tokens plus **5, 9, 4, 10, 3, 11**. This gives one each of 2 and 12, two each of 6 and 8, and three each of 3, 4, 5, 9, 10 and 11. A 6 or 8 never shares an edge with another 6 or 8. Twelve harbors face the outer sea and two face each lake. See [Twin Capes rules](GAME_MVP.md#twin-capes).
 
 Enter an integer seed from 0 through 4294967295 and select **Apply seed** to reproduce a board. **New random board** uses the browser's cryptographic random source to select a seed. The current seed appears above the board; the initial seed is 1. Terrain and resources are labeled on the board; mountains are abbreviated Mtns. A text list provides the same details to assistive technology. Changing a board does not synchronize it with other peers.
 

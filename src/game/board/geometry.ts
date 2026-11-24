@@ -35,9 +35,16 @@ const EXPANDED_COLUMNS: readonly (readonly [number, number, number])[] = [
 
 // Two mirrored 14-hex capes meet at (0,0). Above and below that hex the coast
 // turns away to form two open bays; no second route crosses between the capes.
-const TWIN_CAPES_COLUMNS: readonly (readonly [number, number, number])[] = [
+const LEGACY_TWIN_COLUMNS: readonly (readonly [number, number, number])[] = [
   [-4,0,2],[-3,-1,2],[-2,-2,1],[-1,-2,0],[0,0,0],[1,0,2],[2,-1,2],[3,-2,1],[4,-2,0],
 ];
+export const LEGACY_BOARD_VERSION = 'mulberry32-fy-rejection-v2' as const;
+// Each row of the compact board contains 5, 6, 7, 6 or 5 cells before its lakes are cut out.
+const TWIN_CAPES_COLUMNS: readonly (readonly [number, number, number])[] = [
+  [-3,0,2], [-2,-1,2], [-1,-2,2], [0,-2,2], [1,-2,2], [2,-2,1], [3,-2,0],
+];
+export const TWIN_CAPES_LAKES = [[[0,-1],[1,-1]],[[-1,1],[0,1]]] as const;
+const lakeCells = new Set(TWIN_CAPES_LAKES.flat().map(([q,r]) => `h:${q},${r}`));
 const COLUMNS = { standard: STANDARD_COLUMNS, 'expanded-5-6': EXPANDED_COLUMNS, 'twin-capes': TWIN_CAPES_COLUMNS };
 
 /**
@@ -45,14 +52,16 @@ const COLUMNS = { standard: STANDARD_COLUMNS, 'expanded-5-6': EXPANDED_COLUMNS, 
  * The 5-6 player layout inserts one horizontal-direction column of five,
  * producing 3-4-5-5-4-3 (24 hexes total).
  */
-export function createIslandBoard(layout:BoardLayout='standard'): Board {
+export function createIslandBoard(layout:BoardLayout='standard', version?: string): Board {
   const vertices = new Map<string, Vertex>();
   const edges = new Map<string, { id: string; vertexIds: [string, string]; hexIds: string[] }>();
   const cells: { id: string; q: number; r: number; vertexIds: string[]; edgeIds: string[] }[] = [];
-  const columns = COLUMNS[layout];
+  const legacyTwin = layout === 'twin-capes' && version === LEGACY_BOARD_VERSION;
+  const columns = legacyTwin ? LEGACY_TWIN_COLUMNS : COLUMNS[layout];
   for (const [q,rMin,rMax] of columns) {
     for (let r=rMin;r<=rMax;r++) {
       const id = `h:${q},${r}`;
+      if (layout === 'twin-capes' && !legacyTwin && lakeCells.has(id)) continue;
       const vertexIds = CORNERS.map(([du,dv]) => {
         const u = 2*q + r + du, v = 3*r + dv, key = vertexId(u,v);
         if (!vertices.has(key)) vertices.set(key, { id:key, u, v });

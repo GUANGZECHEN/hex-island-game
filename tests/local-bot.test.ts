@@ -7,6 +7,7 @@ import { monopolyResource, rankExpansionTargets, settlementScore } from '../src/
 import { createLocalRoomSettings } from '../src/game/ui/local-room.ts';
 import { legalTargetIds } from '../src/game/rules/legal.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
+import { generateBoardSetup, GENERATOR_VERSION } from '../src/game/board/setup.ts';
 
 test('local bot deterministically completes the full snake setup through normal reducers',()=>{
  let state=createGame(23,['Player 1','Bot']);
@@ -267,8 +268,9 @@ test('co-op human receives both cities and the bot receives both settlements and
  assert.deepEqual([...seen].sort(),[0,1]);
 });
 
-test('Twin Capes bot uses Knight to reopen its port then moves the pirate to another player’s port',()=>{
+test('archived Twin Capes bot uses Knight to reopen its port then moves the pirate to another player’s port',()=>{
  const state=createGame(3,['Player 1','Bot'],undefined,{boardLayout:'twin-capes'});
+ state.board=generateBoardSetup(3,'twin-capes',GENERATOR_VERSION);
  state.currentSeat=1;state.phase='action';state.turn=3;
  const own=state.board.ports[0];
  const rival=state.board.ports.find(port=>port.vertexIds.every(vertex=>!own.vertexIds.includes(vertex)))!;
@@ -286,6 +288,21 @@ test('Twin Capes bot uses Knight to reopen its port then moves the pirate to ano
  assert.equal(moved.phase,'action');
  assert.equal(moved.board.piratePortEdgeId,rival.edgeId);
  assert.deepEqual(moved.players.map(player=>player.hand),choosing.players.map(player=>player.hand));
+});
+
+test('Twin Capes bot moves the land robber and steals from the adjacent opponent',()=>{
+ const state=createGame(3,['Player 1','Bot'],undefined,{boardLayout:'twin-capes'});
+ state.currentSeat=1;state.phase='robber';state.resumePhase='action';state.turn=3;
+ const high=state.board.hexes.find(tile=>tile.token===6)!;
+ const geometry=createIslandBoard(state.board.layout,state.board.version);
+ const tile=geometry.hexes.find(hex=>hex.id===high.hexId)!;
+ state.buildings[tile.vertexIds[0]]={playerId:'Player 1',kind:'settlement'};
+ state.players[0].hand.wool=1;state.bank.wool--;
+ const move=chooseBotCommand(state,'Bot');assert.ok(move?.type==='move-robber');
+ const moved=applyBotCommand(state,move);assert.equal(moved.phase,'steal');
+ const steal=chooseBotCommand(moved,'Bot');assert.ok(steal?.type==='steal');
+ assert.equal(steal.victimId,'Player 1');
+ const next=applyBotCommand(moved,steal);assert.equal(next.players[1].hand.wool,1);
 });
 
 test('Twin Capes bot can build a third legal ship through the usual reducer',()=>{

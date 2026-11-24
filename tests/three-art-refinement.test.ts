@@ -56,8 +56,8 @@ test('sand relief increases 65 percent while all seam vertices retain their base
   assets.dispose();
 });
 
-test('ocean derives shallow water and foam from actual coastline on both board sizes', () => {
-  for (const layout of ['standard', 'expanded-5-6'] as const) {
+test('ocean derives shallow water and foam from every coast and marks both Twin Capes lakes', () => {
+  for (const layout of ['standard', 'expanded-5-6', 'twin-capes'] as const) {
     const geometry = worldGeometry(layout), assets = new GeometryAssets(), coast = coastline(geometry);
     assert.equal(coast.length, geometry.topology.edges.filter(e => e.hexIds.length === 1).length);
     for (const edge of coast) assert.ok(coastDistance((edge.a.x + edge.b.x) / 2, (edge.a.z + edge.b.z) / 2, coast) < 1e-10);
@@ -72,6 +72,8 @@ test('ocean derives shallow water and foam from actual coastline on both board s
     const foam=ocean.getObjectByName('shore-foam') as THREE.LineSegments;
     assert.ok(foam.geometry.getAttribute('position').count > 100);
     assert.equal(ocean.getObjectByName('sea-ripples'),undefined,'calm sea has no decorative stripe pattern');
+    const lakes = ocean.getObjectByName('lake-cell-dividers') as THREE.LineSegments | undefined;
+    assert.equal(lakes?.geometry.getAttribute('position').count ?? 0, layout === 'twin-capes' ? 4 : 0);
     assert.equal(surface.castShadow, false); assets.dispose();
   }
 });

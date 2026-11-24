@@ -85,7 +85,7 @@ jobs:
       - name: Verify board targets and grain appearance after placement and Undo
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true'
         run: node scripts/qa-target-feedback.mjs
-      - name: Verify the Twin Capes map and pirate in Chromium
+      - name: Verify the Twin Capes lake map, robber and mobile roll payouts
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-twin-capes.mjs
       - name: Verify real dice geometry, resource payout and 2D fallback

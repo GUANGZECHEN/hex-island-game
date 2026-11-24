@@ -4,7 +4,7 @@ import { usesDevelopmentCards } from '../rules/economy.ts';
 import { isHarbor, partnersConnected } from '../rules/harbor.ts';
 import { stationCost, usesTradeStations } from '../rules/trade-stations.ts';
 import { SHIP_COST, shipsRemaining, usesHarborShips } from '../rules/build.ts';
-import { isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
+import { usesHarborPirate, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 
 export interface Availability { visible: boolean; enabled: boolean }
 export interface AvailabilityContext {
@@ -37,7 +37,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
  const action=turn&&state.phase==='action';
  const dev=usesDevelopmentCards(state), stations=usesTradeStations(state), classic=!isHarbor(state);
  const seven=!(isHarbor(state)&&state.harbor?.version===3);
- const pirate=isTwinCapes(state), ships=usesHarborShips(state);
+ const pirate=usesHarborPirate(state), ships=usesHarborShips(state);
  const availability=(visible:boolean, enabled:boolean):Availability=>({visible,enabled:visible&&enabled});
  // Reducer-based target queries receive a public-only copy of other players, never their hands/cards.
  const safeState:GameState={...state,players:state.players.map(p=>p.id===playerId?p:{id:p.id,seat:p.seat,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights,hand:blank(),cards:[]})};
@@ -57,7 +57,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   if(mode==='robber'&&(pirate||!seven||state.phase!=='robber'))return [];
   if(mode==='pirate'&&(!pirate||state.phase!=='pirate'))return [];
   const ids=mode==='robber'
-   ?createIslandBoard(state.board.layout).hexes.filter(hex=>hex.id!==state.board.robberHexId).map(hex=>hex.id)
+   ?createIslandBoard(state.board.layout,state.board.version).hexes.filter(hex=>hex.id!==state.board.robberHexId).map(hex=>hex.id)
    :legalTargetIds(safeState,playerId,mode);
   cachedTargets.set(mode,ids);
   return ids;

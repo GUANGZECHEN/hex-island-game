@@ -1,5 +1,5 @@
-import type { Board } from './geometry.ts';
-import type { BoardSetup } from './setup.ts';
+import { TWIN_CAPES_LAKES, type Board, type BoardLayout } from './geometry.ts';
+import { TWIN_CAPES_VERSION, type BoardSetup } from './setup.ts';
 export interface Point { x:number; y:number }
 export interface BoardView { viewBox:string; hexes: readonly {id:string; center:Point; points:readonly Point[]; placeholder:string}[]; vertices:readonly {id:string; point:Point}[]; edges:readonly {id:string; start:Point; end:Point}[] }
 
@@ -16,6 +16,16 @@ export function createBoardView(board: Board): BoardView {
   return {viewBox:`${minX} ${minY} ${Math.max(...xs)-minX+padding} ${Math.max(...ys)-minY+padding}`,hexes,vertices,edges};
 }
 
+/** The east edge of each lake's western hex splits its two water spaces.
+ * The seam's endpoints are existing shoreline vertices in either coordinate system. */
+export function lakeDividers<T>(layout: BoardLayout, version: string | undefined, vertices: ReadonlyMap<string, T>): { a: T; b: T }[] {
+  if (layout !== 'twin-capes' || (version !== undefined && version !== TWIN_CAPES_VERSION)) return [];
+  return TWIN_CAPES_LAKES.map(([[q, r]]) => {
+    const u = 2 * q + r + 1, v = 3 * r;
+    return { a: vertices.get(`v:${u},${v - 1}`)!, b: vertices.get(`v:${u},${v + 1}`)! };
+  });
+}
+
 /** Match setup assignments to geometry by stable hex ID before rendering. */
 export function createSetupView(board: Board, setup: BoardSetup) {
   const view = createBoardView(board);
@@ -24,6 +34,6 @@ export function createSetupView(board: Board, setup: BoardSetup) {
   return { ...view, hexes: view.hexes.map(hex => {
     const assignment = assignments.get(hex.id);
     if (!assignment) throw new Error(`Missing setup for ${hex.id}.`);
-    return { ...hex, ...assignment, robber: setup.layout !== 'twin-capes' && hex.id === setup.robberHexId };
+    return { ...hex, ...assignment, robber: hex.id === setup.robberHexId };
   }) };
 }

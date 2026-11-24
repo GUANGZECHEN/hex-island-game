@@ -45,19 +45,20 @@ export class BoardRollOverlay {
     this.timers.push(window.setTimeout(()=>{this.dispose();onComplete();},reduced?DICE_REDUCED_END_MS:DICE_GAIN_END_MS));
   }
   update(view:BoardSceneView):void {
+    if(this.ended)return;
     this.view=view;
-    if(!this.root.isConnected && !this.ended)this.host.append(this.root);
-    this.positionGains();
+    if(!this.root.isConnected)this.host.append(this.root);
+    if(this.landed){this.highlightProduction();this.positionGains();}
+  }
+  private highlightProduction():void {
+    for(const tile of Array.from(this.host.querySelectorAll<SVGGElement>('[data-hex-id]'))){
+      if(this.event.hexIds.includes(tile.dataset.hexId!))tile.classList.add('roll-producing-hex');
+    }
   }
   private land():void {
     if(this.ended||this.landed)return;
     this.landed=true;
-    for(const hexId of this.event.hexIds){
-      const tile=Array.from(this.host.querySelectorAll<SVGGElement>('[data-hex-id]')).find(el=>el.getAttribute('data-hex-id')===hexId);
-      if(!tile)continue;
-      tile.classList.remove('roll-producing-hex');void tile.getBoundingClientRect();
-      tile.classList.add('roll-producing-hex');
-    }
+    this.highlightProduction();
     const byVertex=new Map<string,typeof this.event.gains>();
     for(const gain of this.event.gains)byVertex.set(gain.vertexId,[...(byVertex.get(gain.vertexId)??[]),gain]);
     for(const [vertexId,gains] of byVertex){
@@ -80,14 +81,15 @@ export class BoardRollOverlay {
     const svg=this.host.querySelector<SVGSVGElement>('svg.island-board');
     const matrix=svg?.getScreenCTM();
     if(!svg||!matrix)return;
-    const points=new Map(createBoardView(createIslandBoard(this.view.board.layout)).vertices.map(v=>[v.id,v.point]));
-    const rect=this.host.getBoundingClientRect();
+    const points=new Map(createBoardView(createIslandBoard(this.view.board.layout, this.view.board.version)).vertices.map(v=>[v.id,v.point]));
+    const rect=this.root.getBoundingClientRect();
     for(const tag of this.gains){
       const point=points.get(tag.dataset.rollBuilding??'');
       if(!point)continue;
       const screen=new DOMPoint(point.x,point.y).matrixTransform(matrix);
-      tag.style.left=`${screen.x-rect.left}px`;
-      tag.style.top=`${screen.y-rect.top-18}px`;
+      const half=tag.offsetWidth/2+2;
+      tag.style.left=`${Math.max(half,Math.min(rect.width-half,screen.x-rect.left))}px`;
+      tag.style.top=`${Math.max(tag.offsetHeight+8,Math.min(rect.height-2,screen.y-rect.top-18))}px`;
     }
   }
   inspect(){return {dice:this.event.dice,landed:this.landed,gainLabels:this.gains.length,hexIds:this.event.hexIds};}
@@ -95,5 +97,6 @@ export class BoardRollOverlay {
     if(this.ended)return;this.ended=true;
     this.timers.forEach(timer=>window.clearTimeout(timer));this.timers=[];
     this.root.remove();this.gains=[];
+    for(const tile of Array.from(this.host.querySelectorAll('.roll-producing-hex')))tile.classList.remove('roll-producing-hex');
   }
 }

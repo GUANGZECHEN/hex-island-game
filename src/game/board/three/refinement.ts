@@ -197,6 +197,15 @@ export function makeOcean(assets: ArtAssets, radius: number, geometry: World): T
   }
   const foam = new THREE.LineSegments(assets.geometry('shore-foam', () => new THREE.BufferGeometry().setFromPoints(foamPoints)), assets.extra(new THREE.LineBasicMaterial({ color: '#d4f3e9', transparent: true, opacity: .22, depthWrite: false })));
   foam.name = 'shore-foam'; root.add(foam);
+  if (geometry.lakeDividers.length) {
+    // The seam stays above the highest water crest and below the docks.
+    const points = geometry.lakeDividers.flatMap(({ a, b }) => [
+      new THREE.Vector3(a.x, -.149, a.z + .08), new THREE.Vector3(b.x, -.149, b.z - .08)
+    ]);
+    const seams = new THREE.LineSegments(assets.geometry('lake-cell-dividers', () => new THREE.BufferGeometry().setFromPoints(points)),
+      assets.extra(new THREE.LineDashedMaterial({ color: '#d9f4f2', dashSize: .13, gapSize: .10, transparent: true, opacity: .7, depthWrite: false })));
+    seams.computeLineDistances(); seams.name = 'lake-cell-dividers'; root.add(seams);
+  }
   return root;
 }
 

@@ -48,7 +48,7 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
     return {dice:[first,second],hexIds:[],gains,supplement};
   }
 
-  const topology = createIslandBoard(before.board.layout);
+  const topology = createIslandBoard(before.board.layout, before.board.version);
   const setupById = new Map(before.board.hexes.map(hex => [hex.hexId, hex]));
   const hexes = topology.hexes.filter(hex => {
     const tile = setupById.get(hex.id);

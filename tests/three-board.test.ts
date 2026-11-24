@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isPlacement } from '../src/game/board/target-feedback.ts';
-import { generateBoardSetup } from '../src/game/board/setup.ts';
+import { generateBoardSetup, GENERATOR_VERSION } from '../src/game/board/setup.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { worldGeometry, portBoatPlan, duneHeight, staticBoardKey } from '../src/game/board/three/model.ts';
 
@@ -54,12 +54,14 @@ test('3D receives only public geometry and targets, while camera remains outside
   assert.ok(controller.includes('qa3d'));
 });
 
-test('Twin Capes pirate moves between existing offshore port targets without a board rebuild', () => {
-  const b = generateBoardSetup(24680, 'twin-capes');
+test('archived Twin Capes pirate moves between original offshore port targets without a board rebuild', () => {
+  const b = generateBoardSetup(24680, 'twin-capes', GENERATOR_VERSION);
   const next = b.ports.find(port => port.edgeId !== b.piratePortEdgeId)!;
   assert.equal(staticBoardKey(b), staticBoardKey({ ...b, piratePortEdgeId: next.edgeId }));
   assert.equal(isPlacement('pirate'), false, 'moving the pirate never draws a construction preview');
-  const geometry = worldGeometry(b.layout);
+  const geometry = worldGeometry(b.layout, b.version);
+  assert.equal(geometry.hexes.size, 29);
+  assert.equal(geometry.lakeDividers.length, 0);
   const centers = b.ports.map(port => {
     const plan = portBoatPlan(port, geometry);
     const edge = geometry.topology.edges.find(edge => edge.id === port.edgeId)!;
@@ -70,4 +72,22 @@ test('Twin Capes pirate moves between existing offshore port targets without a b
   for (const [i, center] of centers.entries()) for (const other of centers.slice(i + 1)) {
     assert.ok(Math.hypot(center.x - other.x, center.z - other.z) > 1.46, 'neighboring target rings stay distinct');
   }
+});
+
+test('Twin Capes renders the robber, two two-hex lakes and a separate harbor berth per water space', () => {
+  const board = generateBoardSetup(24680, 'twin-capes');
+  const geometry = worldGeometry(board.layout, board.version);
+  assert.equal(geometry.hexes.size, 25);
+  assert.deepEqual(geometry.lakeDividers.map(({a,b}) => [(a.x+b.x)/2,(a.z+b.z)/2]), [[0,-1.5],[0,1.5]]);
+  assert.equal(board.piratePortEdgeId, undefined);
+  assert.equal(board.robberHexId, board.hexes.find(tile => tile.terrain === 'desert')!.hexId);
+  const berths = board.ports.map(port => portBoatPlan(port, geometry).center);
+  for (const {a,b} of geometry.lakeDividers) {
+    const x=(a.x+b.x)/2,z=(a.z+b.z)/2;
+    const boats=berths.filter(center => Math.abs(center.z-z) < .20 && Math.abs(center.x-x) < 1.1);
+    assert.equal(boats.length,2);
+    assert.ok(boats.some(c => c.x<x) && boats.some(c => c.x>x));
+  }
+  for(const [i,p] of berths.entries())for(const q of berths.slice(i+1))
+    assert.ok(Math.hypot(q.x-p.x,q.z-p.z)>1.46,'neighboring sails and moorings stay separate');
 });

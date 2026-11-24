@@ -1,6 +1,6 @@
 import { usesTradeStations } from './trade-stations.ts';
 import { applyBuildCommand } from './build.ts';
-import { isTwinCapes, publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
+import { usesHarborPirate, publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
 import { isHarbor, partnersConnected } from './harbor.ts';
 import type { PortType } from '../board/setup.ts';
 export type EconomyCommand =
@@ -17,7 +17,7 @@ export function usesDevelopmentCards(state: Pick<GameState,'mode'|'harbor'>): bo
  return !(state.mode==='harbor-coop' && state.harbor?.version===3);
 }
 function ownsTradePort(state:GameState,playerId:string,type:PortType):boolean {
-  const blocked=isTwinCapes(state)?state.board.piratePortEdgeId:undefined;
+  const blocked=usesHarborPirate(state)?state.board.piratePortEdgeId:undefined;
   return state.board.ports.some(port=>port.edgeId!==blocked&&port.type===type&&port.vertexIds.some(id=>state.buildings[id]?.playerId===playerId));
 }
 export function bankTradeRate(state:GameState,playerId:string,resource:Resource):2|3|4 {
@@ -82,7 +82,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
    if(!validResource(command.resource))throw new Error('Choose a resource.');
    if(isHarbor(state)){const amount=Math.min(2,state.bank[command.resource]);state.bank[command.resource]-=amount;player.hand[command.resource]+=amount;}
    else for(const other of state.players)if(other.id!==player.id){player.hand[command.resource]+=other.hand[command.resource];other.hand[command.resource]=0;}
-  } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase=isTwinCapes(state)?'pirate':'robber';player.knights++;updateArmy(state);}
+  } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase=usesHarborPirate(state)?'pirate':'robber';player.knights++;updateArmy(state);}
   else if(command.card==='road-building') { if(player.roads>0){state.resumePhase=state.phase;state.phase='free-road';state.freeRoads=Math.min(2,player.roads);} }
   else throw new Error('Invalid card.');
   player.cards.splice(index,1);state.playedCards.push(command.card);state.playedDevelopment=true;return state;

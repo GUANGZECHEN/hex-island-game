@@ -53,6 +53,7 @@ import {drawIndex as fixtureDraw} from './game/rules/state.ts';
  },
  expected(){return (window as any).__diceExpected;},
  getDice(){return state?.dice;},
+ redraw(){render();},
 };
 `;
 let browser,server,active;
@@ -136,7 +137,21 @@ try{
  assert.deepEqual(seven.productionHexes,[]);
  console.log('PASS seven displays exactly seven without tile or building production');
 
- const fallback=await browser.newPage({viewport:{width:1000,height:850}});active=fallback;
+ await active.close();
+ const phone=await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+ active=phone;phone.on('pageerror',e=>pageErrors.push(String(e)));
+ await phone.goto(url,{waitUntil:'networkidle'});
+ await phone.evaluate(()=>window.__diceFixture.load());
+ await phone.getByRole('button',{name:'Roll dice',exact:true}).tap();
+ const mobile=await (await phone.waitForFunction(()=>{
+  const view=window.__hex3D.inspect();
+  return view.rollEffect?.landed && view.rollEffect.gainLabels.length===2 ? view : null;
+ },null,{timeout:8000})).jsonValue();
+ const [,,top,bottom]=mobile.frustum,cssPxPerUnit=mobile.canvasSize[1]*mobile.zoom/(top-bottom);
+ assert.ok(mobile.canvasSize[0]<600);
+ assert.ok(mobile.rollEffect.gainLabels.every(badge=>badge.heightWorld*cssPxPerUnit>=33.9),'phone payout badges have space for a legible quantity');
+ await phone.close();
+ const fallback=await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true});active=fallback;
  fallback.on('pageerror',e=>pageErrors.push(String(e)));
  await fallback.goto(url+'&renderer=2d',{waitUntil:'networkidle'});
  await fallback.evaluate(()=>window.__diceFixture.load());
@@ -145,8 +160,15 @@ try{
  await fallback.waitForFunction(()=>window.__hex3D.inspect().rollEffect?.landed===true,null,{timeout:8000});
  const faceValues=await fallback.locator('.board-rolled-die').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('data-value'))));
  assert.equal(faceValues[0]+faceValues[1],expected.total);
- assert.equal(await fallback.locator('.board-roll-gain').count(),2);
- assert.ok(await fallback.locator('.roll-producing-hex').count()>=1);
+ // A new guest snapshot can replace the SVG while the roll is still visible.
+ const restored=await fallback.evaluate(()=>{
+  window.__diceFixture.redraw();
+  const root=document.querySelector('.board-roll-overlay').getBoundingClientRect();
+  const badges=[...document.querySelectorAll('.board-roll-gain')];
+  return {badges:badges.length,tiles:document.querySelectorAll('.roll-producing-hex').length,
+   inside:badges.every(badge=>{const r=badge.getBoundingClientRect();return r.left>=root.left-1&&r.right<=root.right+1&&r.top>=root.top-1&&r.bottom<=root.bottom+1;})};
+ });
+ assert.equal(restored.badges,2);assert.ok(restored.tiles>=1);assert.ok(restored.inside,'both SVG gains remain on the phone board after a redraw');
  await fallback.screenshot({path:`${evidence}/2d-fallback-dice.png`});
  console.log('PASS 2D/mobile fallback shows true dice faces, tile pulse and player-colored building gains');
  assert.deepEqual(pageErrors,[]);

@@ -1,8 +1,9 @@
 import { validateHarborState } from '../rules/harbor.ts';
+import { robberVictims } from '../rules/turn.ts';
 import { validateOptionalRules } from '../rules/optional-rules.ts';
 import { RESOURCES, type GameState, type Hand } from '../rules/state.ts';
 import { boardPlayerRange, isBoardLayout, type BoardLayout } from '../board/geometry.ts';
-import { generateBoardSetup } from '../board/setup.ts';
+import { generateBoardSetup, GENERATOR_VERSION } from '../board/setup.ts';
 
 export interface AuthorityRecovery {
   version: 1;
@@ -37,7 +38,7 @@ export function recoveryRound(state:GameState):number {
   return Math.floor((state.turn-1)/state.players.length)+1;
 }
 
-/** Topology and port rates are seed-derived. Only the pirate’s current harbor moves. */
+/** Seed and generator version fix the map; the robber or legacy pirate position is mutable. */
 export function validateSavedBoard(state:GameState, declared?:unknown):BoardLayout {
   const board=state.board,layout=declared??board?.layout??'standard';
   if(!board||!isBoardLayout(layout)||(board.layout!==undefined&&board.layout!==layout))throw new Error('Saved game board layout is invalid.');
@@ -47,10 +48,9 @@ export function validateSavedBoard(state:GameState, declared?:unknown):BoardLayo
     if(state.phase==='pirate'||board.piratePortEdgeId!==undefined)throw new Error('Pirate data is only valid on Twin Capes.');
     return layout;
   }
-  if(board.layout!==layout||state.mode==='harbor-coop'||state.rules?.ships!==true||board.robberHexId!==''||
-     state.phase==='robber'||state.phase==='steal'||!Array.isArray(state.victims)||state.victims.length)
-    throw new Error('Invalid saved Twin Capes rules or pirate state.');
-  const expected=generateBoardSetup(board.seed,layout);
+  if(board.layout!==layout||state.mode==='harbor-coop'||state.rules?.ships!==true||!Array.isArray(state.victims))
+    throw new Error('Invalid saved Twin Capes rules.');
+  const expected=generateBoardSetup(board.seed,layout,board.version);
   const sameHexes=Array.isArray(board.hexes)&&board.hexes.length===expected.hexes.length&&expected.hexes.every((hex,index)=>{
     const saved=board.hexes[index];
     return saved?.hexId===hex.hexId&&saved.terrain===hex.terrain&&saved.resource===hex.resource&&saved.token===hex.token;
@@ -60,9 +60,31 @@ export function validateSavedBoard(state:GameState, declared?:unknown):BoardLayo
     return saved?.edgeId===port.edgeId&&saved.type===port.type&&Array.isArray(saved.vertexIds)&&saved.vertexIds.length===2&&
       saved.vertexIds[0]===port.vertexIds[0]&&saved.vertexIds[1]===port.vertexIds[1];
   });
-  if(board.version!==expected.version||!sameHexes||!samePorts||!expected.ports.some(port=>port.edgeId===board.piratePortEdgeId))
-    throw new Error('Saved Twin Capes map or pirate harbor is invalid.');
+  if(board.version!==expected.version||!sameHexes||!samePorts)throw new Error('Invalid saved Twin Capes map.');
+  if(board.version===GENERATOR_VERSION){
+    if(board.robberHexId!==''||state.phase==='robber'||state.phase==='steal'||state.victims.length||
+       !expected.ports.some(port=>port.edgeId===board.piratePortEdgeId))throw new Error('Invalid saved legacy pirate harbor.');
+  }else{
+    if(board.piratePortEdgeId!==undefined||state.phase==='pirate'||!expected.hexes.some(hex=>hex.hexId===board.robberHexId))
+      throw new Error('Invalid saved Twin Capes robber position.');
+    const eligible=state.phase==='steal'?robberVictims(state,board.robberHexId):[];
+    if((state.phase==='steal'&&!eligible.length)||eligible.length!==state.victims.length||eligible.some(id=>!state.victims.includes(id)))
+      throw new Error('Invalid saved Twin Capes robber victims.');
+  }
   return layout;
+}
+
+/** A reconnect may replay aggregate gains, but never another player's hand or resource types. */
+export function validateSavedRollPayout(state:GameState):void {
+  const payout=state.lastRollPayout;
+  if(payout===undefined)return;
+  const ids=state.players.map(p=>p.id);
+  if(!payout||Object.keys(payout).sort().join(',')!=='dice,gains,playerId,turn'||
+     !Number.isSafeInteger(payout.turn)||payout.turn<0||payout.turn>state.turn||!ids.includes(payout.playerId)||
+     !Array.isArray(payout.dice)||payout.dice.length!==2||payout.dice.some(n=>!Number.isInteger(n)||n<1||n>6)||
+     !payout.gains||typeof payout.gains!=='object'||Array.isArray(payout.gains)||Object.keys(payout.gains).length!==ids.length||
+     ids.some(id=>!Object.hasOwn(payout.gains,id)||!Number.isSafeInteger(payout.gains[id])||payout.gains[id]<0))
+    throw new Error('Invalid saved roll payout.');
 }
 
 export function parseSessionRecovery(value:unknown):SessionRecovery {
@@ -72,6 +94,7 @@ export function parseSessionRecovery(value:unknown):SessionRecovery {
   if(authority.version!==1||typeof authority.gameId!=='string'||!idPattern.test(authority.gameId)||!Number.isSafeInteger(authority.revision)||Number(authority.revision)<0||!authority.state||authority.state.version!==1)throw new Error('Invalid saved game.');
   const state=authority.state as GameState;validateHarborState(state);
   const boardLayout=validateSavedBoard(state,x.boardLayout);
+  validateSavedRollPayout(state);
   if(x.mainlandShips!==undefined&&(boardLayout!=='twin-capes'||typeof x.mainlandShips!=='boolean'))throw new Error('Invalid saved board ship preference.');
   const rules=validateOptionalRules(state.rules);
   if(state.mode==='harbor-coop'&&(rules.catchUp||rules.ships))throw new Error('Optional Classic rules conflict with Harbor mode.');

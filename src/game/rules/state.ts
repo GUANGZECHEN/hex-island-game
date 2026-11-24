@@ -1,5 +1,5 @@
 import { boardPlayerRange, createIslandBoard, type BoardLayout } from '../board/geometry.ts';
-import { generateBoardSetup, type BoardSetup } from '../board/setup.ts';
+import { GENERATOR_VERSION, generateBoardSetup, type BoardSetup } from '../board/setup.ts';
 
 import { beginHarbor, createHarborState, type GameMode, type HarborState } from './harbor.ts';
 import { usesTradeStations } from './trade-stations.ts';
@@ -9,6 +9,12 @@ export const RESOURCES = ['lumber', 'brick', 'wool', 'grain', 'ore'] as const;
 export type Resource = typeof RESOURCES[number];
 export type Hand = Record<Resource, number>;
 export type Development = 'knight' | 'monopoly' | 'road-building' | 'invention' | 'victory-point';
+export interface RollPayout {
+  turn: number;
+  dice: [number, number];
+  playerId: string;
+  gains: Record<string, number>;
+}
 export interface Player {
   id: string; seat: number; hand: Hand; cards: { type: Development; boughtTurn: number }[];
   roads: number; settlements: number; cities: number; knights: number;
@@ -17,6 +23,7 @@ export interface Building { playerId: string; kind: 'settlement' | 'city' | 'shi
 export interface TradeOffer { id: string; proposer: string; targets: string[]; give: Hand; receive: Hand; }
 export interface GameState {
   mode?:GameMode; harbor?:HarborState; rules?:OptionalRules;
+  lastRollPayout?: RollPayout;
   catchUpReward?: {turn:number;playerId:string;gains:Hand};
   version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
   randomState: number; playedCards: Development[]; startingSeat: number; currentSeat: number; turn: number;
@@ -28,6 +35,10 @@ export interface GameState {
 export type SetupCommand = { type: 'place-settlement'|'place-city'; playerId: string; vertexId: string } | { type: 'place-road'; playerId: string; edgeId: string };
 export function isTwinCapes(state:Partial<Pick<GameState,'board'>>):boolean {
   return state.board?.layout==='twin-capes';
+}
+/** Only the original Twin Capes board uses the harbor-blocking pirate. */
+export function usesHarborPirate(state: Partial<Pick<GameState,'board'>>): boolean {
+  return isTwinCapes(state) && state.board?.version === GENERATOR_VERSION;
 }
 const emptyHand = (): Hand => ({ lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
 
@@ -94,7 +105,7 @@ function advanceSetup(state:GameState):void {
 /** Validate and apply one setup command without changing the supplied state. */
 export function applySetupCommand(original:GameState,command:SetupCommand):GameState {
  if(!original||!command||original.players[original.currentSeat]?.id!==command.playerId)throw new Error('Not the active player.');
- const state=structuredClone(original),board=createIslandBoard(state.board.layout),player=state.players[state.currentSeat];
+ const state=structuredClone(original),board=createIslandBoard(state.board.layout, state.board.version),player=state.players[state.currentSeat];
  const city=usesTradeStations(state)&&player.seat===1;
  if((command.type==='place-settlement'&&!city&&state.phase==='setup-settlement')||(command.type==='place-city'&&city&&state.phase==='setup-city')){
   const vertex=board.vertices.find(v=>v.id===command.vertexId);

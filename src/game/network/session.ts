@@ -1,4 +1,5 @@
 import { createGame } from '../rules/state.ts';
+import { TWIN_CAPES_VERSION } from '../board/setup.ts';
 import type { GameMode } from '../rules/harbor.ts';
 import { boardPlayerRange, isBoardLayout, type BoardLayout } from '../board/geometry.ts';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
@@ -65,7 +66,8 @@ export class HostSession {
   this.seats.push(seat);return seat;
  }
  private announce(){
-  const lobby={mode:this.mode,rules:this.effectiveRules(),seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
+  const mapVersion=this.boardLayout==='twin-capes'?this.authority?.boardVersion()??TWIN_CAPES_VERSION:undefined;
+  const lobby={mapVersion,mode:this.mode,rules:this.effectiveRules(),seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
   this.publish({type:'lobby',lobby});
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'lobby',lobby);
   for(const peer of this.spectators)this.output(peer,'lobby',lobby);
@@ -261,6 +263,8 @@ export class HostSession {
   if(!this.allSeatsConnected())throw new Error('All original players must reconnect before resuming.');
   const recovery=parseSessionRecovery(value);
   const current=this.recovery();
+  const board=recovery.authority.state.board,original=current.authority.state.board;
+  if(board.seed!==original.seed||board.version!==original.version)throw new Error('Saved game board does not belong to this room session.');
   if(recovery.authority.gameId!==current.authority.gameId||recovery.qaTwoPlayers!==current.qaTwoPlayers||recovery.boardLayout!==current.boardLayout||recovery.seats.length!==current.seats.length||recovery.seats.some((seat,index)=>seat.id!==current.seats[index].id||seat.token!==current.seats[index].token))throw new Error('Saved game does not belong to this room session.');
   const peers=new Map(this.seats.map(seat=>[seat.id,seat.peer]));
   this.restoreRecovery(recovery,false);

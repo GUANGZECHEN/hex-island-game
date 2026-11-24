@@ -96,7 +96,7 @@ export class ThreeBoardRenderer {
   private instanceId = ++ThreeBoardRenderer.instances;
 
   constructor(private host: HTMLElement, view: BoardSceneView, private choose: (id: string) => void, private failed: (reason: string) => void) {
-    this.view = view; this.geometry = worldGeometry(view.board.layout);
+    this.view = view; this.geometry = worldGeometry(view.board.layout, view.board.version);
     this.canvas = document.createElement('canvas'); this.canvas.className = 'three-island-board';
     this.canvas.setAttribute('aria-label', '3D island board. Click or tap a highlighted location. Use 2D view for keyboard placement.'); this.canvas.setAttribute('role', 'img');
     const gl = this.canvas.getContext('webgl2', { antialias: true, alpha: false });
@@ -169,7 +169,7 @@ export class ThreeBoardRenderer {
     disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
     this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = ''; this.pirate = null;
-    this.geometry = worldGeometry(this.view.board.layout);
+    this.geometry = worldGeometry(this.view.board.layout, this.view.board.version);
     for (const hex of this.view.board.hexes) {
       const terrain = makeTerrain(this.assets, hex, this.geometry.hexes.get(hex.hexId)!);
       refineTerrain(this.assets, hex, terrain.root, terrain.token);
@@ -186,7 +186,7 @@ export class ThreeBoardRenderer {
       const dock = makeBoatPort(this.assets, port.type, plan); dock.name = `port:${port.edgeId}`; this.map.add(dock);
       const model = dock.getObjectByName('port-boat');
       if (model instanceof THREE.Group) {
-        if (this.view.board.layout === 'twin-capes') {
+        if (this.view.board.piratePortEdgeId) {
           const neutral = new THREE.Group(); neutral.name = 'open-port-boat';
           neutral.add(...model.children); model.add(neutral);
           model.userData.edgeId = port.edgeId;
@@ -200,7 +200,7 @@ export class ThreeBoardRenderer {
     const ocean = makeOcean(this.assets, radius, this.geometry);
     this.map.add(ocean);
     this.oceanMotion = new OceanMotion(ocean);
-    if (this.view.board.layout === 'twin-capes') this.pirate = makePirateBoat(this.assets);
+    if (this.view.board.piratePortEdgeId) this.pirate = makePirateBoat(this.assets);
     else this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
     this.defaultTarget.copy(this.worldBounds.getCenter(new THREE.Vector3())); this.defaultTarget.y = .12;
     this.structureKey = ''; this.targetKey = '';
@@ -220,7 +220,7 @@ export class ThreeBoardRenderer {
     const list = document.createElement('ul'); list.className = 'sr-only three-accessible-map'; list.setAttribute('aria-label', 'Island terrain and number tokens');
     for (const hex of this.view.board.hexes) { const li = document.createElement('li'); li.textContent = `${hex.hexId}: ${hex.terrain}${hex.token ? `, ${hex.token}` : ', sand dunes'}`; list.append(li); }
     if (this.view.board.layout === 'twin-capes') {
-      list.setAttribute('aria-label', 'Twin Capes terrain, number tokens and coastal ports');
+      list.setAttribute('aria-label', this.geometry.lakeDividers.length ? 'Twin Capes terrain, number tokens, coastal ports and two lakes of two water hexes each' : 'Twin Capes terrain, number tokens and coastal ports');
       this.view.board.ports.forEach((port, index) => {
         const li = document.createElement('li');
         const closed = port.edgeId === this.view.board.piratePortEdgeId;
@@ -418,8 +418,12 @@ export class ThreeBoardRenderer {
     this.rollComplete=onComplete;
     this.lastDice=[event.dice[0],event.dice[1]];
     this.productionHexes=[];
+    // A fitted phone board can project the entire world-space label to ~12 px,
+    // leaving its quantity only four pixels high. Keep the badge legible in CSS pixels.
+    const gainHeight = this.width > 0 && this.width < 600 && this.height > 0
+      ? Math.max(.54, 34 * (this.camera.top - this.camera.bottom) / (this.camera.zoom * this.height)) : .54;
     this.rollScene=new BoardDiceScene(event,id=>this.geometry.vertices.get(id),
-      id=>this.view.players.find(p=>p.id===id)?.color??'#537668');
+      id=>this.view.players.find(p=>p.id===id)?.color??'#537668',gainHeight);
     this.rollScene.setViewDirection(this.camera.position.clone().sub(this.controls.target));
     this.scene.add(this.rollScene.root);
     this.rollStarted=performance.now();

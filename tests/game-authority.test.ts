@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createGame } from '../src/game/rules/state.ts';
 import { HostAuthority, projectSpectatorState, projectState } from '../src/game/network/authority.ts';
 import { parseSessionRecovery } from '../src/game/network/recovery.ts';
+import { generateBoardSetup, GENERATOR_VERSION } from '../src/game/board/setup.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('projections hide other hands, shuffled deck and random state',()=>{
@@ -171,8 +172,8 @@ test('broadcast trade reaches every target privately and the first valid accepta
  assert.equal(host.snapshot('c').private.hand.brick,2,'a later accept cannot duplicate resource transfers');
 });
 
-test('guest pirate relocation uses the validated harbor command, projects no hands and survives recovery',()=>{
- const game=createGame(17,['a','b'],()=>1,{boardLayout:'twin-capes'});game.phase='pirate';game.currentSeat=1;game.turn=4;
+test('legacy guest pirate relocation uses the validated harbor command, projects no hands and survives recovery',()=>{
+ const game=createGame(17,['a','b'],()=>1,{boardLayout:'twin-capes'});game.board=generateBoardSetup(17,'twin-capes',GENERATOR_VERSION);game.phase='pirate';game.currentSeat=1;game.turn=4;
  game.players[0].hand.ore=2;game.players[1].hand.brick=1;game.resumePhase='action';
  const auth=new HostAuthority('twin',game,()=>1),before=auth.snapshot('b'),initial=game.board.piratePortEdgeId!;
  const port=game.board.ports.find(port=>port.edgeId!==initial)!;
@@ -196,4 +197,31 @@ test('guest pirate relocation uses the validated harbor command, projects no han
  ]){
   const invalid=structuredClone(checkpoint);change(invalid);assert.throws(()=>parseSessionRecovery(invalid));
  }
+});
+
+test('current Twin Capes restores a moved land robber and validates the pending mandatory theft',()=>{
+ const game=createGame(107,['owner','mover','other'],()=>1,{boardLayout:'twin-capes'});
+ game.phase='robber';game.currentSeat=1;game.turn=4;game.resumePhase='roll';
+ const target=game.board.hexes.find(hex=>hex.resource!==null)!;
+ const topology=createIslandBoard(game.board.layout,game.board.version);
+ const vertex=topology.hexes.find(hex=>hex.id===target.hexId)!.vertexIds[0];
+ game.buildings[vertex]={playerId:'owner',kind:'settlement'};game.players[0].hand.ore=1;
+ const send=(host:HostAuthority,id:string,command:object)=>host.receive('mover',JSON.stringify({
+  protocol:1,gameId:'lake-robber',revision:host.currentRevision(),commandId:id,sender:'mover',command:{playerId:'mover',...command}
+ }));
+ const host=new HostAuthority('lake-robber',game,()=>0);
+ assert.equal(send(host,'move',{type:'move-robber',hexId:target.hexId}).ok,true);
+ const saved=host.checkpoint();assert.equal(saved.state.board.robberHexId,target.hexId);
+ assert.equal(saved.state.phase,'steal');assert.deepEqual(saved.state.victims,['owner']);
+ for(const victims of [[],['other'],['mover'],['owner','owner']]){
+  const invalid=structuredClone(saved);invalid.state.victims=victims;
+  assert.throws(()=>HostAuthority.fromRecovery(invalid,()=>0),/robber victims/);
+ }
+ const wrong=structuredClone(saved);wrong.state.board.robberHexId='not-land';
+ assert.throws(()=>HostAuthority.fromRecovery(wrong,()=>0),/robber position/);
+ const restored=HostAuthority.fromRecovery(saved,()=>0);
+ assert.equal(send(restored,'bad',{type:'steal',victimId:'other'}).ok,false);
+ assert.equal(send(restored,'take',{type:'steal',victimId:'owner'}).ok,true);
+ assert.equal(restored.snapshot('mover').private.hand.ore,1);assert.equal(restored.snapshot('owner').private.hand.ore,0);
+ assert.equal(restored.spectatorSnapshot().public.phase,'roll');assert.equal(restored.spectatorSnapshot().private,null);
 });
