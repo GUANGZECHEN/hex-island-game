@@ -1,4 +1,4 @@
-import { shipsRemaining, SHIP_COST } from '../rules/build.ts';
+import { shipsRemaining, SHIP_COST, usesHarborShips } from '../rules/build.ts';
 import { legalTargetIds } from '../rules/legal.ts';
 import type { GameState } from '../rules/state.ts';
 import { affordable } from './icons.ts';
@@ -16,7 +16,7 @@ export interface ShipActionAvailability {
 export function shipActionAvailability(state: GameState, playerId: string): ShipActionAvailability {
   const remaining=shipsRemaining(state,playerId);
   const blocked=(reason:string):ShipActionAvailability=>({remaining,enabled:false,reason});
-  if(state.mode==='harbor-coop'||!state.rules?.ships)
+  if(!usesHarborShips(state))
     return blocked('Harbor ships must be enabled by the host in the lobby before the game.');
   if(state.phase!=='action'||state.players[state.currentSeat]?.id!==playerId)
     return blocked('Build ships during your action phase.');
@@ -29,4 +29,10 @@ export function shipActionAvailability(state: GameState, playerId: string): Ship
   if(!legalTargetIds(state,playerId,'ship').length)
     return blocked('No free harbor vertex satisfies the building spacing rule.');
   return {remaining,enabled:true,reason:null};
+}
+
+export function shipActionLabel(state: GameState, playerId: string): string {
+  const remaining = shipsRemaining(state, playerId);
+  const supply = remaining === Infinity ? 'Unlimited supply' : `${remaining}/2 left`;
+  return `Build ship · ${supply} · 1 VP · ${SHIP_COST.lumber} wood + ${SHIP_COST.brick} brick + ${SHIP_COST.ore} ore`;
 }

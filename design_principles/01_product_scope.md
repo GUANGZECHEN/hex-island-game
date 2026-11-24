@@ -52,3 +52,9 @@ The room host may pause and resume an ongoing match. Pausing freezes every outst
 Approved: remove development cards from Co-op; change the trade-station construction cost to one wool, one grain and one ore; assign the human to the city-start side in local human-plus-Bot Co-op; and grant both players two different randomly selected resource types, one card each, on seven. The award uses stocked bank types, skips any unavailable second distinct type and preserves the existing roller-first shortage order. Seven still causes no discards, robber movement or theft. Trade-station junction and one-card-per-own-turn allowances, owner-only shipping, asymmetric setup and the twelve-order campaign remain unchanged.
 
 New Co-op games use rule version 3. Saved v1/v2 games retain their recorded rules until restart. Classic development cards, local Classic Bot counts, online human seating, private hands, host authority and existing deployment permissions are unchanged. See docs/harbor-coop.md for current rules and archived versions.
+
+## Twin Capes
+
+Twin Capes is a selectable Classic map for two to six players. Two productive capes share a narrow land bridge. Harbors line both shores, and ships are always available with unlimited supply per player. A ship still requires a port foothold, a legal coastal port destination and the normal cost of two lumber, two brick and two ore. Each ship earns one public victory point.
+
+Twin Capes has no desert or land robber. A pirate occupies one harbor and suspends that harbor's trade rate. After the usual discards on a seven, or when playing a Knight, the active player moves the pirate to another harbor. The previous harbor immediately reopens. Production, hands, domestic trades and access to other trade rates are unaffected.

@@ -51,6 +51,10 @@ export function timeoutCommand(state:GameState,playerId:string):SetupCommand|Tur
   const hexId=legalTargetIds(state,playerId,'robber')[0];
   return hexId?{type:'move-robber',playerId,hexId}:null;
  }
+ if(state.phase==='pirate'){
+  const edgeId=legalTargetIds(state,playerId,'pirate')[0];
+  return edgeId?{type:'move-pirate',playerId,edgeId}:null;
+ }
  if(state.phase==='steal')return state.victims[0]?{type:'steal',playerId,victimId:state.victims[0]}:null;
  if(state.phase==='free-road')return {type:'stop-free-roads',playerId};
  if(state.phase==='action')return {type:'end-turn',playerId};

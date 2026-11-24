@@ -376,3 +376,31 @@ test('seven discards do not broadcast a refreshed game until all players submit'
  assert.equal(room.recovery().authority.state.players[1].hand.lumber,4);
  assert.equal(room.recovery().authority.state.players[2].hand.brick,4);
 });
+
+test('Twin Capes room synchronizes the board, seat range and mandatory ships across restarts and recovery',()=>{
+ for(const count of [2,3,4,5,6]){
+  const messages=new Map<string,any[]>(),published:any[]=[];let serial=0;
+  const send=(peer:string,text:string)=>{messages.set(peer,[...(messages.get(peer)??[]),JSON.parse(text)]);};
+  const token=()=>String(++serial).padStart(43,'x');
+  const host=new HostSession(send,event=>published.push(event),token,()=>0);
+  const heard=(peer:string,kind:string)=>messages.get(peer)?.filter(row=>row.type===kind).at(-1)?.data;
+  host.setMapSelection('twin-capes',42);host.setOptionalRules({catchUp:true,ships:false});
+  for(let i=2;i<=count;i++)host.receive('p'+i,JSON.stringify({protocol:1,type:'hello'}));
+  host.receive('watch',JSON.stringify({protocol:1,type:'hello',role:'spectator'}));
+  assert.equal(heard('watch','lobby').boardLayout,'twin-capes');
+  assert.deepEqual(heard('p2','lobby').rules,{catchUp:true,ships:true});
+  if(count===6){host.receive('extra',JSON.stringify({protocol:1,type:'hello'}));assert.equal(host.lobby().length,6);}
+  for(let i=2;i<=count;i++)host.receive('p'+i,JSON.stringify({protocol:1,type:'ready',ready:true}));
+  host.setHostReady(true);host.start(42);
+  const first=heard('watch','snapshot');assert.equal(first.private,null);assert.equal(first.public.players.length,count);
+  assert.equal(first.public.board.layout,'twin-capes');assert.ok(first.public.board.piratePortEdgeId);
+  host.restart();
+  const next=heard('p2','snapshot');assert.notEqual(next.gameId,first.gameId);assert.deepEqual(next.public.board,first.public.board);
+  const saved=host.recovery();assert.equal(saved.mainlandShips,false);assert.equal(saved.boardLayout,'twin-capes');
+  const restored=HostSession.fromRecovery(send,event=>published.push(event),token,()=>0,saved);
+  assert.equal(restored.isRecovering(),true);assert.deepEqual(restored.recovery().authority.state.board,next.public.board);
+  host.abortToSetup();
+  host.setMapSelection(count>4?'expanded-5-6':'standard',42);
+  assert.deepEqual(heard('p2','lobby').rules,{catchUp:true,ships:false});
+ }
+});

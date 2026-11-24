@@ -3,11 +3,11 @@ import type { HarborCommand } from '../rules/harbor.ts';
 import { publicVictoryPoints, type GameState, type SetupCommand } from '../rules/state.ts';
 import type { TurnCommand } from '../rules/turn.ts';
 import type { BuildCommand } from '../rules/build.ts';
-import { SHIP_COST } from '../rules/build.ts';
+import { SHIP_COST, usesHarborShips } from '../rules/build.ts';
 import { legalTargetIds } from '../rules/legal.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 import {
- affordable,affordableAction,bestCity,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
+ affordable,affordableAction,bestCity,bestPiratePort,bestRoad,bestRobberHex,bestSettlement,bestVictim,chooseBankTrade,chooseDiscard,COSTS,
  chooseInventionResources,monopolyResource,savingGoal,shouldPlayKnight,shouldPlayRoadBuilding,tradeOfferWorthAccepting,
 } from './strategy.ts';
 
@@ -25,7 +25,7 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  const player=state.players.find(item=>item.id===botId);
  if(!player||state.phase==='finished')return null;
 
- if(state.offer?.targets.includes(botId)&&state.offer.proposer!==botId){
+ if(state.phase==='action'&&state.offer?.targets.includes(botId)&&state.offer.proposer!==botId){
   return {type:tradeOfferWorthAccepting(state,botId)?'accept-offer':'reject-offer',playerId:botId,id:state.offer.id};
  }
 
@@ -43,6 +43,9 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
  if(state.phase==='roll')return {type:'roll',playerId:botId};
  if(state.phase==='robber'){
   const hexId=bestRobberHex(state,botId);return hexId?{type:'move-robber',playerId:botId,hexId}:null;
+ }
+ if(state.phase==='pirate'){
+  const edgeId=bestPiratePort(state,botId);return edgeId?{type:'move-pirate',playerId:botId,edgeId}:null;
  }
  if(state.phase==='steal'){
   const victimId=bestVictim(state);return victimId?{type:'steal',playerId:botId,victimId}:null;
@@ -69,7 +72,7 @@ export function chooseBotCommand(state:GameState,botId:string):BotCommand|null {
 
  // With no settlement supply left, the optional harbor ship can be an
  // alternative route to 1 VP without becoming a road-building anchor.
- if(state.rules?.ships&&!player.settlements&&affordable(player.hand,SHIP_COST)){
+ if(usesHarborShips(state)&&!player.settlements&&affordable(player.hand,SHIP_COST)){
   const ships=legalTargetIds(state,botId,'ship');
   if(ships.length)return {type:'build-ship',playerId:botId,vertexId:ships[0]};
  }

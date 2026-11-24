@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EMBLEM_INK, EMBLEM_ON_SAIL, HULL_STRIPE, PLAYER_SAIL_OUTLINE, SAIL_CLOTH, seatEmblem, type SeatEmblem } from '../../ui/player-emblem.ts';
+import { PIRATE_CLOTH, PIRATE_COLORS, PIRATE_CROSS, PIRATE_PENNANT } from '../pirate-art.ts';
 import { RESOURCE_PATHS } from '../../ui/icons.ts';
 import type { Resource } from '../../rules/state.ts';
 import type { HexSetup, PortType } from '../setup.ts';
@@ -66,6 +67,20 @@ export class ArtAssets {
           ctx.stroke(new Path2D(RESOURCE_PATHS[resource])); ctx.restore();
         }
       }
+    });
+  }
+  pirateSail(): THREE.SpriteMaterial {
+    return this.canvasLabel('pirate-blockade', ctx => {
+      ctx.scale(2.56, 2.56);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.strokeStyle = PIRATE_COLORS.trim; ctx.lineWidth = 2.2;
+      for (const [shape, color] of [[PIRATE_CLOTH, PIRATE_COLORS.sail], [PIRATE_PENNANT, PIRATE_COLORS.pennant]]) {
+        const outline = new Path2D(shape);
+        ctx.fillStyle = color; ctx.fill(outline); ctx.stroke(outline);
+      }
+      ctx.lineWidth = 5; ctx.stroke(new Path2D(PIRATE_CROSS));
+      ctx.fillStyle = PIRATE_COLORS.trim; ctx.textAlign = 'center';
+      ctx.font = 'bold 13px system-ui, sans-serif'; ctx.fillText('CLOSED', 51, 75);
     });
   }
   playerSail(emblem: SeatEmblem): THREE.SpriteMaterial {
@@ -148,6 +163,23 @@ export function makeTerrain(assets: ArtAssets, hex: HexSetup, p: GroundPoint): {
   const token = assets.sprite(root, assets.label(String(hex.token), 'token'), 0, .48, 0, .54);
   return { root, token };
 }
+function boatHull(assets: ArtAssets): THREE.BufferGeometry {
+  return assets.geometry('boat-hull', () => {
+    const shape = new THREE.Shape(); shape.moveTo(-.53, -.22); shape.lineTo(.35, -.25); shape.quadraticCurveTo(.58, -.18, .67, 0); shape.quadraticCurveTo(.58, .18, .35, .25); shape.lineTo(-.53, .22); shape.quadraticCurveTo(-.68, 0, -.53, -.22);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: .18, bevelEnabled: true, bevelThickness: .024, bevelSize: .025, bevelSegments: 1, steps: 1, curveSegments: 6 }); g.rotateX(-Math.PI / 2); return g;
+  });
+}
+
+export function makePirateBoat(assets: ArtAssets): THREE.Group {
+  const pirate = new THREE.Group(); pirate.name = 'pirate-boat';
+  assets.mesh(pirate, boatHull(assets), assets.material(PIRATE_COLORS.hull), 0, -.085, 0).name = 'pirate-hull';
+  assets.box(pirate, '#795d48', [.86, .045, .36], -.04, .12, 0);
+  assets.box(pirate, PIRATE_COLORS.hull, [.05, 1.04, .05], -.27, .64, 0);
+  const sail = assets.sprite(pirate, assets.pirateSail(), 0, .67, 0, 1.15);
+  sail.name = 'pirate-sail-and-pennant';
+  return pirate;
+}
+
 export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPlan): THREE.Group {
   const root = new THREE.Group(); root.userData = { type, boat: true, decks: plan.decks };
   for (const deck of plan.decks) {
@@ -161,11 +193,7 @@ export function makeBoatPort(assets: ArtAssets, type: PortType, plan: PortBoatPl
     pier.add(new THREE.LineSegments(lines, assets.extra(new THREE.LineBasicMaterial({ color: '#6c5137', transparent: true, opacity: .6 })))); root.add(pier);
   }
   const boat = new THREE.Group(); boat.position.set(plan.center.x, 0, plan.center.z); boat.rotation.y = -Math.atan2(plan.tangent.z, plan.tangent.x); boat.name = 'port-boat';
-  const hull = assets.geometry('boat-hull', () => {
-    const shape = new THREE.Shape(); shape.moveTo(-.53, -.22); shape.lineTo(.35, -.25); shape.quadraticCurveTo(.58, -.18, .67, 0); shape.quadraticCurveTo(.58, .18, .35, .25); shape.lineTo(-.53, .22); shape.quadraticCurveTo(-.68, 0, -.53, -.22);
-    const g = new THREE.ExtrudeGeometry(shape, { depth: .18, bevelEnabled: true, bevelThickness: .024, bevelSize: .025, bevelSegments: 1, steps: 1, curveSegments: 6 }); g.rotateX(-Math.PI / 2); return g;
-  });
-  assets.mesh(boat, hull, assets.material('#795139'), 0, -.10, 0);
+  assets.mesh(boat, boatHull(assets), assets.material('#795139'), 0, -.10, 0);
   assets.box(boat, '#ceb37c', [.86, .028, .36], -.06, .10, 0);
   assets.box(boat, '#906642', [.88, .07, .045], -.04, .14, -.215); assets.box(boat, '#906642', [.88, .07, .045], -.04, .14, .215);
   for (const x of [-.35, .18]) assets.box(boat, '#b39667', [.06, .035, .34], x, .135, 0);

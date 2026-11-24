@@ -1,5 +1,5 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { drawIndex, secureIndex, publicVictoryPoints, RESOURCES, type GameState, type Hand } from './state.ts';
+import { drawIndex, isTwinCapes, secureIndex, publicVictoryPoints, RESOURCES, type GameState, type Hand } from './state.ts';
 
 import { advanceHarbor, isHarbor } from './harbor.ts';
 import { usesTradeStations } from './trade-stations.ts';
@@ -9,6 +9,7 @@ export type TurnCommand =
   | { type: 'roll'; playerId: string }
   | { type: 'discard'; playerId: string; cards: Hand }
   | { type: 'move-robber'; playerId: string; hexId: string }
+  | { type: 'move-pirate'; playerId: string; edgeId: string }
   | { type: 'steal'; playerId: string; victimId: string }
   | { type: 'end-turn'; playerId: string };
 const size = (hand: Hand) => RESOURCES.reduce((sum, resource) => sum + hand[resource], 0);
@@ -89,6 +90,7 @@ export function produce(state:GameState,total:number):void {
 }
 export function applyTurnCommand(original: GameState, command: TurnCommand, secureRandom?: () => number): GameState {
   const state = structuredClone(original), active = state.players[state.currentSeat];
+  const blockingPhase=isTwinCapes(state)?'pirate':'robber';
   if(state.mode==='harbor-coop'&&state.harbor?.version===3&&['discard','move-robber','steal'].includes(command?.type))throw new Error('Discard and robber actions are unavailable in Harbor v3.');
   if (!command || (!state.discards[command.playerId] && active.id !== command.playerId)) throw new Error('Not an authorized player.');
   if (command.type === 'roll' && state.phase === 'roll' && active.id === command.playerId) {
@@ -103,7 +105,7 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
       }else{
         // Lock discard obligations against the hands held before the catch-up award.
         state.discards = Object.fromEntries(state.players.filter(player => size(player.hand) > 7).map(player => [player.id, Math.floor(size(player.hand) / 2)]));
-        state.phase = Object.keys(state.discards).length ? 'discard' : 'robber';
+        state.phase = Object.keys(state.discards).length ? 'discard' : blockingPhase;
       }
     } else { produce(state, state.dice[0] + state.dice[1]); state.phase = 'action'; }
     awardCatchUp(state,secureRandom);
@@ -111,15 +113,20 @@ export function applyTurnCommand(original: GameState, command: TurnCommand, secu
     const required = state.discards[command.playerId], player = state.players.find(p => p.id === command.playerId);
     if (!required || !player || !command.cards || Object.keys(command.cards).sort().join(',') !== [...RESOURCES].sort().join(',') || RESOURCES.some(r => !Number.isInteger(command.cards[r]) || command.cards[r] < 0 || command.cards[r] > player.hand[r]) || size(command.cards) !== required) throw new Error('Invalid discard.');
     for (const r of RESOURCES) { player.hand[r] -= command.cards[r]; state.bank[r] += command.cards[r]; }
-    delete state.discards[player.id]; if (!Object.keys(state.discards).length) state.phase = 'robber';
-  } else if (command.type === 'move-robber' && state.phase === 'robber' && active.id === command.playerId) {
+    delete state.discards[player.id]; if (!Object.keys(state.discards).length) state.phase = blockingPhase;
+  } else if(command.type==='move-pirate'&&blockingPhase==='pirate'&&state.phase==='pirate'&&active.id===command.playerId){
+    if(command.edgeId===state.board.piratePortEdgeId||!state.board.ports.some(port=>port.edgeId===command.edgeId))
+      throw new Error('Pirate must move to a different harbor.');
+    state.board={...state.board,piratePortEdgeId:command.edgeId};
+    state.victims=[];state.phase=state.resumePhase??'action';state.resumePhase=null;
+  } else if (command.type === 'move-robber' && blockingPhase==='robber' && state.phase === 'robber' && active.id === command.playerId) {
     const hex = createIslandBoard(state.board.layout).hexes.find(hex => hex.id === command.hexId);
     if (!hex || hex.id === state.board.robberHexId) throw new Error('Robber must move to a different hex.');
     state.board = { ...state.board, robberHexId: hex.id };
     state.victims = [...new Set(hex.vertexIds.map(id => state.buildings[id]?.playerId).filter((id): id is string => !!id && id !== active.id && size(state.players.find(p => p.id === id)!.hand) > 0))];
     if(isHarbor(state))state.victims=[];
     state.phase = state.victims.length ? 'steal' : state.resumePhase ?? 'action'; if (!state.victims.length) state.resumePhase = null;
-  } else if (command.type === 'steal' && state.phase === 'steal' && active.id === command.playerId) {
+  } else if (command.type === 'steal' && blockingPhase==='robber' && state.phase === 'steal' && active.id === command.playerId) {
     if (!state.victims.includes(command.victimId)) throw new Error('Invalid victim.');
     const victim = state.players.find(player => player.id === command.victimId)!;
     const draw = secureRandom ? secureIndex(secureRandom, size(victim.hand)) : drawIndex(state.randomState, size(victim.hand)); state.randomState = draw.state ?? state.randomState;

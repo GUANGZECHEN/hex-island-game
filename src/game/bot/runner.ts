@@ -6,7 +6,7 @@ import { applyHarborCommand, type HarborCommand } from '../rules/harbor.ts';
 import type { BotCommand } from './policy.ts';
 
 const setup=new Set(['place-settlement','place-city','place-road']);
-const turn=new Set(['roll','discard','move-robber','steal','end-turn']);
+const turn=new Set(['roll','discard','move-robber','move-pirate','steal','end-turn']);
 const build=new Set(['build-road','build-settlement','build-city','build-ship']);
 
 /** Apply a local bot command through the same reducers used by human actions. */

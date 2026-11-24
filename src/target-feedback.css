@@ -13,3 +13,11 @@
 #board .placement-neighbor .terrain-art:not(.wheat-preview-local){opacity:.15}
 #board .terrain-art-fields .wheat-occupied,
 #board .placement-neighbor .wheat-preview-local .wheat-preview{opacity:.08}
+
+/* The coastal marker remains upright and actionable when the board is scaled. */
+.pirate-target-ring{fill:transparent;stroke:none;pointer-events:none}
+#board .port-piece.pirate-target{pointer-events:auto;cursor:pointer}
+#board .pirate-target .pirate-target-ring{pointer-events:all;stroke:#ffd15c;stroke-width:.075}
+#board .pirate-target.target-active .pirate-target-ring,
+#board .pirate-target:focus-visible .pirate-target-ring{stroke:#ff981f;stroke-width:.105}
+.pirate-boat{pointer-events:none}

@@ -1,3 +1,4 @@
+import { portDescription } from '../pirate-art.ts';
 import { makeTradeStation } from './trade-station-art.ts';
 import * as THREE from 'three';
 import { grainClearance, MODELED_WHEAT } from '../grain-clearance.ts';
@@ -6,7 +7,7 @@ import { PlacementPreview } from './placement-preview.ts';
 import { TargetFeedback, TARGET_COLORS, TAP_MAX_DISTANCE } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain, PORT_SAIL } from './art.ts';
+import { ArtAssets, makeBoatPort, makeBuilding, makePirateBoat, makeTerrain, PORT_SAIL } from './art.ts';
 import { portBoatPlan, staticBoardKey, worldGeometry, type BoardSceneView } from './model.ts';
 import { ART_REVISION, refineTerrain, makeOcean, inspectTerrainArt, disposeArtInstances } from './refinement.ts';
 import { AMBIENT_FRAME_MS, OceanMotion, boatPose, decorationReaction, type DecorationKind } from './motion.ts';
@@ -53,6 +54,8 @@ export class ThreeBoardRenderer {
   private tiles = new Map<string, { root: THREE.Group; token: THREE.Sprite | null }>();
   private dimmed: THREE.Material[] = [];
   private robber: THREE.Sprite | null = null;
+  private pirate: THREE.Group | null = null;
+  private pirateHitMaterial = new THREE.MeshBasicMaterial({ visible: false });
   private robberId = '';
   private worldBounds = new THREE.Box3();
   private defaultTarget = new THREE.Vector3();
@@ -165,7 +168,7 @@ export class ThreeBoardRenderer {
     this.reactions.clear(); this.lastReactionKind = null;
     disposeArtInstances(this.map);
     this.map.clear(); this.pieces.clear(); this.targets.clear(); this.dimmed.forEach(m => m.dispose()); this.dimmed = [];
-    this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = '';
+    this.assets.dispose(); this.assets = new ArtAssets(); this.tiles.clear(); this.robber = null; this.robberId = ''; this.pirate = null;
     this.geometry = worldGeometry(this.view.board.layout);
     for (const hex of this.view.board.hexes) {
       const terrain = makeTerrain(this.assets, hex, this.geometry.hexes.get(hex.hexId)!);
@@ -182,7 +185,14 @@ export class ThreeBoardRenderer {
       const plan = portBoatPlan(port, this.geometry);
       const dock = makeBoatPort(this.assets, port.type, plan); dock.name = `port:${port.edgeId}`; this.map.add(dock);
       const model = dock.getObjectByName('port-boat');
-      if (model instanceof THREE.Group) this.boats.push({ model, x: plan.center.x, z: plan.center.z, index });
+      if (model instanceof THREE.Group) {
+        if (this.view.board.layout === 'twin-capes') {
+          const neutral = new THREE.Group(); neutral.name = 'open-port-boat';
+          neutral.add(...model.children); model.add(neutral);
+          model.userData.edgeId = port.edgeId;
+        }
+        this.boats.push({ model, x: plan.center.x, z: plan.center.z, index });
+      }
     }
     this.map.updateMatrixWorld(true); this.worldBounds.setFromObject(this.map);
     this.worldBounds.max.y = Math.max(.9, this.worldBounds.max.y); this.worldBounds.expandByScalar(.20);
@@ -190,7 +200,8 @@ export class ThreeBoardRenderer {
     const ocean = makeOcean(this.assets, radius, this.geometry);
     this.map.add(ocean);
     this.oceanMotion = new OceanMotion(ocean);
-    this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
+    if (this.view.board.layout === 'twin-capes') this.pirate = makePirateBoat(this.assets);
+    else this.robber = this.assets.sprite(this.map, this.assets.label('', 'robber'), 0, .49, 0, .57);
     this.defaultTarget.copy(this.worldBounds.getCenter(new THREE.Vector3())); this.defaultTarget.y = .12;
     this.structureKey = ''; this.targetKey = '';
     // Only the very first board load gets a default perspective. A new map or
@@ -208,7 +219,31 @@ export class ThreeBoardRenderer {
     this.host.querySelector('.three-accessible-map')?.remove();
     const list = document.createElement('ul'); list.className = 'sr-only three-accessible-map'; list.setAttribute('aria-label', 'Island terrain and number tokens');
     for (const hex of this.view.board.hexes) { const li = document.createElement('li'); li.textContent = `${hex.hexId}: ${hex.terrain}${hex.token ? `, ${hex.token}` : ', sand dunes'}`; list.append(li); }
+    if (this.view.board.layout === 'twin-capes') {
+      list.setAttribute('aria-label', 'Twin Capes terrain, number tokens and coastal ports');
+      this.view.board.ports.forEach((port, index) => {
+        const li = document.createElement('li');
+        const closed = port.edgeId === this.view.board.piratePortEdgeId;
+        li.textContent = `Port ${index + 1}, ${portDescription(port.type, closed)}, ${port.edgeId}`;
+        list.append(li);
+      });
+    }
     this.host.append(list);
+  }
+  private updatePirate(): void {
+    if (!this.pirate) return;
+    const previous = this.pirate.parent;
+    const current = this.boats.find(boat => boat.model.userData.edgeId === this.view.board.piratePortEdgeId)?.model ?? null;
+    if (previous === current) return;
+    const reopened = previous?.getObjectByName('open-port-boat');
+    if (reopened) reopened.visible = true;
+    this.pirate.removeFromParent();
+    if (current) {
+      current.getObjectByName('open-port-boat')!.visible = false;
+      // Both models ride the original mooring and its existing gentle motion.
+      current.add(this.pirate);
+    }
+    this.describe();
   }
   update(view: BoardSceneView): void {
     if (this.disposed) return;
@@ -245,7 +280,8 @@ export class ThreeBoardRenderer {
       }
       if (this.profileStructureBuilds) this.lastStructureBuildMs = performance.now() - buildStarted;
     }
-    if (this.robberId !== view.board.robberHexId) {
+    this.updatePirate();
+    if (this.robber && this.robberId !== view.board.robberHexId) {
       this.placement.reset(); this.wheatDirty = true;
       if (this.robberId) this.tiles.get(this.robberId)?.root.traverse(object => {
         if (object instanceof THREE.Mesh && object.userData.originalMaterial) { object.material = object.userData.originalMaterial; delete object.userData.originalMaterial; }
@@ -272,6 +308,15 @@ export class ThreeBoardRenderer {
           const e = this.geometry.edges.get(id); if (!e) continue;
           mesh = new THREE.Mesh(this.assets.geometry('road-hit', () => new THREE.BoxGeometry(.95, .12, .29)), this.targetMaterial);
           mesh.position.set((e.a.x + e.b.x) / 2, .24, (e.a.z + e.b.z) / 2); mesh.rotation.y = -Math.atan2(e.b.z - e.a.z, e.b.x - e.a.x);
+        } else if (view.targetMode === 'pirate') {
+          const port = this.boats.find(boat => boat.model.userData.edgeId === id);
+          if (!port) continue;
+          // The full boat, including its sail, is easy to hit. Only the waterline
+          // ring is drawn, so port trade signs remain readable through a hover.
+          mesh = new THREE.Mesh(this.assets.geometry('pirate-hit', () => new THREE.CylinderGeometry(.71, .71, 1.1, 24)), this.pirateHitMaterial);
+          mesh.position.set(port.x, .48, port.z);
+          const ring = new THREE.Mesh(this.assets.geometry('port-target-ring', () => new THREE.RingGeometry(.64, .73, 32).rotateX(-Math.PI / 2)), this.targetMaterial);
+          ring.position.y = -.36; mesh.add(ring);
         } else if (view.targetMode === 'robber') {
           const p = this.geometry.hexes.get(id); if (!p) continue;
           mesh = new THREE.Mesh(this.assets.geometry('hex-hit', () => new THREE.CylinderGeometry(.94, .94, .025, 6)), this.robberTargetMaterial); mesh.position.set(p.x, .16, p.z);
@@ -309,8 +354,9 @@ export class ThreeBoardRenderer {
       if (!(object instanceof THREE.Mesh)) continue;
       const active = object.userData.id === this.preview.active;
       const material = active ? activeMaterial : legalMaterial;
-      if (object.material !== material) { object.material = material; changed = true; }
-      object.userData.highlighted = active; object.renderOrder = active ? 9 : 8;
+      const display = object.children[0] instanceof THREE.Mesh ? object.children[0] : object;
+      if (display.material !== material) { display.material = material; changed = true; }
+      object.userData.highlighted = active; display.renderOrder = active ? 9 : 8;
     }
     if (changed) this.invalidate();
   }
@@ -569,10 +615,13 @@ export class ThreeBoardRenderer {
   inspect() {
     return { frustum: [this.camera.left, this.camera.right, this.camera.top, this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width, this.height], staticKey: this.key, manualView: this.manualView, mapBuilds: this.mapBuilds, instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, stations:Object.keys(this.view.stations??{}), roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
+      piratePort: this.pirate?.parent?.userData.edgeId ?? null, landRobberVisible: this.robber?.visible === true,
+      visibleTokens: [...this.tiles.values()].filter(tile => tile.token?.visible).length,
       targets: [...this.view.legalTargets], targetMode: this.view.targetMode, highlightedTarget: this.preview.active,
       placementPiece: this.placement.kind, previewTargetId: this.placement.target, structureBuildMs: this.lastStructureBuildMs,
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => {
-        const material = o.material as THREE.MeshBasicMaterial;
+        const display = o.children[0] instanceof THREE.Mesh ? o.children[0] : o;
+        const material = display.material as THREE.MeshBasicMaterial;
         return { id: o.userData.id, color: material.color.getHexString(), active: o.userData.highlighted, opacity: material.opacity, depthTest: material.depthTest };
       }), triangles: this.renderer.info.render.triangles, calls: this.renderer.info.render.calls,
       artRevision: ART_REVISION, terrainArt: [...this.tiles.values()].map(tile => inspectTerrainArt(tile.root)),
@@ -621,7 +670,7 @@ export class ThreeBoardRenderer {
     if (this.motionFrame !== null) cancelAnimationFrame(this.motionFrame);
     this.motionFrame = null; this.visibilityObserver?.disconnect(); this.reactions.clear();
     this.placement.reset();
-    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.activeTargetMaterial.dispose(); this.robberTargetMaterial.dispose(); this.activeRobberTargetMaterial.dispose(); this.assets.dispose();
+    this.observer.disconnect(); this.abort.abort(); this.controls.dispose(); disposeArtInstances(this.map); this.dimmed.forEach(m => m.dispose()); this.targetMaterial.dispose(); this.activeTargetMaterial.dispose(); this.pirateHitMaterial.dispose(); this.robberTargetMaterial.dispose(); this.activeRobberTargetMaterial.dispose(); this.assets.dispose();
     this.scene.traverse(o => { if (o instanceof THREE.DirectionalLight) o.shadow.dispose(); });
     this.renderer.dispose(); this.renderer.forceContextLoss(); this.canvas.remove();
   }

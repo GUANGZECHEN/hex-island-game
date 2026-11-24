@@ -50,3 +50,16 @@ test('co-op bot game assigns the human the city seat while hotseat keeps its ide
  assert.equal(hotseat.humanId,null);
  assert.deepEqual(hotseat.botIds,[]);
 });
+
+test('Twin Capes is selectable at every Classic table size with mandatory ships',()=>{
+ for(let count=2;count<=6;count++){
+  for(const bots of [0,count-1]){
+   const settings=createLocalRoomSettings(42,count,bots,'classic',{catchUp:true,ships:false},'twin-capes');
+   assert.equal(settings.boardLayout,'twin-capes');assert.equal(settings.ids.length,count);
+   assert.deepEqual(settings.rules,{catchUp:true,ships:true});
+   const game=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
+   assert.equal(game.board.layout,'twin-capes');assert.ok(game.board.ports.some(port=>port.edgeId===game.board.piratePortEdgeId));
+  }
+ }
+ assert.throws(()=>createLocalRoomSettings(42,2,0,'harbor-coop',undefined,'twin-capes'),/Classic/);
+});

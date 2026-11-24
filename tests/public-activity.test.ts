@@ -96,3 +96,10 @@ test('public activity reports only bank or port trade ratio',()=>{
     assert.ok(!message!.match(/lumber|brick|wool|grain|ore/));
   }
 });
+
+test('public pirate activity reports trade closure only when the pirate moves',()=>{
+ const previous={...base(),phase:'pirate',board:{robberHexId:'h0',piratePortEdgeId:'west'}};
+ const next={...previous,phase:'action',board:{...previous.board,piratePortEdgeId:'east'}};
+ assert.equal(derivePublicActivity(previous,next),'Player 1 moved the pirate. Trading at the occupied port is blocked.');
+ assert.equal(derivePublicActivity(next,next),null);
+});

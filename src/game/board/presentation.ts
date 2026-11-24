@@ -24,6 +24,6 @@ export function createSetupView(board: Board, setup: BoardSetup) {
   return { ...view, hexes: view.hexes.map(hex => {
     const assignment = assignments.get(hex.id);
     if (!assignment) throw new Error(`Missing setup for ${hex.id}.`);
-    return { ...hex, ...assignment, robber: hex.id === setup.robberHexId };
+    return { ...hex, ...assignment, robber: setup.layout !== 'twin-capes' && hex.id === setup.robberHexId };
   }) };
 }

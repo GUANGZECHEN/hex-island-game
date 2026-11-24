@@ -1,4 +1,4 @@
-import { createIslandBoard, type BoardLayout } from '../board/geometry.ts';
+import { boardPlayerRange, createIslandBoard, type BoardLayout } from '../board/geometry.ts';
 import { generateBoardSetup, type BoardSetup } from '../board/setup.ts';
 
 import { beginHarbor, createHarborState, type GameMode, type HarborState } from './harbor.ts';
@@ -20,12 +20,15 @@ export interface GameState {
   catchUpReward?: {turn:number;playerId:string;gains:Hand};
   version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
   randomState: number; playedCards: Development[]; startingSeat: number; currentSeat: number; turn: number;
-  phase: 'setup-settlement' | 'setup-city' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
+  phase: 'setup-settlement' | 'setup-city' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'pirate' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
   longestHolder: string | null; armyHolder: string | null; playedDevelopment: boolean; resumePhase: 'roll' | 'action' | null; freeRoads: number; winner: string | null;
   offer: TradeOffer | null; dice: [number, number] | null; discards: Record<string, number>; victims: string[];
   setupRoadEdges?:string[]; pendingSettlement: string | null; buildings: Record<string, Building>; roads: Record<string, string>;
 }
 export type SetupCommand = { type: 'place-settlement'|'place-city'; playerId: string; vertexId: string } | { type: 'place-road'; playerId: string; edgeId: string };
+export function isTwinCapes(state:Partial<Pick<GameState,'board'>>):boolean {
+  return state.board?.layout==='twin-capes';
+}
 const emptyHand = (): Hand => ({ lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
 
 /** Stateful Mulberry32 stream retained in game state, for host-owned game randomness. */
@@ -55,9 +58,18 @@ export function createGame(seed: number, ids: readonly string[], secureRandom?: 
   if(mode==='harbor-coop'&&(rules.catchUp||rules.ships))throw new Error('Classic optional rules are not available in Harbor Co-op.');
   if(mode==='harbor-coop'&&(ids.length!==2||(options?.boardLayout??'standard')!=='standard'))throw new Error('Harbor Co-op requires two players on the standard board.');
   const boardLayout=options?.boardLayout??'standard';
-  const validCount = boardLayout==='expanded-5-6' ? ids.length>=5&&ids.length<=6 : ids.length>=2&&ids.length<=4;
-  if (!validCount || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(boardLayout==='expanded-5-6'?'The 5–6 player board requires five or six distinct player IDs.':'The standard board requires two to four distinct player IDs.');
+  const {min,max}=boardPlayerRange(boardLayout);
+  const validCount=ids.length>=min&&ids.length<=max;
+  if(!validCount||ids.some(id=>typeof id!=='string'||!id)||new Set(ids).size!==ids.length){
+    const requirement={
+      standard:'The standard board requires two to four distinct player IDs.',
+      'expanded-5-6':'The 5–6 player board requires five or six distinct player IDs.',
+      'twin-capes':'Twin Capes requires two to six distinct player IDs.',
+    };
+    throw new Error(requirement[boardLayout]);
+  }
   const board = generateBoardSetup(seed,boardLayout);
+  if(isTwinCapes({board}))rules.ships=true;
   let randomState = seed;
   const deck: Development[] = mode==='harbor-coop'?[]:[...Array<Development>(14).fill('knight'), ...Array<Development>(2).fill('monopoly'), ...Array<Development>(2).fill('road-building'), ...Array<Development>(2).fill('invention'), ...Array<Development>(5).fill('victory-point')];
   for (let i = deck.length - 1; i > 0; i--) {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame } from '../src/game/rules/state.ts';
 import { HostAuthority, projectSpectatorState, projectState } from '../src/game/network/authority.ts';
+import { parseSessionRecovery } from '../src/game/network/recovery.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 
 test('projections hide other hands, shuffled deck and random state',()=>{
@@ -168,4 +169,31 @@ test('broadcast trade reaches every target privately and the first valid accepta
  assert.equal(send('c',1,'simultaneous-stale',{type:'accept-offer',playerId:'c',id:'offer-all'}).code,'stale');
  assert.equal(send('c',2,'late-accept',{type:'accept-offer',playerId:'c',id:'offer-all'}).code,'illegal');
  assert.equal(host.snapshot('c').private.hand.brick,2,'a later accept cannot duplicate resource transfers');
+});
+
+test('guest pirate relocation uses the validated harbor command, projects no hands and survives recovery',()=>{
+ const game=createGame(17,['a','b'],()=>1,{boardLayout:'twin-capes'});game.phase='pirate';game.currentSeat=1;game.turn=4;
+ game.players[0].hand.ore=2;game.players[1].hand.brick=1;game.resumePhase='action';
+ const auth=new HostAuthority('twin',game,()=>1),before=auth.snapshot('b'),initial=game.board.piratePortEdgeId!;
+ const port=game.board.ports.find(port=>port.edgeId!==initial)!;
+ const request=(id:string,command:object)=>JSON.stringify({protocol:1,gameId:'twin',revision:0,commandId:id,sender:'b',command:{type:'move-pirate',playerId:'b',...command}});
+ assert.equal(auth.receive('a',request('spoof',{edgeId:port.edgeId})).ok,false);
+ assert.equal(auth.receive('b',request('invalid',{edgeId:'unrelated'})).ok,false);
+ assert.equal(auth.receive('b',request('extra',{edgeId:port.edgeId,victimId:'a'})).ok,false);
+ assert.equal(auth.receive('b',request('valid',{edgeId:port.edgeId})).ok,true);
+ const next=auth.snapshot('b'),spectator=auth.spectatorSnapshot();assert.equal(next.public.board.piratePortEdgeId,port.edgeId);
+ assert.equal(spectator.private,null);assert.equal(spectator.public.phase,'action');assert.deepEqual(spectator.public.victims,[]);
+ assert.deepEqual(next.private,before.private);assert.deepEqual(next.public.players,before.public.players);
+ const seats=[{id:'a',token:''},{id:'b',token:'b'.repeat(43)}];
+ const checkpoint={version:1,qaTwoPlayers:false,boardLayout:'twin-capes',authority:auth.checkpoint(),seats};
+ assert.deepEqual(parseSessionRecovery(checkpoint).authority.state.board,next.public.board);
+ for(const change of [
+  (copy:typeof checkpoint)=>{copy.boardLayout='standard';},
+  (copy:typeof checkpoint)=>{copy.authority.state.board.piratePortEdgeId='missing';},
+  (copy:typeof checkpoint)=>{copy.authority.state.board.robberHexId=game.board.hexes[0].hexId;},
+  (copy:typeof checkpoint)=>{copy.authority.state.board.hexes=copy.authority.state.board.hexes.slice(1);},
+  (copy:typeof checkpoint)=>{copy.authority.state.rules={catchUp:false,ships:false};},
+ ]){
+  const invalid=structuredClone(checkpoint);change(invalid);assert.throws(()=>parseSessionRecovery(invalid));
+ }
 });

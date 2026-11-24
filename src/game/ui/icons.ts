@@ -26,6 +26,7 @@ export const DESERT_PATH = 'M3 18c3-4 6-4 9 0 2-3 5-4 9-1M3 21c3-3 6-3 9 0 2-2 5
 export const ACTION_PATHS = {
   dice: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 5h.01M12 12h.01M17 16h.01',
   ship: 'M3 16l3 4h12l3-4H3Zm8-11v11m0-11 8 8h-8V5Z',
+  pirate: 'M5 21V3h14l-2 4 2 4H5m5-6 4 4m0-4-4 4',
   road: 'M4 20 9 4m6 0 5 16M10 17h4m-3-5h2m-1-4h.01',
   settlement: 'M3 11 12 3l9 8M5 10v10h14V10M10 20v-6h4v6',
   city: 'M3 20V9l5-4 5 4v11m0-8 4-3 4 3v8M7 12h2m-2 4h2m8-1h1',

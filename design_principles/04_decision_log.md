@@ -143,3 +143,9 @@ D034: The Product Owner further reduced the optional Classic Harbor Ships cost f
 ## 2026-11-23: Effective action clock duration
 
 D035: The Product Owner increased the effective gameplay action window from 45 to 60 seconds for local and multiplayer games. Starting or restarting a match and completing an effective action grant a full 60-second window to the relevant player. Each simultaneous discard has its own window. Pause, resume, and checkpoint recovery preserve the recorded remaining time.
+
+## 2026-11-24: Twin Capes
+
+D036: The Product Owner selected Twin Capes as the first additional map and approved unlimited ships on this map. It features two productive capes connected by a narrow land bridge, many harbors, no desert, and a pirate that closes the harbor it occupies. The map uses the existing Classic ship cost, placement rules and victory points.
+
+On a seven, resolve ordinary discards before the active player relocates the pirate. Playing a Knight also relocates the pirate. One harbor's trade rate closes at a time, with no theft or loss of tile production.

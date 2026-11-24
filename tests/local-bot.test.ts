@@ -266,3 +266,44 @@ test('co-op human receives both cities and the bot receives both settlements and
  }
  assert.deepEqual([...seen].sort(),[0,1]);
 });
+
+test('Twin Capes bot uses Knight to reopen its port then moves the pirate to another player’s port',()=>{
+ const state=createGame(3,['Player 1','Bot'],undefined,{boardLayout:'twin-capes'});
+ state.currentSeat=1;state.phase='action';state.turn=3;
+ const own=state.board.ports[0];
+ const rival=state.board.ports.find(port=>port.vertexIds.every(vertex=>!own.vertexIds.includes(vertex)))!;
+ state.buildings[own.vertexIds[0]]={playerId:'Bot',kind:'settlement'};
+ state.buildings[rival.vertexIds[0]]={playerId:'Player 1',kind:'settlement'};
+ state.board={...state.board,piratePortEdgeId:own.edgeId};
+ state.players[1].cards=[{type:'knight',boughtTurn:1}];
+ const knight=chooseBotCommand(state,'Bot');
+ assert.deepEqual(knight,{type:'play-card',playerId:'Bot',card:'knight'});
+ const choosing=applyBotCommand(state,knight!);
+ assert.equal(choosing.phase,'pirate');
+ const move=chooseBotCommand(choosing,'Bot');
+ assert.deepEqual(move,{type:'move-pirate',playerId:'Bot',edgeId:rival.edgeId});
+ const moved=applyBotCommand(choosing,move!);
+ assert.equal(moved.phase,'action');
+ assert.equal(moved.board.piratePortEdgeId,rival.edgeId);
+ assert.deepEqual(moved.players.map(player=>player.hand),choosing.players.map(player=>player.hand));
+});
+
+test('Twin Capes bot can build a third legal ship through the usual reducer',()=>{
+ let state=createGame(3,['Player 1','Bot'],undefined,{boardLayout:'twin-capes'});
+ state.currentSeat=1;state.phase='action';state.turn=3;
+ const player=state.players[1];
+ player.settlements=0;
+ for(const resource of ['lumber','brick','ore'] as const){
+  player.hand[resource]=6;
+  state.bank[resource]-=6;
+ }
+ const home=state.board.ports[0].vertexIds[0];
+ state.buildings[home]={playerId:'Bot',kind:'settlement'};
+ for(let count=0;count<3;count++){
+  const command=chooseBotCommand(state,'Bot');
+  assert.ok(command?.type==='build-ship');
+  assert.ok(legalTargetIds(state,'Bot','ship').includes(command.vertexId));
+  state=applyBotCommand(state,command);
+ }
+ assert.equal(Object.values(state.buildings).filter(piece=>piece.playerId==='Bot'&&piece.kind==='ship').length,3);
+});

@@ -1,17 +1,18 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { applySetupCommand, type GameState, type Resource } from './state.ts';
+import { applySetupCommand, type GameState } from './state.ts';
 import { applyTurnCommand } from './turn.ts';
 import { applyBuildCommand } from './build.ts';
 import { applyHarborCommand } from './harbor.ts';
 import { applyEconomyCommand } from './economy.ts';
+export { bankTradeRate } from './economy.ts';
 
-export type TargetMode = 'settlement'|'road'|'city'|'robber'|'station'|'ship';
+export type TargetMode = 'settlement'|'road'|'city'|'robber'|'pirate'|'station'|'ship';
 
 /** Compute legal board targets with the same deterministic reducers used by gameplay. */
 export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):string[]{
   if(state.players[state.currentSeat]?.id!==playerId)return [];
   const board=createIslandBoard(state.board.layout);
-  const ids=mode==='road'?board.edges.map(edge=>edge.id):mode==='robber'?board.hexes.map(hex=>hex.id):board.vertices.map(vertex=>vertex.id);
+  const ids=mode==='pirate'?state.board.ports.map(port=>port.edgeId):mode==='road'?board.edges.map(edge=>edge.id):mode==='robber'?board.hexes.map(hex=>hex.id):board.vertices.map(vertex=>vertex.id);
   return ids.filter(id=>{
     try{
       if(mode==='settlement'){
@@ -28,6 +29,8 @@ export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):
         if(state.phase==='setup-road')applySetupCommand(state,{type:'place-road',playerId,edgeId:id});
         else if(state.phase==='free-road')applyEconomyCommand(state,{type:'free-road',playerId,edgeId:id});
         else applyBuildCommand(state,{type:'build-road',playerId,edgeId:id});
+      }else if(mode==='pirate'){
+        applyTurnCommand(state,{type:'move-pirate',playerId,edgeId:id});
       }else{
         applyTurnCommand(state,{type:'move-robber',playerId,hexId:id});
       }
@@ -36,9 +39,3 @@ export function legalTargetIds(state:GameState,playerId:string,mode:TargetMode):
   });
 }
 
-export function bankTradeRate(state:GameState,playerId:string,resource:Resource):2|3|4 {
-  const owns=(kind:string)=>state.board.ports.some(port=>port.type===kind&&port.vertexIds.some(vertexId=>state.buildings[vertexId]?.playerId===playerId));
-  if(owns(resource))return 2;
-  if(owns('generic'))return 3;
-  return 4;
-}

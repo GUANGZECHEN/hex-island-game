@@ -172,6 +172,26 @@ test('SVG renderer shows each assigned terrain, resource, token and robber under
     const markerCircle=marker.children.find(child=>child.tag==='circle')!;
     assert.equal(markerCircle.attributes.get('cy'),token.attributes.get('cy'));
     assert.ok(moved.attributes.get('class')?.includes('robber-occupied'));
+
+    const twin = generateBoardSetup(42, 'twin-capes');
+    const nextPort = twin.ports.find(port => port.edgeId !== twin.piratePortEdgeId)!;
+    for (const piratePortEdgeId of [twin.piratePortEdgeId!, nextPort.edgeId]) {
+      renderIslandBoard(container as unknown as HTMLElement, { ...twin, piratePortEdgeId });
+      const [island, , portList] = container.children;
+      const all = descendants(island);
+      assert.equal(all.some(node => node.attributes.has('data-robber-marker')), false);
+      assert.equal(all.filter(node => node.attributes.get('class')?.split(' ').includes('island-number')).length,
+        twin.hexes.filter(hex => hex.token !== null).length);
+      const closed = island.children.filter(node => node.attributes.get('data-port-closed') === 'true');
+      assert.equal(closed.length, 1);
+      assert.equal(closed[0].attributes.get('data-port-edge'), piratePortEdgeId);
+      const atPort = descendants(closed[0]);
+      assert.ok(atPort.some(node => node.attributes.get('data-pirate') === 'true'));
+      assert.ok(atPort.some(node => node.attributes.get('class') === 'pirate-pennant'));
+      assert.ok(atPort.some(node => node.tag === 'text' && node.textContent === 'CLOSED'));
+      assert.equal(all.filter(node => node.attributes.get('class') === 'neutral-port-sail').length, twin.ports.length - 1);
+      assert.equal(portList.children.filter(node => node.textContent.includes('pirate blockade, port trade closed')).length, 1);
+    }
   } finally { Object.assign(globalThis, { document: previous }); }
 });
 

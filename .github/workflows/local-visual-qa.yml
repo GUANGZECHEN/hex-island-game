@@ -82,6 +82,9 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
+      - name: Verify the Twin Capes map and pirate in Chromium
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: node scripts/qa-twin-capes.mjs
       - name: Verify real dice geometry, resource payout and 2D fallback
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
@@ -120,5 +123,6 @@ jobs:
             persistent-actions-evidence
             compact-action-evidence
             target-evidence
+            twin-capes-evidence
           if-no-files-found: ignore
           retention-days: 7

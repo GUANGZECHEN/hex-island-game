@@ -1,7 +1,8 @@
 import { usesTradeStations } from './trade-stations.ts';
 import { applyBuildCommand } from './build.ts';
-import { publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
+import { isTwinCapes, publicVictoryPoints, RESOURCES, type Development, type GameState, type Hand, type Resource } from './state.ts';
 import { isHarbor, partnersConnected } from './harbor.ts';
+import type { PortType } from '../board/setup.ts';
 export type EconomyCommand =
  | { type:'bank-trade'; playerId:string; give:Resource; receive:Resource; rate:2|3|4 }
  | { type:'offer'; playerId:string; id:string; targets:string[]; give:Hand; receive:Hand }
@@ -14,6 +15,14 @@ export type EconomyCommand =
  | { type:'claim-victory'; playerId:string };
 export function usesDevelopmentCards(state: Pick<GameState,'mode'|'harbor'>): boolean {
  return !(state.mode==='harbor-coop' && state.harbor?.version===3);
+}
+function ownsTradePort(state:GameState,playerId:string,type:PortType):boolean {
+  const blocked=isTwinCapes(state)?state.board.piratePortEdgeId:undefined;
+  return state.board.ports.some(port=>port.edgeId!==blocked&&port.type===type&&port.vertexIds.some(id=>state.buildings[id]?.playerId===playerId));
+}
+export function bankTradeRate(state:GameState,playerId:string,resource:Resource):2|3|4 {
+  if(ownsTradePort(state,playerId,resource))return 2;
+  return ownsTradePort(state,playerId,'generic')?3:4;
 }
 const validResource = (x: unknown): x is Resource => typeof x === 'string' && RESOURCES.includes(x as Resource);
 const validHand = (x: Hand) => !!x && Object.keys(x).sort().join(',') === [...RESOURCES].sort().join(',') && RESOURCES.every(r => Number.isInteger(x[r]) && x[r] >= 0);
@@ -73,7 +82,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
    if(!validResource(command.resource))throw new Error('Choose a resource.');
    if(isHarbor(state)){const amount=Math.min(2,state.bank[command.resource]);state.bank[command.resource]-=amount;player.hand[command.resource]+=amount;}
    else for(const other of state.players)if(other.id!==player.id){player.hand[command.resource]+=other.hand[command.resource];other.hand[command.resource]=0;}
-  } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase='robber';player.knights++;updateArmy(state);}
+  } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase=isTwinCapes(state)?'pirate':'robber';player.knights++;updateArmy(state);}
   else if(command.card==='road-building') { if(player.roads>0){state.resumePhase=state.phase;state.phase='free-road';state.freeRoads=Math.min(2,player.roads);} }
   else throw new Error('Invalid card.');
   player.cards.splice(index,1);state.playedCards.push(command.card);state.playedDevelopment=true;return state;
@@ -81,8 +90,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
  if(state.phase!=='action')throw new Error('Action phase required.');
  if(command.type==='bank-trade') {
   if(!validResource(command.give)||!validResource(command.receive)||command.give===command.receive||![2,3,4].includes(command.rate))throw new Error('Invalid bank trade.');
-  const owns=(kind:string)=>state.board.ports.some(port=>port.type===kind&&port.vertexIds.some(v=>state.buildings[v]?.playerId===player.id));
-  if(command.rate===2&&!owns(command.give)||command.rate===3&&!owns('generic'))throw new Error('Port unavailable.');
+  if(command.rate===2&&!ownsTradePort(state,player.id,command.give)||command.rate===3&&!ownsTradePort(state,player.id,'generic'))throw new Error('Port unavailable.');
   const give=Object.fromEntries(RESOURCES.map(r=>[r,r===command.give?command.rate:0])) as Hand,receive=Object.fromEntries(RESOURCES.map(r=>[r,r===command.receive?1:0])) as Hand;
   transfer(player.hand,state.bank,give);transfer(state.bank,player.hand,receive);
  } else if(command.type==='offer') {

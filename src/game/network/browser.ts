@@ -4,7 +4,7 @@ import type { projectState, projectSpectatorState } from './authority';
 import { parseSessionRecovery } from './recovery';
 import { isTwoPlayerQa } from './qa';
 import type { GameMode } from '../rules/harbor';
-import type { BoardLayout } from '../board/geometry';
+import { boardPlayerRange, isBoardLayout, type BoardLayout } from '../board/geometry';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
 import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
 import { isRoomMusicMessage, RoomMusicGuest } from './room-music.ts';
@@ -136,20 +136,22 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   }
  };
 
+ let confirmedMap:{layout:BoardLayout;seed:number}|null=null;
  const showLobby=(data:unknown)=>{
   const lobby=data as {mode?:GameMode;rules?:unknown;seats?:unknown;qaTwoPlayers?:unknown;boardLayout?:unknown;mapSeed?:unknown;started?:unknown;recovering?:unknown;spectators?:unknown};
-  if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean'||(lobby.boardLayout!=='standard'&&lobby.boardLayout!=='expanded-5-6'))return;
+  if(!lobby||!Array.isArray(lobby.seats)||typeof lobby.qaTwoPlayers!=='boolean'||!isBoardLayout(lobby.boardLayout))return;
   const seats=lobby.seats as Array<{id?:unknown;name?:unknown;connected?:unknown;ready?:unknown}>;
   lastLobbySeats=seats;
   el('qa-indicator').hidden=!lobby.qaTwoPlayers;
-  const boardLayout=lobby.boardLayout as BoardLayout,boardVersion=el<HTMLSelectElement>('room-board-version');boardVersion.value=boardLayout;
+  const boardLayout=lobby.boardLayout,boardVersion=el<HTMLSelectElement>('room-board-version');boardVersion.value=boardLayout;
   const mapSeed=el<HTMLInputElement>('room-seed');
   if(Number.isSafeInteger(lobby.mapSeed)&&Number(lobby.mapSeed)>=0&&Number(lobby.mapSeed)<=0xffffffff)mapSeed.value=String(lobby.mapSeed);
+  confirmedMap={layout:boardLayout,seed:mapSeed.valueAsNumber};
   const canEditMap=role==='host'&&!lobby.started&&!lobby.recovering;
   const rules=validateOptionalRules(lobby.rules),canEditRules=canEditMap&&lobby.mode!=='harbor-coop';
   const catchUp=el<HTMLInputElement>('room-rule-catch-up'),ships=el<HTMLInputElement>('room-rule-ships');
   catchUp.checked=rules.catchUp;ships.checked=rules.ships;
-  catchUp.disabled=!canEditRules;ships.disabled=!canEditRules;
+  catchUp.disabled=!canEditRules;ships.disabled=!canEditRules||boardLayout==='twin-capes';
   // Guests and spectators only need the compact checked/unchecked rule state.
   // `hidden` also removes the host-only explanation from the accessibility tree.
   document.querySelectorAll<HTMLElement>('[data-room-rule-host-detail]').forEach(detail=>{detail.hidden=role!=='host';});
@@ -159,8 +161,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    try{host.setOptionalRules({catchUp:el<HTMLInputElement>('room-rule-catch-up').checked,ships:el<HTMLInputElement>('room-rule-ships').checked});}
    catch(e){status(e instanceof Error?e.message:'Could not set optional rules.');}
   };
-  el<HTMLInputElement>('room-rule-catch-up').addEventListener('change',setHostRules);
-  el<HTMLInputElement>('room-rule-ships').addEventListener('change',setHostRules);modeInput.value=lobby.mode??'classic';modeInput.disabled=!canEditMap;
+  catchUp.onchange=setHostRules;ships.onchange=setHostRules;modeInput.value=lobby.mode??'classic';modeInput.disabled=!canEditMap;
   boardVersion.disabled=!canEditMap||lobby.mode==='harbor-coop';mapSeed.disabled=!canEditMap;
   el('room-map-lobby').hidden=!room;
   el('room-optional-rules').classList.toggle('optional-rules-disabled',lobby.mode==='harbor-coop');
@@ -181,7 +182,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    el('room-start').hidden=role!=='host';
   }
   const spectatorCount=Number.isSafeInteger(lobby.spectators)?Number(lobby.spectators):0;
-  el('lobby').textContent=[lobby.mode==='harbor-coop'?'Harbor Co-op · two-player team':'Classic',rules.catchUp?'Catch-up ON':'Catch-up OFF',rules.ships?'Harbor ships ON':'Harbor ships OFF',boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),`Map seed: ${mapSeed.value}`,spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
+  el('lobby').textContent=[lobby.mode==='harbor-coop'?'Harbor Co-op · two-player team':'Classic',rules.catchUp?'Catch-up ON':'Catch-up OFF',rules.ships?'Harbor ships ON':'Harbor ships OFF',boardLayout==='twin-capes'?'Board: Twin Capes · unlimited ships':boardLayout==='expanded-5-6'?'Board: 5–6 player':'Board: standard',seats.map(s=>`${typeof s.name==='string'?s.name:String(s.id)}: ${s.connected?'connected':'disconnected'}, ${s.ready?'ready':'not ready'}`).join(' | '),`Map seed: ${mapSeed.value}`,spectatorCount?`Spectators: ${spectatorCount}`:''].filter(Boolean).join(' | ');
   if(room)callbacks.lobby?.({mode:lobby.mode==='harbor-coop'?'harbor-coop':'classic',boardLayout,mapSeed:mapSeed.valueAsNumber,rules,started:!!lobby.started,recovering:!!lobby.recovering,spectators:spectatorCount,seats:seats.map(s=>({id:String(s.id??''),name:typeof s.name==='string'?s.name:String(s.id??''),connected:s.connected===true,ready:s.ready===true}))});
   if(role==='guest'&&lobby.recovering===true&&(playerId||spectator)){
    clearSyncTimer();syncAttempts=0;setSynchronizing(true,spectator?'Spectating paused saved game. Waiting for host to resume.':`Seat restored as ${playerId}. Waiting for host to resume saved game.`);
@@ -189,7 +190,8 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   }
   if(role==='host'&&host){
    if(recoveryMode||lobby.recovering===true){el('room-ready').hidden=true;el('room-start').hidden=true;renderRecovery();return;}
-   const validCount=lobby.mode==='harbor-coop'?seats.length===2:boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6:seats.length>=2&&seats.length<=4;
+   const {min,max}=boardPlayerRange(boardLayout);
+   const validCount=lobby.mode==='harbor-coop'?seats.length===2:seats.length>=min&&seats.length<=max;
    const allReady=validCount&&seats.every(s=>s.connected===true&&s.ready===true);
    const start=el<HTMLButtonElement>('room-start');
    start.disabled=!allReady;
@@ -353,7 +355,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
  const mapSeedInput=el<HTMLInputElement>('room-seed');
  const modeInput=el<HTMLSelectElement>('room-game-mode');
  modeInput.addEventListener('change',()=>{if(role!=='host'||!host)return;try{host.setGameMode(modeInput.value as GameMode);}catch(e){modeInput.value=modeInput.value==='harbor-coop'?'classic':'harbor-coop';status(e instanceof Error?e.message:'Invalid game mode.');}});
- const updateHostMap=()=>{if(role!=='host'||!host)return;try{host.setMapSelection(boardVersionInput.value as BoardLayout,mapSeedInput.valueAsNumber);}catch(e){status(e instanceof Error?e.message:'Invalid map selection.');}};
+ const updateHostMap=()=>{if(role!=='host'||!host)return;try{host.setMapSelection(boardVersionInput.value as BoardLayout,mapSeedInput.valueAsNumber);}catch(e){if(confirmedMap){boardVersionInput.value=confirmedMap.layout;mapSeedInput.value=String(confirmedMap.seed);document.dispatchEvent(new Event('hex-room-map-updated'));}status(e instanceof Error?e.message:'Invalid map selection.');}};
  boardVersionInput.addEventListener('change',updateHostMap);
  mapSeedInput.addEventListener('change',updateHostMap);
  el<HTMLSelectElement>('room-role').onchange=()=>{

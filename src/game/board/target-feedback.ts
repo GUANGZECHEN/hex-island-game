@@ -1,10 +1,10 @@
 import type { Board } from './geometry.ts';
 import type { TargetMode } from '../rules/legal.ts';
 
-export type PlacementKind = Exclude<TargetMode, 'robber'>;
+export type PlacementKind = Exclude<TargetMode, 'robber' | 'pirate'>;
 
 export function isPlacement(mode: TargetMode | null): mode is PlacementKind {
-  return mode !== null && mode !== 'robber';
+  return mode !== null && mode !== 'robber' && mode !== 'pirate';
 }
 
 export function adjacentPlacementHexes(board: Board, kind: PlacementKind, id: string): readonly string[] {

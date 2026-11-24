@@ -62,8 +62,10 @@ test('room creation exposes standard and 5-6 player board versions and six-playe
  assert.ok(html.includes('value="expanded-5-6"'));
  assert.ok(html.includes('<option value="5">5</option>'));
  assert.ok(html.includes('<option value="6">6</option>'));
- assert.ok(ui.includes("generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard')"));
- assert.ok(browser.includes("boardLayout==='expanded-5-6'?seats.length>=5&&seats.length<=6"));
+ assert.ok(ui.includes("generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard')"));
+ assert.ok(html.includes('id="local-board-version"'));
+ assert.equal((html.match(/<option value="twin-capes">/g)||[]).length,2);
+ assert.ok(browser.includes('boardPlayerRange(boardLayout)'));
  assert.ok(css.includes('.player-strip[data-player-count="6"]'));
 });
 
@@ -137,7 +139,7 @@ test('local test bot selector supports one through five bots and expands the boa
  const targets=readFileSync('src/game/ui/targets.ts','utf8');
  const legal=readFileSync('src/game/rules/legal.ts','utf8');
  assert.ok(html.includes('id="local-bot-count"'));
- for(const label of ['1 bot · 2 players','2 bots · 3 players','3 bots · 4 players','4 bots · 5 players · expanded board','5 bots · 6 players · expanded board'])assert.ok(html.includes(label));
+ for(const label of ['1 bot · 2 players','2 bots · 3 players','3 bots · 4 players','4 bots · 5 players','5 bots · 6 players'])assert.ok(html.includes(label));
  const local=readFileSync('src/game/ui/local-room.ts','utf8');
  assert.ok(local.includes('export function createLocalRoomSettings'));
  assert.ok(local.includes("botCount===1?'Bot'"));
@@ -155,7 +157,7 @@ test('local test bot selector supports one through five bots and expands the boa
  assert.ok(ui.includes('function refreshLocalMapPreview()'));
  assert.ok(ui.includes('startLocalRound(activeLocalRoom)'));
  assert.ok(ui.includes("localSeats.value=String(count+1);localSeats.disabled=true"));
- assert.ok(ui.includes("count>=4?'Expanded 5–6 player board selected automatically.'"));
+ assert.ok(ui.includes("count>=5?'expanded 24-hex board':'standard 19-hex board'"));
  assert.ok(ui.includes("if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff"));
  assert.ok(ui.includes('pendingLocalBot'));
  assert.ok(ui.includes('scheduleLocalBot()'));
@@ -281,7 +283,7 @@ test('ART-B01 keeps player, hand and trade art in the integrated board',()=>{
 test('ART-C01 keeps card animation but renders dice on the board',()=>{
  const ui=readFileSync('src/game-ui.ts','utf8');
  const css=readFileSync('src/style.css','utf8');
- assert.ok(ui.includes("type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'trade'|'generic'"));
+ assert.ok(ui.includes("type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'pirate'|'trade'|'generic'"));
  assert.ok(ui.includes('pendingRollPresentation=describeRoll('));
  assert.ok(readFileSync('src/game/board/three/roll-scene.ts','utf8').includes('RoundedBoxGeometry'));
  assert.ok(ui.includes('function playedDevelopment'));
@@ -454,8 +456,8 @@ test('desktop map fits the viewport height while only side columns can scroll',(
 test('ship action uses the approved resource cost and availability metadata',()=>{
   const ui=readFileSync('src/game-ui.ts','utf8');
   assert.ok(ui.includes('if(base.ship.enabled)'));
-  assert.ok(ui.includes('2 wood + 2 brick + 2 ore'),'Actions must display the same ship price as the reducer');
-  assert.ok(ui.includes('shipsRemaining(s,viewer)'));
+  assert.ok(ui.includes("add(shipActionLabel(s,viewer),'ship',()=>mode('ship'),base.ship,SHIP_COST)"),'Use the shared ship label and reducer price');
+  assert.ok(ui.includes("shipSupplyStat(s,player.id,'player-ship-count')"));
   assert.ok(ui.includes("b.dataset.shipAvailability='ready'"));
 });
 

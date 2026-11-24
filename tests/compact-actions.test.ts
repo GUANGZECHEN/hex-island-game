@@ -12,6 +12,8 @@ test('construction and development labels use short consistent words', () => {
 test('other common action labels are short; Undo and unknown labels keep their explicit wording', () => {
   assert.equal(compactActionLabel('Roll dice'), 'Roll');
   assert.equal(compactActionLabel('Move robber'), 'Robber');
+  assert.equal(compactActionLabel('Move pirate'), 'Pirate');
+  assert.equal(compactActionLabel('Build ship · Unlimited supply · 1 VP · 2 wood + 2 brick + 2 ore'), 'Ship (+1 VP)');
   assert.equal(compactActionLabel('Play Knight'), 'Knight');
   assert.equal(compactActionLabel('Play Monopoly'), 'Monopoly');
   assert.equal(compactActionLabel('Undo last action'), 'Undo last action');

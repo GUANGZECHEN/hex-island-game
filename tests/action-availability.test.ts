@@ -5,6 +5,7 @@ import { legalTargetIds, bankTradeRate } from '../src/game/rules/legal.ts';
 import { applyEconomyCommand } from '../src/game/rules/economy.ts';
 import { getActionAvailability as availability, createActionAvailabilityReader } from '../src/game/ui/action-availability.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
+import { shipActionAvailability, shipActionLabel } from '../src/game/ui/ship-action.ts';
 const hand=(h:Partial<Hand>={}):Hand=>({lumber:0,brick:0,wool:0,grain:0,ore:0,...h});
 const game=()=>{const s=createGame(3,['a','b','c']);s.currentSeat=0;s.phase='action';s.turn=2;s.players[0].hand=hand({lumber:5,brick:5,wool:5,grain:5,ore:5});return s;};
 
@@ -114,4 +115,47 @@ test('the reader reuses legal target IDs for availability and board highlights',
  const nextRead=createActionAvailabilityReader(next,'a');
  assert.deepEqual(nextRead.targetIds('settlement'),[]);
  assert.deepEqual(nextRead.targetIds('robber'),legalTargetIds(next,'a','robber'));
+});
+
+test('Twin Capes exposes pirate moves and unlimited ships through the UI helpers',()=>{
+ const s=createGame(3,['a','b','c'],undefined,{boardLayout:'twin-capes'});
+ s.currentSeat=0;s.phase='action';
+ s.players[0].hand=hand({lumber:2,brick:2,ore:2});
+ const owned=s.board.ports[0];
+ s.buildings[owned.vertexIds[0]]={playerId:'a',kind:'settlement'};
+ const ship=shipActionAvailability(s,'a');
+ assert.equal(ship.remaining,Infinity);
+ assert.equal(ship.enabled,true);
+ assert.equal(availability(s,'a').ship.enabled,true);
+ assert.match(shipActionLabel(s,'a'),/^Build ship · Unlimited supply · 1 VP/);
+
+ const occupied=s.board.ports[1].edgeId;
+ s.board={...s.board,piratePortEdgeId:occupied};
+ s.phase='pirate';s.resumePhase='action';
+ const read=createActionAvailabilityReader(s,'a');
+ assert.deepEqual(read.targetIds('pirate'),legalTargetIds(s,'a','pirate'));
+ assert.ok(read.targetIds('pirate').length>0);
+ assert.ok(!read.targetIds('pirate').includes(occupied));
+ assert.deepEqual(read().pirate,{visible:true,enabled:true});
+ assert.equal(read().robber.visible,false);
+ assert.equal(read().steal.visible,false);
+ assert.equal(read().ship.enabled,false);
+ assert.equal(availability(s,'b').pirate.enabled,false);
+ assert.equal(availability(s,'a',{paused:true}).pirate.enabled,false);
+ assert.equal(availability(game(),'a').pirate.visible,false);
+});
+
+test('the pirate only removes the occupied port rate from trade availability',()=>{
+ const s=createGame(3,['a','b','c'],undefined,{boardLayout:'twin-capes'});
+ s.currentSeat=0;s.phase='action';
+ const owned=s.board.ports.find(port=>port.type!=='generic');
+ assert.ok(owned&&owned.type!=='generic');
+ const give=owned.type;
+ const receive=RESOURCES.find(resource=>resource!==give)!;
+ s.players[0].hand=hand({[give]:2});
+ s.buildings[owned.vertexIds[0]]={playerId:'a',kind:'settlement'};
+ s.board={...s.board,piratePortEdgeId:owned.edgeId};
+ assert.equal(availability(s,'a').bankTrades[`${give}:${receive}`].enabled,false);
+ s.board={...s.board,piratePortEdgeId:s.board.ports.find(port=>port.edgeId!==owned.edgeId)!.edgeId};
+ assert.equal(availability(s,'a').bankTrades[`${give}:${receive}`].enabled,true);
 });

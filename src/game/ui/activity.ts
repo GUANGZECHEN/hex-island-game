@@ -12,7 +12,7 @@ export interface PublicActivityState {
   phase: string;
   dice: readonly [number, number] | null;
   victims: readonly string[];
-  board: { robberHexId: string };
+  board: { robberHexId: string; piratePortEdgeId?: string | null };
   roads: Readonly<Record<string,string>>;
   buildings: Readonly<Record<string,{playerId:string;kind:'settlement'|'city'|'ship'}>>;
   playedCards: readonly string[];
@@ -38,6 +38,10 @@ export function derivePublicActivity(previous:PublicActivityState|null,next:Publ
   if(next.dice && (!previous.dice || previous.dice[0]!==next.dice[0] || previous.dice[1]!==next.dice[1])){
     const [first,second]=next.dice;
     return `${actor} rolled dice: ${first} + ${second} = ${first+second}.`;
+  }
+
+  if(next.board.piratePortEdgeId&&previous.board.piratePortEdgeId!==next.board.piratePortEdgeId){
+    return `${actor} moved the pirate. Trading at the occupied port is blocked.`;
   }
 
   if(previous.board.robberHexId!==next.board.robberHexId){

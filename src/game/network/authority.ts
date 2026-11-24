@@ -3,14 +3,14 @@ import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
 import { applyEconomyCommand, type EconomyCommand } from '../rules/economy.ts';
 import { applyHarborCommand, validateHarborState, type HarborCommand } from '../rules/harbor.ts';
-import type { AuthorityRecovery } from './recovery.ts';
+import { validateSavedBoard, type AuthorityRecovery } from './recovery.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, timeoutCommand, type TurnClockSnapshot } from '../rules/turn-clock.ts';
 
 const MAX_MESSAGE_BYTES = 16384;
 const idPattern = /^[A-Za-z0-9_-]{1,80}$/;
 type Command = SetupCommand | TurnCommand | BuildCommand | EconomyCommand | HarborCommand;
 const setupTypes = new Set(['place-settlement','place-city','place-road']);
-const turnTypes = new Set(['roll','discard','move-robber','steal','end-turn']);
+const turnTypes = new Set(['roll','discard','move-robber','move-pirate','steal','end-turn']);
 const reversibleTypes = new Set(['place-settlement','place-city','harbor-build-station','place-road','build-road','build-settlement','build-city','build-ship','bank-trade','free-road']);
 const harborTypes=new Set(['harbor-load','harbor-send','harbor-build-station']);
 const buildTypes = new Set(['build-road','build-settlement','build-city','build-ship']);
@@ -19,7 +19,7 @@ export interface PublicTradeSummary { revision:number; proposer:string; accepter
 const handSize=(hand:Record<string,number>)=>Object.values(hand).reduce((sum,count)=>sum+count,0);
 const fields: Record<string,string[]> = {
  'harbor-load':['orderId','cards'],'harbor-send':['recipient','cards','stationId'],'harbor-build-station':['vertexId'],
- 'place-settlement':['vertexId'],'place-city':['vertexId'],'place-road':['edgeId'],undo:[],roll:[],discard:['cards'],'move-robber':['hexId'],steal:['victimId'],'end-turn':[],
+ 'place-settlement':['vertexId'],'place-city':['vertexId'],'place-road':['edgeId'],undo:[],roll:[],discard:['cards'],'move-robber':['hexId'],'move-pirate':['edgeId'],steal:['victimId'],'end-turn':[],
  'build-road':['edgeId'],'build-settlement':['vertexId'],'build-city':['vertexId'],'build-ship':['vertexId'],'bank-trade':['give','receive','rate'],
  offer:['id','targets','give','receive'],'cancel-offer':['id'],'accept-offer':['id'],'reject-offer':['id'],'buy-card':[],
  'play-card':['card','resources','resource'],'free-road':['edgeId'],'stop-free-roads':[],'claim-victory':[]
@@ -47,6 +47,7 @@ export class HostAuthority {
  static fromRecovery(value:AuthorityRecovery,random:()=>number,clockNow:()=>number=Date.now):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
   validateHarborState(value.state);
+  validateSavedBoard(value.state);
   const restored=new HostAuthority(value.gameId,value.state,random,value.revision,clockNow);
   const pending=value.pendingDiscards??{};
   if(!pending||typeof pending!=='object'||Array.isArray(pending))throw new Error('Invalid saved pending discards.');

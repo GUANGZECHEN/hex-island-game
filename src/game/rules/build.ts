@@ -1,5 +1,5 @@
 import { createIslandBoard } from '../board/geometry.ts';
-import { RESOURCES, type GameState, type Hand } from './state.ts';
+import { isTwinCapes, RESOURCES, type GameState, type Hand } from './state.ts';
 import { isHarbor } from './harbor.ts';
 import { usesTradeStations } from './trade-stations.ts';
 export type BuildCommand =
@@ -11,9 +11,13 @@ const ROAD: Hand = {lumber:1,brick:1,wool:0,grain:0,ore:0};
 const SETTLEMENT: Hand = {lumber:1,brick:1,wool:1,grain:1,ore:0};
 const CITY: Hand = {lumber:0,brick:0,wool:0,grain:2,ore:3};
 export const SHIP_COST: Readonly<Hand> = Object.freeze({lumber:2,brick:2,wool:0,grain:0,ore:2});
-/** Every Classic player has exactly two optional harbor ship pieces per match. */
+/** Mainland Classic players have two optional harbor ship pieces per match. */
 export const MAX_SHIPS_PER_PLAYER = 2;
-export function shipsRemaining(state:Pick<GameState,'buildings'>, playerId:string):number {
+export function usesHarborShips(state:Pick<GameState,'board'|'mode'|'rules'>):boolean {
+  return !isHarbor(state)&&(isTwinCapes(state)||state.rules?.ships===true);
+}
+export function shipsRemaining(state:Pick<GameState,'buildings'> & Partial<Pick<GameState,'board'>>, playerId:string):number {
+  if(isTwinCapes(state))return Infinity;
   const built=Object.values(state.buildings).filter(building=>building.kind==='ship'&&building.playerId===playerId).length;
   return Math.max(0, MAX_SHIPS_PER_PLAYER-built);
 }
@@ -78,7 +82,7 @@ export function applyBuildCommand(original: GameState, command: BuildCommand, al
     if (edges.some(edge => edge.vertexIds.some(id => id !== vertex.id && state.buildings[id])) || !edges.some(edge => state.roads[edge.id] === player.id || (legacyTeamSupport && !!state.roads[edge.id]))) throw new Error('Settlement is not connected or violates distance rule.');
     pay(state, player.id, SETTLEMENT); state.buildings[vertex.id] = {playerId:player.id,kind:'settlement'}; player.settlements--;
   } else if (command.type === 'build-ship') {
-    if(state.mode==='harbor-coop'||!state.rules?.ships)throw new Error('Optional ships rule is disabled.');
+    if(!usesHarborShips(state))throw new Error('Optional ships rule is disabled.');
     if(!shipsRemaining(state,player.id))throw new Error('Only two ships per player may be built.');
     const vertex=board.vertices.find(v=>v.id===command.vertexId);
     if(!vertex||state.buildings[vertex.id])throw new Error('Ship requires a vacant harbor vertex.');

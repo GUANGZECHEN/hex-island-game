@@ -1,7 +1,8 @@
+import { PIRATE_CLOTH, PIRATE_COLORS, PIRATE_CROSS, PIRATE_PENNANT, portDescription } from './pirate-art.ts';
 import { createIslandBoard, type Board } from './geometry.ts';
 import { DRAWN_WHEAT, grainClearance, SVG_WHEAT_OFFSETS } from './grain-clearance.ts';
 import { createSetupView } from './presentation.ts';
-import type { BoardSetup, HexSetup } from './setup.ts';
+import type { BoardSetup, HexSetup, PortType } from './setup.ts';
 import { desertIcon, resourceIcon } from '../ui/icons.ts';
 import type { Resource } from '../rules/state.ts';
 
@@ -118,11 +119,56 @@ export function paintGrainClearance(svg: SVGSVGElement, board: Board,
   }
 }
 
+function appendTradingBoat(face: SVGElement, type: PortType): void {
+  // Give the upright trade face its own neutral boat, legible even when phone-sized rigging is hidden.
+  path(face, 'M-.43 .37Q0 .43 .43 .34L.32 .52Q-.02 .59-.34 .52Z', 'port-boat-hull');
+  line(face, -.35, .405, -.35, -.5, 'port-boat-mast');
+  face.append(node('path', { class: 'neutral-port-sail', d: 'M-.43-.45Q0-.43 .43-.40Q.38 0 .43 .43L-.43 .45Z',
+    fill: '#fff1cb', stroke: '#8d6a40', 'stroke-width': '.024', 'stroke-linejoin': 'round' }));
+  face.append(node('path', { class: 'port-trim', d: 'M-.387-.403Q0-.382 .382-.358Q.343 0 .384 .385L-.387 .403Z',
+    fill: 'none', stroke: '#8c7955', 'stroke-width': '.013', 'stroke-dasharray': '.047 .031', 'pointer-events': 'none' }));
+  const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
+  if(type==='generic'){
+    label.setAttribute('y','.02');label.textContent='3:1';label.classList.add('port-label-generic');face.append(label);
+  }else{
+    const symbol=resourceIcon(type as Resource);
+    symbol.setAttribute('x','-.28');
+    symbol.setAttribute('y','-.40');
+    symbol.setAttribute('width','.56');
+    symbol.setAttribute('height','.56');
+    symbol.setAttribute('class',`port-resource-icon resource-${type}`);
+    face.append(symbol);
+    label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
+  }
+
+  const trim = node('g', {class:'port-boat-decor'});
+  trim.append(node('path', { d: 'M-.28 .483Q0 .53 .25 .476', fill: 'none', stroke: '#c9ab79', 'stroke-width': '.018' }));
+  face.append(trim);
+}
+
+function appendPirateBoat(face: SVGElement): void {
+  const pirate = node('g', { class: 'pirate-boat', 'data-pirate': 'true' });
+  pirate.append(node('path', { d: 'M-.55 .32 Q-.12 .43 .58 .25 L.40 .54 Q-.04 .66-.40 .53 Z',
+    fill: PIRATE_COLORS.hull, stroke: PIRATE_COLORS.trim, 'stroke-width': '.035' }));
+  pirate.append(node('path', { d: 'M-.31 .37V-.61', fill: 'none', stroke: PIRATE_COLORS.hull, 'stroke-width': '.045' }));
+  const sail = node('g', { transform: 'translate(-.50 -.66) scale(.01)', stroke: PIRATE_COLORS.trim,
+    'stroke-width': '2.2', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+  sail.append(node('path', { d: PIRATE_PENNANT, fill: PIRATE_COLORS.pennant, class: 'pirate-pennant' }));
+  sail.append(node('path', { d: PIRATE_CLOTH, fill: PIRATE_COLORS.sail }));
+  sail.append(node('path', { d: PIRATE_CROSS, fill: 'none', 'stroke-width': '5' }));
+  const closed = node('text', { x: '51', y: '75', 'text-anchor': 'middle', fill: PIRATE_COLORS.trim, stroke: 'none',
+    'font-family': 'system-ui, sans-serif', 'font-size': '13', 'font-weight': 'bold' });
+  closed.textContent = 'CLOSED'; sail.append(closed); pirate.append(sail); face.append(pirate);
+}
+
 export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): void {
-  const view = createSetupView(createIslandBoard(setup.layout), setup);
+  const board = createIslandBoard(setup.layout);
+  const view = createSetupView(board, setup);
+  const twin = setup.layout === 'twin-capes';
   const svg = document.createElementNS(SVG_NS, 'svg');
   const [x, y, width, height] = view.viewBox.split(' ').map(Number);
-  const vx=x-1.05,vy=y-1.05,vw=width+2.1,vh=height+2.1;
+  const margin = twin ? 1.65 : 1.05;
+  const vx=x-margin,vy=y-margin,vw=width+2*margin,vh=height+2*margin;
   svg.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`);
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   svg.setAttribute('aria-hidden', 'true');
@@ -165,9 +211,17 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
 
   for (const port of setup.ports) {
     const a = vertices.get(port.vertexIds[0])!, b = vertices.get(port.vertexIds[1])!,mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-    const dx=mid.x-islandCenter.x,dy=mid.y-islandCenter.y,length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
+    // On the concave bay, offshore points away from this edge's own land hex.
+    const landId = twin ? board.edges.find(edge => edge.id === port.edgeId)?.hexIds[0] : undefined;
+    const land = twin ? view.hexes.find(hex => hex.id === landId)!.center : islandCenter;
+    const dx=mid.x-land.x,dy=mid.y-land.y,length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
     // Push the dock farther offshore and bias it slightly along the coast so its two direct pier legs breathe and differ naturally in length.
-    const tx=-uy,ty=ux,dockDistance=.78,dockBias=.055;
+    const tx=-uy,ty=ux;
+    let dockDistance=.78,dockBias=.055;
+    if (twin) {
+      dockDistance = 1.03;
+      dockBias = 0;
+    }
     const px=mid.x+ux*dockDistance+tx*dockBias,py=mid.y+uy*dockDistance+ty*dockBias;
     const angle=Math.atan2(ty,tx)*180/Math.PI,dockAttachHalf=.49,dockAttachInset=.335;
     const leftDock={x:px-tx*dockAttachHalf-ux*dockAttachInset,y:py-ty*dockAttachHalf-uy*dockAttachInset};
@@ -175,7 +229,10 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
     const aAlong=(a.x-mid.x)*tx+(a.y-mid.y)*ty,bAlong=(b.x-mid.x)*tx+(b.y-mid.y)*ty;
     const aDock=aAlong<=bAlong?leftDock:rightDock,bDock=aAlong<=bAlong?rightDock:leftDock;
     const group=node('g',{'data-port-edge':port.edgeId,'data-port-type':port.type,class:`port-piece port-${port.type}`});
-    const portTitle=document.createElementNS(SVG_NS,'title');portTitle.textContent=port.type==='generic'?'Any resource 3:1 port':`${port.type} 2:1 port`;group.append(portTitle);
+    const closed = twin && port.edgeId === setup.piratePortEdgeId;
+    if (twin) group.setAttribute('data-port-closed', String(closed));
+    const description = portDescription(port.type, closed);
+    const portTitle=document.createElementNS(SVG_NS,'title');portTitle.textContent=description;group.append(portTitle);
 
     // Each coastal vertex gets its own pier leg, attached near a different end of the dock.
     line(group,a.x,a.y,aDock.x,aDock.y,'port-pier-leg port-pier-a');
@@ -190,34 +247,15 @@ export function renderIslandBoard(container: HTMLElement, setup: BoardSetup): vo
 
     // Keep trade information upright even when the dock rotates around the coast.
     const face=node('g',{class:'port-face',transform:`translate(${px} ${py})`});
-    // Give the upright trade face its own neutral boat, legible even when phone-sized rigging is hidden.
-    path(face, 'M-.43 .37Q0 .43 .43 .34L.32 .52Q-.02 .59-.34 .52Z', 'port-boat-hull');
-    line(face, -.35, .405, -.35, -.5, 'port-boat-mast');
-    face.append(node('path', { class: 'neutral-port-sail', d: 'M-.43-.45Q0-.43 .43-.40Q.38 0 .43 .43L-.43 .45Z',
-      fill: '#fff1cb', stroke: '#8d6a40', 'stroke-width': '.024', 'stroke-linejoin': 'round' }));
-    face.append(node('path', { class: 'port-trim', d: 'M-.387-.403Q0-.382 .382-.358Q.343 0 .384 .385L-.387 .403Z',
-      fill: 'none', stroke: '#8c7955', 'stroke-width': '.013', 'stroke-dasharray': '.047 .031', 'pointer-events': 'none' }));
-    const label=node('text',{x:'0','text-anchor':'middle','dominant-baseline':'central',class:'port-label'});
-    if(port.type==='generic'){
-      label.setAttribute('y','.02');label.textContent='3:1';label.classList.add('port-label-generic');face.append(label);
-    }else{
-      const symbol=resourceIcon(port.type as Resource);
-      symbol.setAttribute('x','-.28');
-      symbol.setAttribute('y','-.40');
-      symbol.setAttribute('width','.56');
-      symbol.setAttribute('height','.56');
-      symbol.setAttribute('class',`port-resource-icon resource-${port.type}`);
-      face.append(symbol);
-      label.setAttribute('y','.25');label.textContent='2:1';face.append(label);
-    }
-
-    const trim = node('g', {class:'port-boat-decor'});
-    trim.append(node('path', { d: 'M-.28 .483Q0 .53 .25 .476', fill: 'none', stroke: '#c9ab79', 'stroke-width': '.018' }));
-    face.append(trim);
+    if (twin) face.append(node('rect', {
+      x: '-.63', y: '-.70', width: '1.26', height: '1.36', rx: '.23', class: 'pirate-target-ring',
+    }));
+    if (closed) appendPirateBoat(face);
+    else appendTradingBoat(face, port.type);
     group.append(face);
 
     svg.append(group);
-    const item=document.createElement('li');item.textContent=port.type==='generic'?`Any resource 3:1 port at ${port.vertexIds.join(' and ')}`:`${port.type} 2:1 port at ${port.vertexIds.join(' and ')}`;ports.append(item);
+    const item=document.createElement('li');item.textContent=`${description} at ${port.vertexIds.join(' and ')}`;ports.append(item);
   }
   container.replaceChildren(svg, details, ports);
 }

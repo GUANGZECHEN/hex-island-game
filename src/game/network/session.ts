@@ -1,6 +1,6 @@
 import { createGame } from '../rules/state.ts';
 import type { GameMode } from '../rules/harbor.ts';
-import type { BoardLayout } from '../board/geometry.ts';
+import { boardPlayerRange, isBoardLayout, type BoardLayout } from '../board/geometry.ts';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
 import { HostAuthority } from './authority.ts';
 import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
@@ -18,6 +18,7 @@ export class HostSession {
  private readonly music:RoomMusicHost;
  constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number; mode?:GameMode; rules?:OptionalRules } = {}) {
   this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;this.mode=options.mode??'classic';this.rules=validateOptionalRules(options.rules);
+  if(!isBoardLayout(this.boardLayout))throw new Error('Invalid board layout.');
   if(this.mode!=='classic'&&this.mode!=='harbor-coop')throw new Error('Invalid game mode.');
   if(this.mode==='harbor-coop'&&this.boardLayout!=='standard')throw new Error('Harbor Co-op requires the standard board.');
    if(this.mode==='harbor-coop'&&(this.rules.catchUp||this.rules.ships))throw new Error('Optional rules require Classic mode.');
@@ -47,10 +48,11 @@ export class HostSession {
  allSeatsConnected():boolean{return this.seats.length>0&&this.seats.every(seat=>seat.connected);}
  recovery():SessionRecovery {
   if(!this.authority)throw new Error('Game not started.');
-  return {version:1,authority:this.authority.checkpoint(),seats:this.seats.map(({id,token,name})=>({id,token,name})),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout};
+  return {version:1,...(this.boardLayout==='twin-capes'?{mainlandShips:this.rules.ships}:{}),authority:this.authority.checkpoint(),seats:this.seats.map(({id,token,name})=>({id,token,name})),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout};
  }
  private output(peer:string,type:string,data:unknown){this.send(peer,JSON.stringify({protocol:1,type,data}));}
- private capacity(){if(this.mode==='harbor-coop')return 2;return this.boardLayout==='expanded-5-6'?6:4;}
+ private capacity(){return this.mode==='harbor-coop'?2:boardPlayerRange(this.boardLayout).max;}
+ private effectiveRules():OptionalRules{return this.boardLayout==='twin-capes'?{...this.rules,ships:true}:this.rules;}
  private availableSeatId(){for(let i=2;i<=this.capacity();i++)if(!this.seats.some(seat=>seat.id===`Player ${i}`))return `Player ${i}`;return null;}
  private claimSeat(peer:string,name:unknown):Seat|null{
   const vacant=this.seats.find((seat,index)=>index>0&&!seat.connected);
@@ -63,7 +65,7 @@ export class HostSession {
   this.seats.push(seat);return seat;
  }
  private announce(){
-  const lobby={mode:this.mode,rules:this.rules,seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
+  const lobby={mode:this.mode,rules:this.effectiveRules(),seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
   this.publish({type:'lobby',lobby});
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'lobby',lobby);
   for(const peer of this.spectators)this.output(peer,'lobby',lobby);
@@ -106,7 +108,8 @@ export class HostSession {
   this.qaTwoPlayers=value.qaTwoPlayers;
   this.boardLayout=value.boardLayout;
   this.mapSeed=value.authority.state.board.seed;this.mode=value.authority.state.mode??'classic';
-   this.rules=validateOptionalRules(value.authority.state.rules);
+  this.rules=validateOptionalRules(value.authority.state.rules);
+  if(this.boardLayout==='twin-capes')this.rules={...this.rules,ships:value.mainlandShips??false};
   this.gameId=value.authority.gameId;
   this.authority=HostAuthority.fromRecovery(value.authority,this.random);
   this.seats=value.seats.map((seat,index)=>({id:seat.id,name:cleanName(seat.name,seat.id),token:seat.token,peer:currentPeers.get(seat.id)??null,connected:index===0||(currentPeers.get(seat.id)!=null),ready:false}));
@@ -209,7 +212,8 @@ export class HostSession {
  }
  setOptionalRules(value:OptionalRules){
    if(this.authority||this.recovering)throw new Error('Optional rules can only be changed before the game starts.');
-   const rules=validateOptionalRules(value);
+   const requested=validateOptionalRules(value);
+   const rules=this.boardLayout==='twin-capes'?{...requested,ships:this.rules.ships}:requested;
    if(this.mode!=='classic'&&(rules.catchUp||rules.ships))throw new Error('Optional rules are available in Classic mode.');
    if(rules.catchUp===this.rules.catchUp&&rules.ships===this.rules.ships)return;
    this.rules=rules;for(const seat of this.seats)seat.ready=false;this.announce();
@@ -217,7 +221,7 @@ export class HostSession {
  setMapSelection(layout:BoardLayout,seed:number){
   if(this.mode==='harbor-coop'&&layout!=='standard')throw new Error('Harbor Co-op uses the standard board.');
   if(this.authority||this.recovering)throw new Error('Map selection is only available before a game starts.');
-  if(layout!=='standard'&&layout!=='expanded-5-6')throw new Error('Invalid board layout.');
+  if(!isBoardLayout(layout))throw new Error('Invalid board layout.');
   if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
   if(layout==='standard'&&this.seats.length>4)throw new Error('Too many seated players for a standard board.');
   if(layout===this.boardLayout&&seed===this.mapSeed)return;
@@ -240,16 +244,17 @@ export class HostSession {
  restart(){
   if(!this.authority||this.recovering)throw new Error('No running game to restart.');
   this.gameId=this.token();
-  this.authority=new HostAuthority(this.gameId,createGame(this.mapSeed,this.seats.map(seat=>seat.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.rules}),this.random);
+  this.authority=new HostAuthority(this.gameId,createGame(this.mapSeed,this.seats.map(seat=>seat.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.effectiveRules()}),this.random);
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'restart',{gameId:this.gameId});
   for(const peer of this.spectators)this.output(peer,'restart',{gameId:this.gameId});
   this.announce();this.emitCheckpoint(true);this.broadcast();
  }
  start(seed:number){
-  const countValid=this.mode==='harbor-coop'?this.seats.length===2:this.boardLayout==='expanded-5-6'?this.seats.length>=5&&this.seats.length<=6:this.seats.length>=2&&this.seats.length<=4;
-  if(this.authority||!countValid||this.seats.some(s=>!s.connected||!s.ready))throw new Error(this.boardLayout==='expanded-5-6'?'Five to six connected, ready players are required for the 5–6 player board.':'Two to four connected, ready players are required for the standard board.');
+  const {min,max}=boardPlayerRange(this.boardLayout);
+  const countValid=this.mode==='harbor-coop'?this.seats.length===2:this.seats.length>=min&&this.seats.length<=max;
+  if(this.authority||!countValid||this.seats.some(s=>!s.connected||!s.ready))throw new Error(this.boardLayout==='twin-capes'?'Two to six connected, ready players are required for Twin Capes.':this.boardLayout==='expanded-5-6'?'Five to six connected, ready players are required for the 5–6 player board.':'Two to four connected, ready players are required for the standard board.');
   if(!Number.isSafeInteger(seed)||seed<0||seed>0xffffffff)throw new Error('Invalid map seed.');
-  this.mapSeed=seed;this.gameId=this.token();const state=createGame(seed,this.seats.map(s=>s.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.rules});this.authority=new HostAuthority(this.gameId,state,this.random);this.recovering=false;this.announce();this.emitCheckpoint();this.broadcast();
+  this.mapSeed=seed;this.gameId=this.token();const state=createGame(seed,this.seats.map(s=>s.id),this.random,{qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mode:this.mode,rules:this.effectiveRules()});this.authority=new HostAuthority(this.gameId,state,this.random);this.recovering=false;this.announce();this.emitCheckpoint();this.broadcast();
  }
  resume(value:unknown){
   if(!this.recovering)throw new Error('No saved game is waiting to resume.');

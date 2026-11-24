@@ -10,7 +10,8 @@ import { DiceSound } from './game/ui/dice-sound.ts';
 import { GameMusic } from './game/ui/music.ts';
 import { RoomMusicControls } from './game/ui/room-music-controls.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, formatClockSeconds, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
-import { SHIP_COST, shipsRemaining } from './game/rules/build.ts';
+import { shipActionLabel } from './game/ui/ship-action.ts';
+import { SHIP_COST, shipsRemaining, usesHarborShips } from './game/rules/build.ts';
 import { describeRoll, isNewRoll, type RollPresentation } from './game/board/three/roll-presentation';
 import { stableBoardFitHeight } from './game/ui/board-fit';
 import type { BoardCameraView } from './game/board/three/renderer';
@@ -27,7 +28,7 @@ import { generateBoardSetup } from './game/board/setup';
 import { createLocalRoomSettings, type LocalRoomSettings } from './game/ui/local-room';
 import { createBoardView } from './game/board/presentation';
 import { paintGrainClearance, renderIslandBoard } from './game/board/render';
-import { createGame, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
+import { createGame, isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
 import { applyTurnCommand as localTurn } from './game/rules/turn';
 import { applyBuildCommand as localBuild, longestRoute } from './game/rules/build';
@@ -152,16 +153,17 @@ const applyTurnCommand = (s:GameState, c:Parameters<typeof localTurn>[1]) => app
 const applyBuildCommand = (s:GameState, c:Parameters<typeof localBuild>[1]) => applyWithLocalUndo(s,c,localBuild);
 const applyEconomyCommand = (s:GameState, c:Parameters<typeof localEconomy>[1]) => applyWithLocalUndo(s,c,localEconomy);
 const applyHarborCommand=(s:GameState,c:HarborCommand)=>applyWithLocalUndo(s,c,localHarbor);
+const localBoardChoice=(): 'auto'|'twin-capes' => el<HTMLSelectElement>('local-board-version').value==='twin-capes'?'twin-capes':'auto';
 const localMode=()=>el<HTMLSelectElement>('local-game-mode').value as GameMode;
 const localOptionalRules=()=>({catchUp:localMode()==='classic'&&el<HTMLInputElement>('local-rule-catch-up').checked,
  ships:localMode()==='classic'&&el<HTMLInputElement>('local-rule-ships').checked});
 const byId=(id:string)=>state!.players.find(p=>p.id===id)!;
 const playerName=(id:string)=>projection?.public.players.find(p=>p.id===id)?.name||id;
 function activityState(s:GameState):PublicActivityState {
- return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:{robberHexId:s.board.robberHexId},roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
+ return {players:s.players.map(player=>{const publicPlayer=projection?.public.players.find(p=>p.id===player.id);return {id:player.id,name:playerName(player.id),resources:publicPlayer?.resources ?? RESOURCES.reduce((sum,resource)=>sum+player.hand[resource],0),developmentCards:publicPlayer?.developmentCards ?? player.cards.length};}),currentSeat:s.currentSeat,turn:s.turn,phase:s.phase,dice:s.dice,victims:s.victims,board:s.board,roads:s.roads,buildings:s.buildings,playedCards:s.playedCards,bank:s.bank,deckCount:projection?.public.deckCount ?? s.deck.length};
 }
 function handoff(id:string){viewer=id;el('game').hidden=true;el('pass').hidden=false;el('pass-message').textContent=`Pass the device to ${id}.`;} 
-function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|stole 1 card|played |traded /i.test(message);}
+function centralActivity(message:string){return /built a ship|built a road|built a settlement|upgraded a settlement|bought a development card|moved the robber|moved the pirate|stole 1 card|played |traded /i.test(message);}
 function commit(next:GameState | null, description:string){if(!next)return;if(!remote){localUndoState=pendingLocalUndo?.state??null;localUndoPlayerId=pendingLocalUndo?.playerId??'';localUndoDeadlines=pendingLocalUndo?.deadlines??null;pendingLocalUndo=null;}const old=state!,beforeActivity=activityState(old);state=next;if(!remote){syncLocalActionClock(pendingClockCommand?effectiveActionResetActors(old,pendingClockCommand):[]);pendingClockCommand=null;}const afterActivity=activityState(next),message=(next.harbor&&next.harbor.event!==old.harbor?.event?next.harbor.event:null)??derivePublicActivity(beforeActivity,afterActivity)??description;if(message){log.unshift(message);publicActivity=message;if(centralActivity(message))pendingActivityAlert=message;}if(isNewRoll(old,next)&&next.dice){clearSupplement();pendingRollPresentation=describeRoll(old,next.dice,next);logSupplement(`local:${next.turn}`,next.catchUpReward,playerName);}targetMode=null;if(old.currentSeat!==next.currentSeat&&localBotIds.size===0&&next.phase!=='finished')handoff(next.players[next.currentSeat].id);if(isHarbor(next)&&!localBotIds.size&&next.phase!=='finished'){const nextViewer=next.phase==='discard'?Object.keys(next.discards)[0]:old.phase==='discard'?next.players[next.currentSeat].id:null;if(nextViewer&&nextViewer!==viewer)handoff(nextViewer);}render();}
 function attempt(f:()=>void){try{f();el('game-error').textContent='';}catch(error){el('game-error').textContent=error instanceof Error?error.message:'Action failed.';}}
 function clearBotTimer(){if(botTimer!==null){window.clearTimeout(botTimer);botTimer=null;}}
@@ -169,7 +171,7 @@ function botDescription(command:ReturnType<typeof chooseBotCommand>,before:GameS
 function pendingLocalBot(s:GameState):string|null{
  if(isHarbor(s)&&s.phase==='discard'&&s.discards[viewer])return null;
  for(const botId of localBotIds)if(s.discards[botId])return botId;
- const tradeBot=[...localBotIds].find(botId=>s.offer?.targets.includes(botId));if(tradeBot)return tradeBot;
+ if(s.phase==='action'){const tradeBot=[...localBotIds].find(botId=>s.offer?.targets.includes(botId));if(tradeBot)return tradeBot;}
  const active=s.players[s.currentSeat]?.id;return active&&localBotIds.has(active)?active:null;
 }
 function botPresentationBlocked():boolean {
@@ -204,7 +206,7 @@ function resourceChoice(parent:HTMLElement,label:string,initial:Resource=RESOURC
  refresh();parent.append(field);return ()=>selected;
 }
 function bankTradeButtons(parent:HTMLElement,s:GameState,actor:GameState['players'][number],availability:ActionAvailability,reason:string){
- const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent='Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
+ const section=document.createElement('section');section.className='bank-trade-section';const title=document.createElement('h2');title.textContent='Bank / port trades';const hint=document.createElement('p');hint.className='trade-rate-hint';hint.textContent=isTwinCapes(s)?'The pirate closes the marked harbor. Your other ports and the bank still offer trades.':'Rates update automatically when you build on a port.';const grid=document.createElement('div');grid.className='bank-trade-grid';section.append(title,hint,grid);
  for(const give of RESOURCES){const rate=bankTradeRate(s,viewer,give);for(const receive of RESOURCES){if(receive===give||!availability.bankTrades[`${give}:${receive}`]?.enabled)continue;const tradeButton=document.createElement('button');tradeButton.type='button';tradeButton.className=`bank-trade-button bank-trade-rate-${rate}`;tradeButton.dataset.rate=String(rate);tradeButton.setAttribute('aria-label',`Trade ${rate} ${give} for 1 ${receive}`);tradeButton.title=`${rate} ${give} → 1 ${receive}`;
    const from=document.createElement('span');from.className='bank-trade-side';const rateBadge=document.createElement('span');rateBadge.className='bank-trade-rate';rateBadge.textContent=String(rate);from.append(rateBadge,resourceIcon(give));
    const arrow=document.createElement('span');arrow.className='bank-trade-arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');const to=document.createElement('span');to.className='bank-trade-side';to.append(resourceIcon(receive));
@@ -321,10 +323,14 @@ function developmentAction(parent:HTMLElement,label:string,card:Exclude<Developm
 function renderDevelopmentCards(parent:HTMLElement,cards:GameState['players'][number]['cards'],turn:number){
  parent.replaceChildren();for(const type of Object.keys(DEVELOPMENT_LABELS) as Development[]){const owned=cards.filter(card=>card.type===type);if(!owned.length)continue;parent.append(developmentChip(type,owned.length,owned.filter(card=>card.boughtTurn===turn).length));}
 }
-function playerStat(path:string,count:number,title:string,className:string,label?:string){
+function playerStat(path:string,count:number|string,title:string,className:string,label?:string){
  const item=document.createElement('span');item.className=`player-stat ${className}`;item.title=title;item.setAttribute('aria-label',`${title}: ${count}`);
  if(label){const tag=document.createElement('span');tag.className='player-stat-label';tag.textContent=label;item.append(tag);}
  item.append(icon(path,'icon player-stat-icon'),document.createTextNode(String(count)));return item;
+}
+function shipSupplyStat(s:GameState,playerId:string,className:string){
+ const remaining=shipsRemaining(s,playerId);
+ return remaining===Infinity?playerStat(ACTION_PATHS.ship,'∞','Unlimited ships',className,'Ship'):playerStat(ACTION_PATHS.ship,remaining,'Ships remaining (max 2)',className,'Ship');
 }
 function renderPieceSupply(player:GameState['players'][number]){
  const supply=el('piece-supply');supply.replaceChildren();
@@ -332,13 +338,13 @@ function renderPieceSupply(player:GameState['players'][number]){
   playerStat(ACTION_PATHS.road,player.roads,'Roads remaining','supply-road','R'),
   playerStat(ACTION_PATHS.settlement,player.settlements,'Settlements remaining','supply-settlement','S'),
   playerStat(ACTION_PATHS.city,player.cities,'Cities remaining','supply-city','C'));
- if(state?.rules?.ships)supply.append(playerStat(ACTION_PATHS.ship,shipsRemaining(state,player.id),'Ships remaining (max 2)','supply-ship','Ship'));
+ if(state&&usesHarborShips(state))supply.append(shipSupplyStat(state,player.id,'supply-ship'));
 }
 let lobbyPreviewBoard: ReturnType<typeof generateBoardSetup>|null=null;
 function renderRoomMapPreview(){
  const input=el<HTMLInputElement>('room-seed'),preview=el('room-map-preview');if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  const boardVersion=el<HTMLSelectElement>('room-board-version').value;
- const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='expanded-5-6'?'expanded-5-6':'standard');
+ const setup=generateBoardSetup(input.valueAsNumber,boardVersion==='twin-capes'||boardVersion==='expanded-5-6'?boardVersion:'standard');
  renderIslandBoard(preview,setup);const svg=preview.querySelector('svg');if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Preview of map seed ${input.value}`);}
  // Reuse the live Three.js renderer from lobby through gameplay.
  if(document.body.classList.contains('room-configuring')){
@@ -390,7 +396,7 @@ function renderNetworkLobby(view:RoomTableLobby){
  el('board-ledger').hidden=true;el('harbor-panel').hidden=true;
  el('game').querySelector<HTMLElement>('.board-view-toolbar')!.hidden=true;
  el('turn-banner').textContent=view.recovering?'Recovering saved room':view.started?'Resuming game':view.mode==='harbor-coop'?'Harbor Co-op · room setup':'Classic · room setup';
- el('public-action').textContent=view.recovering?'Waiting for original players to reconnect.':`${view.seats.length} seated · ${view.spectators} spectating · Host chooses mode and map · Catch-up ${view.rules.catchUp?'ON':'OFF'} · Ships ${view.rules.ships?'ON':'OFF'}`;
+ el('public-action').textContent=view.recovering?'Waiting for original players to reconnect.':`${view.seats.length} seated · ${view.spectators} spectating · Host chooses mode and map · Catch-up ${view.rules.catchUp?'ON':'OFF'} · ${view.boardLayout==='twin-capes'?'Unlimited ships':`Ships ${view.rules.ships?'ON':'OFF'}`}`;
  renderRoomMapPreview();
  scheduleDesktopBoardFit();
 }
@@ -401,6 +407,7 @@ function moveTarget(id:string){if(!state||isPaused())return;const current=state.
  else if(targetMode==='road')commit(state.phase==='setup-road'?applySetupCommand(state,{type:'place-road',playerId:viewer,edgeId:id}):state.phase==='free-road'?applyEconomyCommand(state,{type:'free-road',playerId:viewer,edgeId:id}):applyBuildCommand(state,{type:'build-road',playerId:viewer,edgeId:id}),`${viewer} placed a road.`);
  else if(targetMode==='station')commit(applyHarborCommand(state,{type:'harbor-build-station',playerId:viewer,vertexId:id}),`${viewer} built a trade station.`);
   else if(targetMode==='ship')commit(applyBuildCommand(state,{type:'build-ship',playerId:viewer,vertexId:id}),`${playerName(viewer)} built a ship.`);
+ else if(targetMode==='pirate')commit(applyTurnCommand(state,{type:'move-pirate',playerId:viewer,edgeId:id}),`${playerName(viewer)} moved the pirate.`);
  else if(targetMode==='robber')commit(applyTurnCommand(state,{type:'move-robber',playerId:viewer,hexId:id}),`${viewer} moved the robber.`);
 }
 function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase==='finished')return;const key=`${s.turn}:${s.currentSeat}`;if(key===lastTurnCue)return;lastTurnCue=key;const banner=el('turn-banner'),card=el('player-strip').querySelector<HTMLElement>('.active-player');for(const target of [banner,card]){if(!target)continue;target.classList.remove('turn-cue-flash');void target.offsetWidth;target.classList.add('turn-cue-flash');target.addEventListener('animationend',()=>target.classList.remove('turn-cue-flash'),{once:true});}
@@ -410,11 +417,12 @@ function flashTurnCue(s:GameState){const game=el('game');if(game.hidden||s.phase
  const name=document.createElement('strong');name.className='turn-alert-name';name.textContent=playerName(active.id);alert.append(lead,name);board.append(alert);
  turnAlertTimer=window.setTimeout(()=>{alert.classList.add('turn-alert-out');turnAlertTimer=window.setTimeout(()=>{alert.remove();turnAlertTimer=null;},260);},2200);
 }
-type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'trade'|'generic';
+type ActivityMotionKind='development'|'card-buy'|'build'|'robber'|'pirate'|'trade'|'generic';
 function activityMotionKind(message:string):ActivityMotionKind {
  if(/played (Knight|Road Building|Year of Plenty|Monopoly)/i.test(message))return 'development';
  if(/bought a development card/i.test(message))return 'card-buy';
  if(/built a road|built a settlement|upgraded a settlement/i.test(message))return 'build';
+ if(/moved the pirate/i.test(message))return 'pirate';
  if(/moved the robber|stole 1 card/i.test(message))return 'robber';
  if(/traded /i.test(message))return 'trade';
  return 'generic';
@@ -433,7 +441,7 @@ function showActivityAlert(s:GameState){
  const activity=pendingActivityAlert;pendingActivityAlert='';
  const board=el('board');board.querySelector('.activity-alert')?.remove();if(activityAlertTimer!==null){window.clearTimeout(activityAlertTimer);activityAlertTimer=null;}
  const active=s.players[s.currentSeat],kind=activityMotionKind(activity),alert=document.createElement('div');alert.className=`activity-alert activity-${kind} player-${active.seat+1}`;alert.dataset.motionKind=kind;alert.setAttribute('role','status');alert.setAttribute('aria-live','polite');
- const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent=kind==='development'?'CARD PLAY':kind==='card-buy'?'NEW CARD':kind==='build'?'BUILD':kind==='robber'?'ROBBER':kind==='trade'?'TRADE':'TABLE ACTION';
+ const lead=document.createElement('span');lead.className='activity-alert-lead';lead.textContent=kind==='development'?'CARD PLAY':kind==='card-buy'?'NEW CARD':kind==='build'?'BUILD':kind==='pirate'?'PIRATE':kind==='robber'?'ROBBER':kind==='trade'?'TRADE':'TABLE ACTION';
  const message=document.createElement('strong');message.className='activity-alert-message';message.textContent=activity;
  if(kind==='development'){const card=playedDevelopment(activity);alert.append(lead,motionCard(card,card?DEVELOPMENT_LABELS[card]:'Development card'),message);}
  else if(kind==='card-buy')alert.append(lead,motionCard(null,'Development card'),message);
@@ -505,7 +513,7 @@ function renderPlayerStrip(s:GameState,activeId:string){
    playerStat(ACTION_PATHS.road,routeLength,'Longest road length','player-longest-road','LR')
   );
   if(s.longestHolder===player.id)pieces.lastElementChild?.classList.add('award-holder');
-  if(s.rules?.ships)pieces.append(playerStat(ACTION_PATHS.ship,shipsRemaining(s,player.id),'Ships remaining (max 2)','player-ship-count','Ship'));
+  if(usesHarborShips(s))pieces.append(shipSupplyStat(s,player.id,'player-ship-count'));
   const awards=document.createElement('div');awards.className='player-awards';
   if(s.longestHolder===player.id)awards.append(playerAward('Longest Road',ACTION_PATHS.road,'award-road'));
   if(usesDevelopmentCards(s)&&s.armyHolder===player.id)awards.append(playerAward('Largest Army',DEVELOPMENT_PATHS.knight,'award-army'));
@@ -604,8 +612,11 @@ function drawSvgBoard(legalTargets:readonly string[]){
   node.onclick=()=>attempt(()=>moveTarget(vertex.id));node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(vertex.id));}};svg.append(node);
  }
  const robberMarker=svg.querySelector<SVGGElement>('.robber-marker');if(robberMarker&&renderedRobberHex!==s.board.robberHexId)robberMarker.classList.add('robber-marker-enter');
- if(targetMode==='robber')for(const group of Array.from(svg.querySelectorAll<SVGGElement>('[data-hex-id]'))){
-  const id=group.dataset.hexId!;if(!legal.has(id))continue;group.classList.add('robber-target');group.setAttribute('data-legal-target','robber');group.setAttribute('data-target-id',id);group.setAttribute('tabindex','0');group.setAttribute('role','button');group.setAttribute('aria-label',`Legal robber target ${id}`);
+ if(targetMode==='pirate'||targetMode==='robber')for(const group of Array.from(svg.querySelectorAll<SVGGElement>(targetMode==='pirate'?'[data-port-edge]':'[data-hex-id]'))){
+  const id=targetMode==='pirate'?group.dataset.portEdge:group.dataset.hexId;
+  if(!id||!legal.has(id))continue;
+  group.classList.add(`${targetMode}-target`);group.setAttribute('data-legal-target',targetMode);group.setAttribute('data-target-id',id);group.setAttribute('tabindex','0');group.setAttribute('role','button');
+  group.setAttribute('aria-label',targetMode==='pirate'?`Move pirate to ${group.querySelector('title')?.textContent??'harbor'}`:`Legal robber target ${id}`);
   group.onclick=()=>attempt(()=>moveTarget(id));group.onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();attempt(()=>moveTarget(id));}};
  }
  renderedRoadOwners=new Map(Object.entries(s.roads));renderedBuildings=new Map<string,string>(Object.entries(s.buildings).map(([id,building])=>[id,`${building.playerId}:${building.kind}`] as [string,string]));renderedRobberHex=s.board.robberHexId;
@@ -633,6 +644,7 @@ function drawSvgBoard(legalTargets:readonly string[]){
 function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
  el('classic-how-to-play').hidden=isHarbor(s);
+ el('mainland-how-to-play').hidden=isTwinCapes(s);el('twin-capes-how-to-play').hidden=!isTwinCapes(s);
  renderHarborPanel(el('harbor-panel'),s,viewer,c=>attempt(()=>commit(applyHarborCommand(s,c),'Supplies delivered.')),playerName);
  el('public-action').textContent=publicActivity||'Game ready.';
  renderPlayerStrip(s,active.id);
@@ -643,6 +655,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  if(actor){el('hand').replaceChildren(...RESOURCES.map(r=>resourceChip(r,actor.hand[r])));if(usesDevelopmentCards(s))renderDevelopmentCards(el('cards'),actor.cards,s.turn);else el('cards').replaceChildren();}else{el('hand').replaceChildren();el('cards').replaceChildren();}
  el('log').replaceChildren(...log.slice(0,30).map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
  el('turn-hint').textContent=isPaused()?(remote?'Paused by host.':'Game paused.'):spectating?'Spectator mode · live public view.':s.phase==='finished'?'Game over.':s.discards[viewer]&&s.phase==='discard'?(discardSubmitted?'Your discard is submitted. Waiting for everyone else.':'Choose cards to discard.'):s.offer?.targets.includes(viewer)?'A trade offer needs your response.':s.phase==='discard'?'Waiting for players to discard.':viewer===active.id?'Your turn · choose an action.':localBotIds.has(active.id)?`${playerName(active.id)} is acting…`:`Waiting for ${playerName(active.id)}.`;
+ if(!isPaused()&&viewer===active.id&&s.phase==='pirate')el('turn-hint').textContent='Choose a harbor for the pirate.';
  if(!isPaused()&&usesTradeStations(s)&&s.phase.startsWith('setup'))el('turn-hint').textContent=active.seat===0?`${playerName(active.id)}: settlement + 2 roads${s.phase==='setup-road'?` · ${2-(s.setupRoadEdges?.length??0)} road(s) left`:''}.`:`${playerName(active.id)}: city only · no starting roads.`;
  const canUndo=remote?projection?.public.undoPlayerId===viewer:localUndoState!==null&&localUndoPlayerId===viewer;
  const context={paused:isPaused(),canUndo,deckCount:projection?.public.deckCount ?? s.deck.length,discardSubmitted};
@@ -664,7 +677,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const reason=isPaused()?'Game paused':s.phase==='finished'?'Game over':viewer!==active.id?'Waiting for your turn':'Unavailable in this phase or with current resources';
  const apply=(b:HTMLButtonElement,a:{enabled:boolean},why=reason)=>setAvailability(b,a,why);
  if(targetMode){
-  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
+  const description=document.createElement('p');description.textContent=targetMode==='pirate'?'Choose an open harbor. Its trade rate closes until the pirate moves again.':`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
   const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
   if(!legalTargets.length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
  }
@@ -687,8 +700,9 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
    cityIsFree?'Need your turn and a legal starting city location':'Need your turn, an eligible settlement, 2 grain + 3 ore');
   if(usesDevelopmentCards(s))learningAction('Buy development card','card',()=>commit(applyEconomyCommand(s,{type:'buy-card',playerId:viewer}),`${playerName(viewer)} bought a development card.`),base.buyDevelopment,{wool:1,grain:1,ore:1},'Need your turn, a card in the deck, 1 wool + 1 grain + 1 ore');
  add('Build trade station','trade',()=>mode('station'),base.station,stationCost(s));
- if(base.ship.enabled){const b=add(`Build ship · ${shipsRemaining(s,viewer)}/2 left · 1 VP · 2 wood + 2 brick + 2 ore`,'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b)b.dataset.shipAvailability='ready';}
+ if(base.ship.enabled){const b=add(shipActionLabel(s,viewer),'ship',()=>mode('ship'),base.ship,SHIP_COST);if(b)b.dataset.shipAvailability='ready';}
  add('End turn','end',()=>commit(applyTurnCommand(s,{type:'end-turn',playerId:viewer}),`${viewer} ended the turn.`),base.endTurn);
+ add('Move pirate','pirate',()=>mode('pirate'),base.pirate);
  add('Move robber','settlement',()=>mode('robber'),base.robber);
  add('Finish free roads','end',()=>commit(applyEconomyCommand(s,{type:'stop-free-roads',playerId:viewer}),'Free road effect finished.'),base.finishFreeRoads);
  add('Claim victory','end',()=>commit(applyEconomyCommand(s,{type:'claim-victory',playerId:viewer}),`${viewer} won.`),base.claimVictory);
@@ -751,11 +765,12 @@ function refreshLocalMapPreview(){
  if(!localRoomOpen)return;
  const input=el<HTMLInputElement>('seed'),preview=el('local-map-preview');
  const bots=Number(el<HTMLSelectElement>('local-bot-count').value),selected=Number(el<HTMLSelectElement>('seats').value);
- const count=bots>0?bots+1:selected,layout=count>=5?'expanded-5-6':'standard';
- el('local-board-layout').textContent=`${count} players · ${layout==='standard'?'standard 19-hex board':'expanded 24-hex board'}`;
+ const count=bots>0?bots+1:selected;
+ const boardLabel=localBoardChoice()==='twin-capes'?'Twin Capes · ships always on · unlimited ship supply':count>=5?'expanded 24-hex board':'standard 19-hex board';
+ el('local-board-layout').textContent=`${count} players · ${boardLabel}`;
  if(!input.value||!input.validity.valid){preview.textContent='Enter a valid map seed.';return;}
  try{
-  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots,localMode(),localOptionalRules());
+  const settings=createLocalRoomSettings(input.valueAsNumber,selected,bots,localMode(),localOptionalRules(),localBoardChoice());
   renderIslandBoard(preview,generateBoardSetup(settings.seed,settings.boardLayout));
   const svg=preview.querySelector('svg');
   if(svg){svg.removeAttribute('aria-hidden');svg.setAttribute('aria-label',`Local map preview, seed ${settings.seed}, ${count} players`);}
@@ -790,7 +805,7 @@ el('start').onclick=()=>attempt(()=>{
  if(!localRoomOpen)throw new Error('Create a local room first.');
  const seed=el<HTMLInputElement>('seed');
  if(!seed.value||!seed.validity.valid)throw new Error('Enter a valid map seed.');
- const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value),localMode(),localOptionalRules());
+ const settings=createLocalRoomSettings(seed.valueAsNumber,Number(el<HTMLSelectElement>('seats').value),Number(el<HTMLSelectElement>('local-bot-count').value),localMode(),localOptionalRules(),localBoardChoice());
  activeLocalRoom=settings;startLocalRound(settings);
 });
 const restartLocal=()=>{
@@ -808,16 +823,25 @@ el('local-randomize-map').onclick=()=>{
 el('reveal').onclick=()=>{el('pass').hidden=true;el('game').hidden=false;render();};
 el('switch-player').onclick=()=>{if(!state||remote||localBotIds.size)return;const next=prompt(`Pass to which player? ${state.players.map(p=>p.id).join(', ')}`);if(next&&state.players.some(p=>p.id===next)){handoff(next);render();}};
 
-const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title=count>=4?'Expanded 5–6 player board selected automatically.':'Standard board selected automatically.';}else{localSeats.disabled=false;localSeats.title='';}refreshLocalMapPreview();};localSeats.addEventListener('change',refreshLocalMapPreview);
+const localBotCount=el<HTMLSelectElement>('local-bot-count'),localSeats=el<HTMLSelectElement>('seats');localBotCount.onchange=()=>{const count=Number(localBotCount.value);if(count>0){localSeats.value=String(count+1);localSeats.disabled=true;localSeats.title='Player count follows the selected number of bots.';}else{localSeats.disabled=false;localSeats.title='';}refreshLocalMapPreview();};localSeats.addEventListener('change',refreshLocalMapPreview);
+const localBoardSelect=el<HTMLSelectElement>('local-board-version'),localShips=el<HTMLInputElement>('local-rule-ships');
+let standardLocalShips=localShips.checked;
+localShips.addEventListener('change',()=>{if(!localShips.disabled)standardLocalShips=localShips.checked;});
 const updateLocalMode=()=>{
  const coop=localMode()==='harbor-coop';
  for(const option of Array.from(localBotCount.options))option.disabled=coop&&Number(option.value)>1;
  if(coop){localSeats.value='2';if(Number(localBotCount.value)>1)localBotCount.value='1';}
  localSeats.disabled=coop||Number(localBotCount.value)>0;
- for(const id of ['local-rule-catch-up','local-rule-ships'])el<HTMLInputElement>(id).disabled=coop;
+ localBoardSelect.disabled=coop;
+ if(coop)localBoardSelect.value='auto';
+ const twin=localBoardChoice()==='twin-capes';
+ localShips.disabled=coop||twin;
+ localShips.checked=!coop&&(twin||standardLocalShips);
+ el<HTMLInputElement>('local-rule-catch-up').disabled=coop;
  el('local-optional-rules').classList.toggle('optional-rules-disabled',coop);
  refreshLocalMapPreview();
 };
+localBoardSelect.addEventListener('change',updateLocalMode);
 el('local-game-mode').addEventListener('change',updateLocalMode);localBotCount.addEventListener('change',updateLocalMode);
 for(const id of ['local-rule-catch-up','local-rule-ships'])el<HTMLInputElement>(id).addEventListener('change',refreshLocalMapPreview);
 const roomSeed=el<HTMLInputElement>('room-seed'),roomBoardVersion=el<HTMLSelectElement>('room-board-version');roomSeed.addEventListener('input',renderRoomMapPreview);roomBoardVersion.addEventListener('change',renderRoomMapPreview);

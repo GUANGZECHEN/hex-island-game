@@ -1,7 +1,7 @@
 import { createIslandBoard } from '../board/geometry.ts';
 import { longestRoute } from '../rules/build.ts';
 import { bankTradeRate, legalTargetIds } from '../rules/legal.ts';
-import { publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
+import { isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 import type { EconomyCommand } from '../rules/economy.ts';
 
 export const PIPS:Readonly<Record<number,number>>={2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1};
@@ -40,7 +40,7 @@ export function buildableRoadEdges(state:GameState,playerId:string){
  const board=geometry(state);
  return board.edges.filter(edge=>!state.roads[edge.id]&&edge.vertexIds.some(vertex=>{
   const occupant=state.buildings[vertex];
-  if(occupant)return occupant.playerId===playerId;
+  if(occupant)return occupant.kind!=='ship'&&occupant.playerId===playerId;
   return board.edges.some(other=>other.vertexIds.includes(vertex)&&state.roads[other.id]===playerId);
  })).map(edge=>edge.id);
 }
@@ -111,7 +111,7 @@ export interface ExpansionTarget {
 
 function expansionPath(state:GameState,playerId:string,targetId:string):{roadDistance:number;pathEdgeIds:string[]}|null {
  const board=geometry(state),starts=new Set<string>();
- for(const [vertexId,building] of Object.entries(state.buildings))if(building.playerId===playerId)starts.add(vertexId);
+ for(const [vertexId,building] of Object.entries(state.buildings))if(building.playerId===playerId&&building.kind!=='ship')starts.add(vertexId);
  for(const [edgeId,owner] of Object.entries(state.roads))if(owner===playerId){
   const edge=board.edges.find(item=>item.id===edgeId);if(edge)for(const vertexId of edge.vertexIds)starts.add(vertexId);
  }
@@ -124,7 +124,7 @@ function expansionPath(state:GameState,playerId:string,targetId:string):{roadDis
   if(!known||known.cost!==current.cost||known.path.join('|')!==current.path.join('|'))continue;
   if(current.vertexId===targetId)return {roadDistance:current.cost,pathEdgeIds:current.path};
   const blocker=state.buildings[current.vertexId];
-  if(blocker&&blocker.playerId!==playerId)continue;
+  if(blocker&&(blocker.playerId!==playerId||blocker.kind==='ship'))continue;
   const adjacent=board.edges.filter(edge=>edge.vertexIds.includes(current.vertexId)).sort((a,b)=>a.id.localeCompare(b.id));
   for(const edge of adjacent){
    const owner=state.roads[edge.id];if(owner&&owner!==playerId)continue;
@@ -218,6 +218,17 @@ export function bestRobberHex(state:GameState,botId:string):string|null {
  };
  return ids.sort((a,b)=>score(b)-score(a)||a.localeCompare(b))[0]??null;
 }
+export function bestPiratePort(state:GameState,botId:string):string|null {
+ const legal = new Set(legalTargetIds(state,botId,'pirate'));
+ const ports = state.board.ports.filter(port=>legal.has(port.edgeId));
+ const ranked = ports.map(port=>{
+  const owners = port.vertexIds.map(id=>state.buildings[id]?.playerId);
+  // Prefer closing another player's trade rate without closing an owned port.
+  const score = owners.includes(botId)?-1:owners.some(Boolean)?(port.type==='generic'?1:2):0;
+  return {edgeId:port.edgeId,score};
+ });
+ return ranked.sort((a,b)=>b.score-a.score||a.edgeId.localeCompare(b.edgeId))[0]?.edgeId??null;
+}
 export function bestVictim(state:GameState):string|null {
  return [...state.victims].sort((a,b)=>threatScore(state,b)-threatScore(state,a)||a.localeCompare(b))[0]??null;
 }
@@ -302,10 +313,15 @@ export function monopolyResource(state:GameState,playerId:string):{resource:Reso
 export function shouldPlayKnight(state:GameState,playerId:string){
  const player=state.players.find(p=>p.id===playerId)!;const maxOther=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>p.knights)),next=player.knights+1;
  const armySwing=next>=3&&next>maxOther&&state.armyHolder!==playerId;
+ const leader=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>publicVictoryPoints(state,p.id)));
+ if(armySwing||leader>=publicVictoryPoints(state,playerId)+2)return true;
+ if(isTwinCapes(state)){
+  const closedPort=state.board.ports.find(port=>port.edgeId===state.board.piratePortEdgeId);
+  return closedPort?.vertexIds.some(id=>state.buildings[id]?.playerId===playerId)??false;
+ }
  const robber=geometry(state).hexes.find(h=>h.id===state.board.robberHexId),setup=setupById(state);let blocked=0;
  if(robber){const pips=setup.get(robber.id)?.token?PIPS[setup.get(robber.id)!.token!]??0:0;for(const v of robber.vertexIds){const b=state.buildings[v];if(b?.playerId===playerId)blocked+=pips*(b.kind==='city'?2:1);}}
- const leader=Math.max(0,...state.players.filter(p=>p.id!==playerId).map(p=>publicVictoryPoints(state,p.id)));
- return armySwing||blocked>=4||leader>=publicVictoryPoints(state,playerId)+2;
+ return blocked>=4;
 }
 export function shouldPlayRoadBuilding(state:GameState,playerId:string){
  const target=rankExpansionTargets(state,playerId).find(item=>item.roadDistance>0&&item.nextRoadId);

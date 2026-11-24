@@ -3,8 +3,8 @@ import { bankTradeRate, legalTargetIds, type TargetMode } from '../rules/legal.t
 import { usesDevelopmentCards } from '../rules/economy.ts';
 import { isHarbor, partnersConnected } from '../rules/harbor.ts';
 import { stationCost, usesTradeStations } from '../rules/trade-stations.ts';
-import { SHIP_COST, shipsRemaining } from '../rules/build.ts';
-import { publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
+import { SHIP_COST, shipsRemaining, usesHarborShips } from '../rules/build.ts';
+import { isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource } from '../rules/state.ts';
 
 export interface Availability { visible: boolean; enabled: boolean }
 export interface AvailabilityContext {
@@ -12,7 +12,7 @@ export interface AvailabilityContext {
  discard?: Hand; offer?: { targets: string[]; give: Hand; receive: Hand };
  invention?: Resource[]; victimId?: string;
 }
-export type ActionName = 'roll'|'road'|'settlement'|'city'|'station'|'ship'|'endTurn'|'undo'|'discard'|'robber'|'steal'|'finishFreeRoads'|'claimVictory'|'buyDevelopment'|'knight'|'roadBuilding'|'monopoly'|'yearOfPlenty'|'offer'|'cancelOffer'|'acceptOffer'|'rejectOffer';
+export type ActionName = 'roll'|'road'|'settlement'|'city'|'station'|'ship'|'endTurn'|'undo'|'discard'|'robber'|'pirate'|'steal'|'finishFreeRoads'|'claimVictory'|'buyDevelopment'|'knight'|'roadBuilding'|'monopoly'|'yearOfPlenty'|'offer'|'cancelOffer'|'acceptOffer'|'rejectOffer';
 export type ActionAvailability = Record<ActionName, Availability> & {bankTrades: Record<string, Availability>};
 
 const validHand=(h:Hand|undefined):h is Hand=>!!h && typeof h==='object' && !Array.isArray(h) && Object.keys(h).sort().join(',')===[...RESOURCES].sort().join(',') && RESOURCES.every(r=>Number.isInteger(h[r])&&h[r]>=0);
@@ -37,6 +37,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
  const action=turn&&state.phase==='action';
  const dev=usesDevelopmentCards(state), stations=usesTradeStations(state), classic=!isHarbor(state);
  const seven=!(isHarbor(state)&&state.harbor?.version===3);
+ const pirate=isTwinCapes(state), ships=usesHarborShips(state);
  const availability=(visible:boolean, enabled:boolean):Availability=>({visible,enabled:visible&&enabled});
  // Reducer-based target queries receive a public-only copy of other players, never their hands/cards.
  const safeState:GameState={...state,players:state.players.map(p=>p.id===playerId?p:{id:p.id,seat:p.seat,roads:p.roads,settlements:p.settlements,cities:p.cities,knights:p.knights,hand:blank(),cards:[]})};
@@ -52,8 +53,9 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   if(mode==='settlement'&&(!['setup-settlement','action'].includes(state.phase)||!player.settlements||(state.phase==='action'&&!canPay({lumber:1,brick:1,wool:1,grain:1}))))return [];
   if(mode==='city'&&(!['setup-city','action'].includes(state.phase)||!player.cities||(state.phase==='action'&&!canPay({grain:2,ore:3}))))return [];
   if(mode==='station'&&(!stations||state.phase!=='action'||!canPay(stationCost(state))))return [];
-  if(mode==='ship'&&(!classic||!state.rules?.ships||state.phase!=='action'||!shipsRemaining(state,playerId)||!canPay(SHIP_COST)))return [];
-  if(mode==='robber'&&(!seven||state.phase!=='robber'))return [];
+  if(mode==='ship'&&(!ships||state.phase!=='action'||!shipsRemaining(state,playerId)||!canPay(SHIP_COST)))return [];
+  if(mode==='robber'&&(pirate||!seven||state.phase!=='robber'))return [];
+  if(mode==='pirate'&&(!pirate||state.phase!=='pirate'))return [];
   const ids=mode==='robber'
    ?createIslandBoard(state.board.layout).hexes.filter(hex=>hex.id!==state.board.robberHexId).map(hex=>hex.id)
    :legalTargetIds(safeState,playerId,mode);
@@ -69,11 +71,12 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   settlement:availability(true,targets('settlement')),
   city:availability(true,targets('city')),
   station:availability(stations,stations&&targets('station')),
-  ship:availability(classic&&!!state.rules?.ships,classic&&!!state.rules?.ships&&targets('ship')),
+  ship:availability(ships,targets('ship')),
   endTurn:availability(true,action), undo:availability(true,ready&&!!context.canUndo),
   discard:availability(seven,false),
-  robber:availability(seven,targets('robber')),
-  steal:availability(classic,false),
+  robber:availability(seven&&!pirate,targets('robber')),
+  pirate:availability(pirate,targets('pirate')),
+  steal:availability(classic&&!pirate,false),
   finishFreeRoads:availability(dev,turn&&state.phase==='free-road'),
   claimVictory:availability(classic,turn&&state.phase!=='setup-settlement'&&state.phase!=='setup-road'&&!!player&&publicVictoryPoints(state,playerId)+player.cards.filter(c=>c.type==='victory-point').length>=10),
   buyDevelopment:availability(dev,action&&(context.deckCount??state.deck.length)>0&&!!player&&player.hand.wool>=1&&player.hand.grain>=1&&player.hand.ore>=1),
@@ -99,7 +102,7 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
   const discard=selection.discard;
   return {...result,
    discard:availability(seven,ready&&state.phase==='discard'&&!context.discardSubmitted&&!!state.discards[playerId]&&validHand(discard)&&!!player&&size(discard)===state.discards[playerId]&&RESOURCES.every(r=>discard[r]<=player.hand[r])),
-   steal:availability(classic,turn&&state.phase==='steal'&&!!selection.victimId&&state.victims.includes(selection.victimId)),
+   steal:availability(classic&&!pirate,turn&&state.phase==='steal'&&!!selection.victimId&&state.victims.includes(selection.victimId)),
    yearOfPlenty:availability(dev,inventionCard&&inventionValid),
    offer:availability(!stations,action&&!stations&&offerValid),
   };

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isPlacement } from '../src/game/board/target-feedback.ts';
 import { generateBoardSetup } from '../src/game/board/setup.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { worldGeometry, portBoatPlan, duneHeight, staticBoardKey } from '../src/game/board/three/model.ts';
@@ -51,4 +52,22 @@ test('3D receives only public geometry and targets, while camera remains outside
   assert.ok(render.includes('this.renderer.dispose()'));
   assert.ok(controller.includes('this.drawSVG(view.legalTargets)'));
   assert.ok(controller.includes('qa3d'));
+});
+
+test('Twin Capes pirate moves between existing offshore port targets without a board rebuild', () => {
+  const b = generateBoardSetup(24680, 'twin-capes');
+  const next = b.ports.find(port => port.edgeId !== b.piratePortEdgeId)!;
+  assert.equal(staticBoardKey(b), staticBoardKey({ ...b, piratePortEdgeId: next.edgeId }));
+  assert.equal(isPlacement('pirate'), false, 'moving the pirate never draws a construction preview');
+  const geometry = worldGeometry(b.layout);
+  const centers = b.ports.map(port => {
+    const plan = portBoatPlan(port, geometry);
+    const edge = geometry.topology.edges.find(edge => edge.id === port.edgeId)!;
+    const hex = geometry.hexes.get(edge.hexIds[0])!;
+    assert.ok((plan.center.x - hex.x) * plan.outward.x + (plan.center.z - hex.z) * plan.outward.z > 1.8);
+    return plan.center;
+  });
+  for (const [i, center] of centers.entries()) for (const other of centers.slice(i + 1)) {
+    assert.ok(Math.hypot(center.x - other.x, center.z - other.z) > 1.46, 'neighboring target rings stay distinct');
+  }
 });

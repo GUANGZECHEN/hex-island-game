@@ -11,6 +11,7 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
   'Buy development card': 'Develop',
   'Roll dice': 'Roll',
   'Move robber': 'Robber',
+  'Move pirate': 'Pirate',
   'Finish free roads': 'Done',
   'Claim victory': 'Victory',
   'Make offer': 'Offer',
@@ -24,8 +25,8 @@ const LABELS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 export function compactActionLabel(fullLabel: string): string {
-  const ship=/^Build ship · (\d+)\/2 left · 1 VP$/.exec(fullLabel);
-  if(ship)return `Ship · ${ship[1]}/2 (+1 VP)`;
+  const ship=/^Build ship · (?:(\d+)\/2 left|Unlimited supply) · 1 VP(?: · .+)?$/.exec(fullLabel);
+  if(ship)return ship[1]===undefined?'Ship (+1 VP)':`Ship · ${ship[1]}/2 (+1 VP)`;
   return Object.hasOwn(LABELS, fullLabel) ? LABELS[fullLabel] : fullLabel;
 }
 
