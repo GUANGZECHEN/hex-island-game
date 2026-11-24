@@ -162,9 +162,13 @@ export class GameMusic extends EventTarget {
     this.paint();
   }
 
+  get isMuted(): boolean { return this.muted; }
+
   private setMuted(value: boolean): void {
+    if (this.muted === value) return;
     this.muted = value;
     try { localStorage.setItem(muteKey, String(value)); } catch { /* Storage is optional. */ }
+    this.dispatchEvent(new Event('mutechange'));
   }
 
   private useLibrary(library: MusicLibrary): void {

@@ -13,7 +13,8 @@ export class RoomMusicControls {
   private scene: MusicScene = 'menu';
   private matchId = '';
   private oppositeSubscribers = false;
-  private opposite = new RoomResultMusic(data => this.network?.publishMusicFrame(data, 'opposite'));
+  private opposite = new RoomResultMusic(data => this.network?.publishMusicFrame(data, 'opposite'),
+    () => this.network?.resetMusicPlayback('opposite'));
   private shareAttempt = 0;
   private sharePending = false;
   private shareError = '';
@@ -29,6 +30,7 @@ export class RoomMusicControls {
   constructor(music: GameMusic) {
     this.music = music;
     music.addEventListener('librarychange', () => { this.updateListening(); this.updateOpposite(); });
+    music.addEventListener('mutechange', () => this.updateOpposite());
     this.capture = new RoomMusicCapture(
       document.querySelector<HTMLAudioElement>('#music-player')!,
       data => this.network?.publishMusicFrame(data),
@@ -67,7 +69,7 @@ export class RoomMusicControls {
     const result = this.scene === 'win' ? 'loss' : this.scene === 'loss' ? 'win' : null;
     const share = this.state.role === 'host' && this.state.offered && this.oppositeSubscribers;
     const file = share && result ? this.music.resultTrack(result) : undefined;
-    this.opposite.update(file ? this.capture.sharingContext : null, file ?? null, this.matchId);
+    this.opposite.update(file ? this.capture.sharingContext : null, file ?? null, this.matchId, this.music.isMuted);
   }
 
   private get prefersLocalEnding(): boolean {

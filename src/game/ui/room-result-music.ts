@@ -4,22 +4,34 @@ export class RoomResultMusic {
   private file: File | null = null;
   private matchId = '';
   private generation = 0;
+  private muted = false;
+  private finished = false;
+  private sentAudio = false;
+  private position = 0;
+  private startedAt: number | null = null;
   private source: AudioBufferSourceNode | null = null;
   private encoder: AudioWorkletNode | null = null;
   private volume: GainNode | null = null;
   private tail: ConstantSourceNode | null = null;
   private readonly send: (base64: string) => void;
 
-  constructor(send: (base64: string) => void) { this.send = send; }
+  private readonly reset?: () => void;
 
-  update(context: AudioContext | null, file: File | null, matchId: string): void {
-    if (this.context === context && this.file === file && this.matchId === matchId) return;
+  constructor(send: (base64: string) => void, reset?: () => void) { this.send = send; this.reset = reset; }
+
+  update(context: AudioContext | null, file: File | null, matchId: string, muted = false): void {
+    const same = this.context === context && this.file === file && this.matchId === matchId;
+    if (same && this.muted === muted) return;
     const generation = ++this.generation;
+    if (!same) { this.position = 0; this.finished = false; }
+    else if (this.startedAt !== null && this.context) this.position += Math.max(0, this.context.currentTime - this.startedAt);
     this.release();
+    this.muted = muted;
+    if (this.sentAudio && (muted || !same)) { this.sentAudio = false; this.reset?.(); }
     this.context = context;
     this.file = file;
     this.matchId = matchId;
-    if (context && file) void this.start(context, file, generation);
+    if (context && file && !muted && !this.finished) void this.start(context, file, generation);
   }
 
   private async start(context: AudioContext, file: File, generation: number): Promise<void> {
@@ -28,6 +40,7 @@ export class RoomResultMusic {
       if (generation !== this.generation) return;
       const buffer = await context.decodeAudioData(bytes);
       if (generation !== this.generation) return;
+      if (this.position >= buffer.duration) { this.finished = true; return; }
       const encoder = this.encoder = new AudioWorkletNode(context, 'hex-room-music', {
         numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
         channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers',
@@ -36,6 +49,7 @@ export class RoomResultMusic {
         if (generation !== this.generation || data.generation !== generation ||
             !(data.bytes instanceof ArrayBuffer) || data.bytes.byteLength !== 3600 ||
             context.currentTime - data.endTime >= 1.5) return;
+        this.sentAudio = true;
         this.send(btoa(String.fromCharCode(...new Uint8Array(data.bytes))));
       };
       const source = this.source = context.createBufferSource();
@@ -54,11 +68,12 @@ export class RoomResultMusic {
       tail.offset.value = 0;
       tail.connect(volume);
       const when = context.currentTime;
-      tail.onended = () => { if (generation === this.generation) this.release(); };
+      tail.onended = () => { if (generation === this.generation) { this.finished = true; this.release(); } };
       if (context.state !== 'running') void context.resume().catch(() => {});
-      source.start(when);
+      this.startedAt = when;
+      source.start(when, this.position);
       tail.start(when);
-      tail.stop(when + buffer.duration + .15);
+      tail.stop(when + buffer.duration - this.position + .15);
     } catch {
       // An unavailable result is silent; regular music and the opposite result
       // are never substituted for a missing or undecodable ending.
@@ -67,6 +82,7 @@ export class RoomResultMusic {
   }
 
   private release(): void {
+    this.startedAt = null;
     if (this.source) {
       this.source.onended = null;
       try { this.source.stop(); } catch { /* A graph setup failure may precede start(). */ }

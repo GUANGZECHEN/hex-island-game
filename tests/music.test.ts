@@ -69,10 +69,11 @@ test('each outcome preempts a one-track gameplay loop, plays once and restarts c
   music.setScene('win','one');assert.equal(audio.loop,false);assert.equal(audio.dataset.scene,'win');
   assert.match(get('#music-status').textContent,/M01017.WAV/);assert.equal(get('#music-playlist').hidden,true);
   const plays=audio.playCount,source=audio.src;
+  let muteChanges=0;music.addEventListener('mutechange',()=>{muteChanges++;});
   music.setScene('win','one');assert.equal(audio.src,source);assert.equal(audio.playCount,plays);
   audio.ended=true;audio.paused=true;audio.dispatchEvent(new Event('ended'));
   music.setRoomListening(true);music.setRoomListening(false);doc.dispatchEvent(new Event('click'));
-  assert.equal(audio.playCount,plays);
+  assert.equal(audio.playCount,plays);assert.equal(muteChanges,0,'completion and channel changes are not a host mute intent');
   music.setScene('loss','two');assert.notEqual(audio.src,source);assert.equal(audio.loop,false);assert.match(get('#music-status').textContent,/m01018.wav/);
   music.setScene('spectator-end','two');assert.equal(audio.src,'');
   music.setScene('match','three');assert.equal(audio.loop,true);assert.equal(get('#music-playlist').hidden,false);
@@ -83,10 +84,11 @@ test('missing endings fall silent and a blocked or muted ending waits for delibe
   const {music,audio,choose,get,doc}=await musicPlayer(t);
   choose(file('m01001.wav'),file('m01002.wav'),file('m01017.wav'));
   music.setScene('match','one');
-  get('#music-toggle').click();
+  let changes=0;music.addEventListener('mutechange',()=>{changes++;});
+  get('#music-toggle').click();assert.equal(music.isMuted,true);assert.equal(changes,1);
   music.setScene('win','one');assert.equal(audio.paused,true);
   doc.dispatchEvent(new Event('click'));assert.equal(audio.paused,true);
-  audio.block=true;get('#music-toggle').click();await Promise.resolve();
+  audio.block=true;get('#music-toggle').click();await Promise.resolve();assert.equal(music.isMuted,false);assert.equal(changes,2);
   assert.match(get('#music-status').textContent,/Play music/);
   audio.block=false;doc.dispatchEvent(new Event('click'));assert.equal(audio.paused,false);
   music.setScene('loss','one');assert.equal(audio.src,'');assert.match(get('#music-status').textContent,/m01018/);
