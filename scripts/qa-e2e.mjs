@@ -506,6 +506,7 @@ try{
   const actor=guest;
   const observer=host;
   const previousViewport=actor.viewportSize();
+  const previousScroll=await actor.evaluate(()=>({left:window.scrollX,top:window.scrollY}));
   await actor.setViewportSize({width:375,height:812});
   const visualBeforeTarget=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
   await actor.getByRole('button',{name:'Build settlement'}).tap();
@@ -525,6 +526,7 @@ try{
   if(await observer.locator(`#board [data-building-kind="settlement"][data-vertex-id="${touchVertex}"]`).count()!==1)
     throw new Error('The host did not place the settlement at the tapped target.');
   if(previousViewport)await actor.setViewportSize(previousViewport);
+  await actor.evaluate(scroll=>window.scrollTo({...scroll,behavior:'instant'}),previousScroll);
   await observer.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#turn-banner')?.textContent?.includes('Player 2'),null,{timeout:15000});
   if(await observer.locator('#board [data-building-kind="settlement"]').count()<1)throw new Error('B3 settlement icon did not render on the board.');
@@ -593,11 +595,14 @@ try{
   // action/trade viewport must fit in a single screen without clipping the map.
   for(const height of [720,900,1080]){
     await actor.setViewportSize({width:1280,height});
+    // The fit is calculated from the stage's document position, which matches
+    // its viewport position once this independent check returns to the top.
+    await actor.evaluate(()=>window.scrollTo({left:0,top:0,behavior:'instant'}));
     await actor.waitForFunction(()=>{
       const stage=document.querySelector('.board-workspace .board-stage');
       if(!stage)return false;
       const rect=stage.getBoundingClientRect();
-      return Math.abs(rect.bottom-(window.innerHeight-18))<8;
+      return window.scrollY===0&&Math.abs(rect.bottom-(window.innerHeight-18))<8;
     },null,{timeout:6000});
     const fit=await actor.evaluate(()=>{
       const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();
