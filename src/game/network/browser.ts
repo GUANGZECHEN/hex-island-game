@@ -8,7 +8,7 @@ import type { GameMode } from '../rules/harbor';
 import { boardPlayerRange, isBoardLayout, type BoardLayout } from '../board/geometry';
 import { validateOptionalRules, type OptionalRules } from '../rules/optional-rules.ts';
 import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
-import { isRoomMusicMessage, RoomMusicGuest } from './room-music.ts';
+import { isRoomMusicMessage, RoomMusicGuest, type RoomMusicBus } from './room-music.ts';
 
 type Snapshot = ReturnType<typeof projectState> | ReturnType<typeof projectSpectatorState>;
 export interface RoomTableLobby {
@@ -17,7 +17,7 @@ export interface RoomTableLobby {
  seats:Array<{id:string;name:string;connected:boolean;ready:boolean}>;
 }
 type Callbacks = { snapshot:(value:Snapshot,playerId:string)=>void; status:(message:string)=>void; clock?:(clock:TurnClockSnapshot|null)=>void; timedOut?:(playerId:string)=>void; discardPending?:()=>void; reset?:()=>void; enterRoom?:()=>void; lobby?:(view:RoomTableLobby)=>void; musicState?:(value:RoomMusicState)=>void;
- musicFrame?:(frame:RoomMusicFrame)=>void; musicSubscribers?:(hasSubscribers:boolean)=>void; musicReset?:()=>void;
+ musicFrame?:(frame:RoomMusicFrame)=>void; musicSubscribers?:(hasSubscribers:boolean,bus:RoomMusicBus)=>void; musicReset?:()=>void;
 };
 export type RoomMusicState = {role:'host'|'guest'|null; offered:boolean};
 export type RoomMusicFrame = {base64:string; seq:number; generation:number};
@@ -27,8 +27,8 @@ export interface BrowserGame {
  setPaused:(paused:boolean)=>void;
  setMusicSharing:(enabled:boolean)=>void;
  setMusicListening:(enabled:boolean)=>void;
- publishMusicFrame:(base64:string)=>void;
- resetMusicPlayback:()=>void;
+ publishMusicFrame:(base64:string,bus?:RoomMusicBus)=>void;
+ resetMusicPlayback:(bus?:RoomMusicBus)=>void;
 }
 type SavedRoom = {version:1;role:'host'|'guest';room:string;capability:string};
 
@@ -212,9 +212,9 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
   }
  };
  const publish=(event:unknown)=>{
-  const x=event as {type:string;lobby?:unknown;data?:unknown;revision?:unknown;round?:unknown;replace?:unknown};
+  const x=event as {type:string;bus?:unknown;lobby?:unknown;data?:unknown;revision?:unknown;round?:unknown;replace?:unknown};
   if(x.type==='lobby')showLobby(x.lobby);
-  if(x.type==='music-subscribers'&&typeof x.data==='boolean')callbacks.musicSubscribers?.(x.data);
+  if(x.type==='music-subscribers'&&typeof x.data==='boolean')callbacks.musicSubscribers?.(x.data,x.bus==='opposite'?'opposite':'table');
   if(x.type==='clock')callbacks.clock?.(x.data as TurnClockSnapshot|null);
   if(x.type==='clock-timeout'&&typeof (x.data as {playerId?:unknown}|null)?.playerId==='string')callbacks.timedOut?.((x.data as {playerId:string}).playerId);
   if(x.type==='abort'){callbacks.reset?.();acceptedGameId='';acceptedRevision=-1;gameId='';gameFinished=false;networkResetForResume();clearSafe(gameKey(room));status('Game ended. Choose the next map and mode in this room.');}
@@ -460,7 +460,7 @@ export function initializeNetwork(callbacks:Callbacks):BrowserGame {
    reportMusicState('host',enabled);host?.setMusicSharing(enabled);
   },
   setMusicListening(enabled){if(musicRoomRole==='guest')guestMusic.setListening(enabled);},
-  publishMusicFrame(base64){if(musicState.role==='host'&&musicState.offered)host?.publishMusicFrame(base64);},
-  resetMusicPlayback(){if(musicState.role==='host'&&musicState.offered)host?.resetMusicPlayback();},
+  publishMusicFrame(base64,bus){if(musicState.role==='host'&&musicState.offered)host?.publishMusicFrame(base64,bus);},
+  resetMusicPlayback(bus){if(musicState.role==='host'&&musicState.offered)host?.resetMusicPlayback(bus);},
   canPause(){return role==='host'&&!!host;},setPaused(paused){if(role!=='host'||!host)throw new Error('Only the host can pause.');host.setPaused(paused);},submit(command,revision){if(spectator)throw new Error('Spectators cannot submit game actions.');if(awaitingSnapshot)throw new Error('Game state is synchronizing.');if(!gameId||!playerId)throw new Error('Game is not connected.');const commandId=`${Date.now().toString(36)}-${++counter}-${token().slice(0,12)}`;if(role==='host'){const result=host!.submit(command,commandId,revision);if(!result.ok)throw new Error(`Command rejected: ${result.code}`);}else if(role==='guest'){send('host',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId,revision,commandId,sender:playerId,command:{...command,playerId}})}));}else throw new Error('Not in a room.');}};
 }

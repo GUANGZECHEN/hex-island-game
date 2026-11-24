@@ -8,6 +8,7 @@ import { setCompactActionLabel } from './game/ui/compact-actions';
 import { BoardRendererController } from './game/board/three/controller';
 import { logRollPayout, ownPayoutLabel, type GameLogEntry } from './game/ui/roll-payout.ts';
 import { DiceSound } from './game/ui/dice-sound.ts';
+import { matchMusicScene } from './game/music-outcome.ts';
 import { GameMusic } from './game/ui/music.ts';
 import { RoomMusicControls } from './game/ui/room-music-controls.ts';
 import { ACTION_WINDOW_MS, clockParticipants, effectiveActionResetActors, formatClockSeconds, remainingClockSeconds, timeoutCommand } from './game/rules/turn-clock.ts';
@@ -262,7 +263,6 @@ function action(parent:HTMLElement,label:string,symbol:ActionIcon,run:()=>void,c
  return b;
 }
 function enterGame(newMatch:boolean){
- music.setScene('match', projection ? `online:${projection.gameId}` : `local:${localMusicRound}`);
  if(newMatch){draftCounts.clear();draftChoices.clear();tradeDrafts.clear();}
  const wasConfiguring=document.body.classList.contains('room-configuring');
  document.body.classList.add('playing');
@@ -376,7 +376,7 @@ function enterNetworkRoom(){
 }
 function renderNetworkLobby(view:RoomTableLobby){
  if(!view.started||view.recovering){
-  music.setScene('lobby');
+  roomMusic.setScene('lobby');
   enterNetworkRoom();
  }
  document.body.classList.toggle('room-configuring',!view.started||view.recovering);
@@ -641,7 +641,11 @@ function drawSvgBoard(legalTargets:readonly string[]){
   return ghost;
  };
 }
-function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
+function render(){if(!state)return;const s=state,active=s.players[s.currentSeat],actor=s.players.find(player=>player.id===viewer)??null,spectating=remote!==null&&!actor;
+ // A shared hot-seat device celebrates the table winner. A solo player with bots hears their own result.
+ const musicListener=remote?(actor?.id??null):(activeLocalRoom?.humanId??s.winner??viewer);
+ roomMusic.setScene(matchMusicScene(s,musicListener),projection?`online:${projection.gameId}`:`local:${localMusicRound}`);
+ const chooseMap=el<HTMLButtonElement>('game-change-map');if(!chooseMap.hidden)chooseMap.textContent=s.phase==='finished'?'Next match · choose mode and map':'Abort game · choose mode and map';el('game-status').textContent=`Seed ${s.board.seed}.${remote ? ` Revision ${networkRevision}.` : ''} ${playerName(active.id)}'s turn; phase: ${s.phase}${s.dice?`; dice ${s.dice.join(' + ')}`:''}${s.winner?`; winner: ${s.winner}`:''}.`;
  el('turn-banner').textContent=isHarbor(s)?`Harbor Co-op · Round ${s.harbor!.round} · ${s.harbor!.outcome==='playing'?playerName(active.id)+"'s turn":s.harbor!.outcome==='won'?'Team victory':'Game over'}`:turnAnnouncement(activityState(s));
  el('classic-how-to-play').hidden=isHarbor(s);
  el('mainland-how-to-play').hidden=isTwinCapes(s);el('twin-capes-how-to-play').hidden=!isTwinCapes(s);
@@ -808,7 +812,7 @@ function startLocalRound(settings:LocalRoomSettings){
 }
 el('local-room-create').onclick=()=>{
  localRoomOpen=true;
- music.setScene('lobby');
+ roomMusic.setScene('lobby');
  el('local-room-create').hidden=true;
  el('local-room-lobby').hidden=false;
  refreshLocalMapPreview();

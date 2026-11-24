@@ -150,6 +150,9 @@ export class RoomMusicCapture {
     }
   }
 
+  /** Ready only after the host's Share gesture has unlocked audio and registered the capture worklet. */
+  get sharingContext(): AudioContext | null { return this.enabled ? this.context : null; }
+
   disable(): void {
     this.enableRequest++;
     this.enabled = false;

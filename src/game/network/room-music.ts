@@ -25,37 +25,39 @@ function encode(action: string, generation: number, fields: Record<string, strin
 }
 
 type HostSend = (peer: string, text: string, frame?: boolean) => void | boolean;
-type Listener = { subscription: number; listening: boolean; outstanding: number[]; next: number };
+export type RoomMusicBus = 'table' | 'opposite';
+type Listener = { bus: RoomMusicBus | null; subscription: number; listening: boolean; outstanding: number[]; next: number };
+type Stream = { sequence: number; recent: { sequence: number; captured: number; data: string }[]; fanoutStart: number; draining: boolean; active: boolean };
+const buses: readonly RoomMusicBus[] = ['table', 'opposite'];
+const stream = (): Stream => ({ sequence: 0, recent: [], fanoutStart: 0, draining: false, active: false });
 
 /** Membership is supplied by the host session only after it admits a seat or spectator. */
 export class RoomMusicHost {
   private readonly peers = new Map<string, Listener>();
   private sharing = false;
   private generation = 1;
-  private sequence = 0;
-  private recent: { sequence: number; captured: number; data: string }[] = [];
-  private fanoutStart = 0;
-  private draining = false;
+  private readonly streams = { table: stream(), opposite: stream() };
   private readonly now: () => number;
-  private notifiedListeners = false;
   private readonly send: HostSend;
-  private readonly listenersChanged?: (listening: boolean) => void;
+  private readonly listenersChanged?: (listening: boolean, bus: RoomMusicBus) => void;
 
-  constructor(send: HostSend, listenersChanged?: (listening: boolean) => void, now: () => number = () => performance.now()) {
+  constructor(send: HostSend, listenersChanged?: (listening: boolean, bus: RoomMusicBus) => void, now: () => number = () => performance.now()) {
     this.now = now;
     this.send = send;
     this.listenersChanged = listenersChanged;
   }
   get hasListeners(): boolean {
-    for (const peer of this.peers.values()) if (peer.listening) return true;
-    return false;
+    return this.streams.table.active || this.streams.opposite.active;
   }
   private notify(): void {
-    const listening = this.hasListeners;
-    if (!listening) this.recent.length = 0;
-    if (listening !== this.notifiedListeners) {
-      this.notifiedListeners = listening;
-      this.listenersChanged?.(listening);
+    for (const bus of buses) {
+      const stream = this.streams[bus];
+      const active = [...this.peers.values()].some(peer => peer.listening && peer.bus === bus);
+      if (!active) stream.recent.length = 0;
+      if (active !== stream.active) {
+        stream.active = active;
+        this.listenersChanged?.(active, bus);
+      }
     }
   }
   private transmit(id: string, text: string, frame = false): boolean {
@@ -63,11 +65,11 @@ export class RoomMusicHost {
     catch { return false; } // The normal room lifecycle handles transport loss.
   }
   private offer(id: string): void {
-    this.transmit(id, encode('offer', this.generation, { enabled: this.sharing }));
+    this.transmit(id, encode('offer', this.generation, { enabled: this.sharing && this.peers.get(id)?.bus != null }));
   }
-  admit(id: string): void {
+  admit(id: string, bus: RoomMusicBus | null = 'table'): void {
     if (this.peers.has(id)) return;
-    this.peers.set(id, { subscription: 0, listening: false, outstanding: [], next: this.sequence + 1 });
+    this.peers.set(id, { bus, subscription: 0, listening: false, outstanding: [], next: bus ? this.streams[bus].sequence + 1 : 1 });
     this.offer(id);
   }
   remove(id: string): void {
@@ -77,9 +79,16 @@ export class RoomMusicHost {
   setSharing(enabled: boolean): void {
     if (enabled === this.sharing) return;
     this.sharing = enabled;
+    this.refreshOffers();
+  }
+  /** The authority alone supplies routes. Fence delayed frames and ACKs across a result or restart. */
+  setRoutes(route: (id: string) => RoomMusicBus | null): void {
+    for (const [id, peer] of this.peers) peer.bus = route(id);
+    this.refreshOffers();
+  }
+  private refreshOffers(): void {
     this.generation++;
-    this.sequence = 0;
-    this.recent.length = 0;
+    for (const bus of buses) { this.streams[bus].sequence = 0; this.streams[bus].recent.length = 0; }
     for (const peer of this.peers.values()) {
       peer.listening = false;
       peer.subscription = 0;
@@ -91,13 +100,13 @@ export class RoomMusicHost {
   }
   receive(id: string, message: unknown): void {
     const peer = this.peers.get(id);
-    if (!peer || !this.sharing || !isRoomMusicMessage(message) || message.protocol !== 1 ||
+    if (!peer?.bus || !this.sharing || !isRoomMusicMessage(message) || message.protocol !== 1 ||
         message.generation !== this.generation || !positive(message.subscription)) return;
     if (message.action === 'listen' && Object.keys(message).length === 6 &&
         typeof message.enabled === 'boolean' && message.subscription > peer.subscription) {
       peer.subscription = message.subscription;
       peer.listening = message.enabled;
-      peer.next = this.sequence + 1;
+      peer.next = this.streams[peer.bus].sequence + 1;
       peer.outstanding.length = 0;
       this.notify();
     } else if (message.action === 'ack' && Object.keys(message).length === 6 && peer.listening &&
@@ -105,37 +114,39 @@ export class RoomMusicHost {
       const index = peer.outstanding.indexOf(message.sequence);
       if (index >= 0) {
         peer.outstanding.splice(0, index + 1);
-        this.flush();
+        this.flush(peer.bus);
       }
     }
   }
 
-  frame(data: string): void {
-    if (!this.sharing || !this.hasListeners || !isRoomMusicFrame(data)) return;
-    this.recent.push({ sequence: ++this.sequence, captured: this.now(), data });
-    if (this.recent.length > RECENT_FRAMES) this.recent.shift();
-    this.flush();
+  frame(data: string, bus: RoomMusicBus = 'table'): void {
+    const stream = this.streams[bus];
+    if (!this.sharing || !stream.active || !isRoomMusicFrame(data)) return;
+    stream.recent.push({ sequence: ++stream.sequence, captured: this.now(), data });
+    if (stream.recent.length > RECENT_FRAMES) stream.recent.shift();
+    this.flush(bus);
   }
 
   /** Brief socket congestion can clear before playout reaches the affected frame.
    * Keep one shared, bounded copy until every interested peer has accepted it. */
-  private flush(): void {
-    if (this.draining || !this.recent.length) return;
+  private flush(bus: RoomMusicBus): void {
+    const stream = this.streams[bus];
+    if (stream.draining || !stream.recent.length) return;
     const cutoff = this.now() - RECENT_MS;
-    while (this.recent.length && this.recent[0].captured < cutoff) this.recent.shift();
-    if (!this.recent.length) return;
-    const peers = [...this.peers.entries()].filter(([, peer]) => peer.listening);
-    if (!peers.length) { this.recent.length = 0; return; }
+    while (stream.recent.length && stream.recent[0].captured < cutoff) stream.recent.shift();
+    if (!stream.recent.length) return;
+    const peers = [...this.peers.entries()].filter(([, peer]) => peer.listening && peer.bus === bus);
+    if (!peers.length) { stream.recent.length = 0; return; }
 
-    this.draining = true;
+    stream.draining = true;
     try {
-      const first = this.fanoutStart % peers.length;
-      this.fanoutStart = (first + 1) % peers.length;
-      const oldest = this.recent[0].sequence;
-      const newest = this.recent[this.recent.length - 1].sequence;
+      const first = stream.fanoutStart % peers.length;
+      stream.fanoutStart = (first + 1) % peers.length;
+      const oldest = stream.recent[0].sequence;
+      const newest = stream.recent[stream.recent.length - 1].sequence;
       const blocked = new Set<string>();
       // Give each listener one frame per pass before sending any peer a second.
-      for (let pass = 0; pass < this.recent.length; pass++) {
+      for (let pass = 0; pass < stream.recent.length; pass++) {
         let progressed = false;
         for (let offset = 0; offset < peers.length; offset++) {
           const [id, peer] = peers[(first + offset) % peers.length];
@@ -143,7 +154,7 @@ export class RoomMusicHost {
           if (peer.next > newest) continue;
           // Once the missing audio ages out, return straight to live sound.
           const sequence = peer.next < oldest ? newest : peer.next;
-          const frame = this.recent[sequence - oldest];
+          const frame = stream.recent[sequence - oldest];
           if (!frame || frame.sequence !== sequence) continue;
           const text = encode('frame', this.generation, { subscription: peer.subscription, sequence, data: frame.data });
           peer.outstanding.push(sequence);
@@ -159,16 +170,18 @@ export class RoomMusicHost {
         if (!progressed) break;
       }
       const next = Math.min(...peers.map(([, peer]) => peer.next));
-      while (this.recent.length && this.recent[0].sequence < next) this.recent.shift();
-    } finally { this.draining = false; }
+      while (stream.recent.length && stream.recent[0].sequence < next) stream.recent.shift();
+    } finally { stream.draining = false; }
   }
 
   /** An intentional pause, seek or track change invalidates captured and scheduled sound. */
-  resetPlayback(): void {
+  resetPlayback(bus: RoomMusicBus = 'table'): void {
     if (!this.sharing) return;
-    this.recent.length = 0;
-    const sequence = ++this.sequence;
+    const stream = this.streams[bus];
+    stream.recent.length = 0;
+    const sequence = ++stream.sequence;
     for (const [id, peer] of this.peers) {
+      if (peer.bus !== bus) continue;
       peer.next = sequence + 1;
       peer.outstanding.length = 0;
       if (peer.listening) this.transmit(id, encode('reset', this.generation, { subscription: peer.subscription, sequence }));

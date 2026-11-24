@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RoomMusicGuest, isRoomMusicMessage } from '../src/game/network/room-music.ts';
+import { createGame } from '../src/game/rules/state.ts';
+import type { SessionRecovery } from '../src/game/network/recovery.ts';
 import { HostSession } from '../src/game/network/session.ts';
 
 test('room music reaches only listening participants and evicts a replaced seat immediately',()=>{
@@ -106,4 +108,47 @@ test('host audio boundaries reset current listeners and fence off older frames',
  guest.receive(sent[0].message);
  assert.deepEqual(received,[freshData]);
  assert.deepEqual(subscriberChanges,[true]);
+});
+
+for (const hostWins of [true,false]) test(`finished music reaches only the matching listeners when ${hostWins?'host':'guest'} wins`,()=>{
+ const ids=['Player 1','Player 2','Player 3','Player 4'],winner=hostWins?0:1;
+ const game=createGame(47,ids,()=>0);game.currentSeat=winner;game.turn=4;game.phase='action';
+ game.players[winner].cards=Array.from({length:10},()=>({type:'victory-point' as const,boughtTurn:1}));
+ const saved:SessionRecovery={version:1,qaTwoPlayers:false,boardLayout:'standard',authority:{version:1,gameId:'sound-end',revision:3,state:game},
+  seats:ids.map((id,i)=>({id,token:i?String(i).repeat(43):''}))};
+ const audio=new Map<string,string[]>(),listeners=new Map<string,RoomMusicGuest>();
+ const wire:Array<{id:string;message:Record<string,unknown>}>=[];let serial=0;
+ const host=HostSession.fromRecovery((id,text)=>{
+  const message=JSON.parse(text);if(isRoomMusicMessage(message)){wire.push({id,message});listeners.get(id)?.receive(message);}
+ },()=>{},()=>String(++serial).padStart(43,'z'),()=>0,saved);
+ const join=(peer:string,seat:number|null,enabled=true)=>{
+  audio.set(peer,[]);
+  listeners.set(peer,new RoomMusicGuest(text=>host.receive(peer,text),{availability:()=>{},frame:data=>audio.get(peer)!.push(data),reset:()=>{}},enabled));
+  host.receive(peer,JSON.stringify({protocol:1,type:'hello',...(seat===null?{role:'spectator'}:{token:saved.seats[seat].token})}));
+ };
+ const table='A'.repeat(4800),win='W'.repeat(4800),loss='L'.repeat(4800);
+ host.setMusicSharing(true);
+ join('second',1);join('third',2);join('muted',3,false);join('observer',null);
+ host.resume(saved);
+ host.publishMusicFrame(table);
+ const stale=wire.find(x=>x.id==='second'&&x.message.action==='frame')!.message;
+ assert.deepEqual(audio.get('observer'),[table]);
+ const command={type:'claim-victory',playerId:ids[winner]};
+ if(hostWins)assert.equal(host.submit(command,'win',3).ok,true);
+ else host.receive('second',JSON.stringify({protocol:1,type:'command',command:JSON.stringify({protocol:1,gameId:'sound-end',revision:3,commandId:'win',sender:ids[winner],command})}));
+ assert.equal(host.recovery().authority.state.winner,ids[winner]);
+ for(const heard of audio.values())heard.length=0;
+ listeners.get('second')!.receive(stale);
+ host.publishMusicFrame(hostWins?win:loss,'table');
+ host.publishMusicFrame(hostWins?loss:win,'opposite');
+ assert.deepEqual(audio.get('second'),[hostWins?loss:win]);assert.deepEqual(audio.get('third'),[loss]);
+ assert.deepEqual(audio.get('observer'),[]);assert.deepEqual(audio.get('muted'),[]);
+ host.disconnect('second');join('rejoined',1);join('later-spectator',null);
+ host.publishMusicFrame(hostWins?loss:win,'opposite');host.publishMusicFrame(hostWins?win:loss,'table');
+ assert.deepEqual(audio.get('rejoined'),[hostWins?loss:win]);assert.deepEqual(audio.get('later-spectator'),[]);
+ host.restart();
+ for(const heard of audio.values())heard.length=0;
+ host.publishMusicFrame(win,'opposite');host.publishMusicFrame(table);
+ assert.deepEqual(audio.get('rejoined'),[table]);assert.deepEqual(audio.get('third'),[table]);assert.deepEqual(audio.get('observer'),[table]);
+ assert.deepEqual(audio.get('muted'),[]);
 });

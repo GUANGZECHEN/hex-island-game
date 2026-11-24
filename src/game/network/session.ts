@@ -6,7 +6,7 @@ import { validateOptionalRules, type OptionalRules } from '../rules/optional-rul
 import { HostAuthority } from './authority.ts';
 import { parseSessionRecovery, recoveryRound, type SessionRecovery } from './recovery.ts';
 import type { TurnClockSnapshot } from '../rules/turn-clock.ts';
-import { isRoomMusicMessage, RoomMusicHost } from './room-music.ts';
+import { isRoomMusicMessage, RoomMusicHost, type RoomMusicBus } from './room-music.ts';
 
 export interface LobbySeat { id:string; name:string; connected:boolean; ready:boolean }
 interface Seat extends LobbySeat { peer:string | null; token:string }
@@ -17,6 +17,7 @@ type Send = (peer:string, message:string, bestEffort?:boolean)=>unknown;
 export class HostSession {
  private seats:Seat[]; private spectators=new Set<string>(); private authority:HostAuthority|null=null; private gameId=''; private recovering=false;
  private readonly music:RoomMusicHost;
+ private resultMusicKey:string|null=null;
  constructor(privateSend:Send, privatePublish:(value:unknown)=>void, privateToken:()=>string, privateRandom:()=>number, options: { qaTwoPlayers?: boolean; boardLayout?: BoardLayout; mapSeed?:number; mode?:GameMode; rules?:OptionalRules } = {}) {
   this.send=privateSend;this.publish=privatePublish;this.token=privateToken;this.random=privateRandom;this.qaTwoPlayers=options.qaTwoPlayers === true;this.boardLayout=options.boardLayout??'standard';this.mapSeed=options.mapSeed??1;this.mode=options.mode??'classic';this.rules=validateOptionalRules(options.rules);
   if(!isBoardLayout(this.boardLayout))throw new Error('Invalid board layout.');
@@ -26,7 +27,7 @@ export class HostSession {
   this.seats=[{id:'Player 1',name:'Player 1',connected:true,ready:false,peer:null,token:''}];
   this.music=new RoomMusicHost(
    (peer,text,frame)=>privateSend(peer,text,frame)!==false,
-   hasListeners=>this.publish({type:'music-subscribers',data:hasListeners}),
+   (hasListeners,bus)=>this.publish({type:'music-subscribers',data:hasListeners,bus}),
   );
  }
  private mode:GameMode='classic';private rules:OptionalRules={catchUp:false,ships:false};
@@ -44,8 +45,8 @@ export class HostSession {
  spectatorCount():number{return this.spectators.size;}
  isRecovering():boolean{return this.recovering;}
  setMusicSharing(enabled:boolean):void{this.music.setSharing(enabled);}
- publishMusicFrame(base64:string):void{this.music.frame(base64);}
- resetMusicPlayback():void{this.music.resetPlayback();}
+ publishMusicFrame(base64:string,bus:RoomMusicBus='table'):void{this.music.frame(base64,bus);}
+ resetMusicPlayback(bus:RoomMusicBus='table'):void{this.music.resetPlayback(bus);}
  allSeatsConnected():boolean{return this.seats.length>0&&this.seats.every(seat=>seat.connected);}
  recovery():SessionRecovery {
   if(!this.authority)throw new Error('Game not started.');
@@ -65,7 +66,22 @@ export class HostSession {
   const seat={id,name:cleanName(name,id),connected:true,ready:false,peer,token:credential};
   this.seats.push(seat);return seat;
  }
+ private musicBus(peer:string):RoomMusicBus|null {
+  if(!this.authority||this.recovering)return 'table';
+  const id=this.seats.find(seat=>seat.peer===peer)?.id??null;
+  const scene=this.authority.musicScene(id);
+  if(scene==='spectator-end')return null;
+  return scene===this.authority.musicScene('Player 1')?'table':'opposite';
+ }
+ private syncMusicRoutes(){
+  const scene=this.authority&&!this.recovering?this.authority.musicScene('Player 1'):'match';
+  const key=scene==='match'?null:this.gameId+':'+scene;
+  if(key===this.resultMusicKey)return;
+  this.resultMusicKey=key;
+  this.music.setRoutes(peer=>this.musicBus(peer));
+ }
  private announce(){
+  if(!this.authority)this.syncMusicRoutes();
   const mapVersion=this.boardLayout==='twin-capes'?this.authority?.boardVersion()??TWIN_CAPES_VERSION:undefined;
   const lobby={mapVersion,mode:this.mode,rules:this.effectiveRules(),seats:this.lobby(),qaTwoPlayers:this.qaTwoPlayers,boardLayout:this.boardLayout,mapSeed:this.mapSeed,started:!!this.authority,recovering:this.recovering,spectators:this.spectators.size};
   this.publish({type:'lobby',lobby});
@@ -140,14 +156,14 @@ export class HostSession {
    else if(msg.token===undefined||msg.token===''){
     if(this.authority||msg.role==='spectator'){
      this.spectators.add(peer);this.output(peer,'spectator',{watching:!!this.authority,gameId:this.gameId||null});
-     this.music.admit(peer);this.announce();
+     this.music.admit(peer,this.musicBus(peer));this.announce();
      if(this.authority&&!this.recovering){this.output(peer,'snapshot',this.decorate(this.authority.spectatorSnapshot()));this.sendClock(peer);}
      return;
     }
     seat=this.claimSeat(peer,msg.name)??undefined;
     if(!seat){
      this.spectators.add(peer);this.output(peer,'spectator',{watching:false,gameId:null});
-     this.music.admit(peer);this.announce();return;
+     this.music.admit(peer,this.musicBus(peer));this.announce();return;
     }
    }
    if(!seat){this.output(peer,'error','Seat unavailable.');return;}
@@ -156,7 +172,7 @@ export class HostSession {
    seat.peer=peer;seat.connected=true;seat.ready=false;
    if(stalePeer&&stalePeer!==peer)this.music.remove(stalePeer);
    this.output(peer,'seat',{id:seat.id,token:seat.token,gameId:this.gameId||null});
-   this.music.admit(peer);this.announce();
+   this.music.admit(peer,this.musicBus(peer));this.announce();
    if(this.authority&&!this.recovering){
     this.output(peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
     if(this.authority.hasPendingDiscard(seat.id))this.output(peer,'discard-pending',{revision:this.authority.currentRevision()});
@@ -295,6 +311,7 @@ export class HostSession {
  private broadcast(){
   if(!this.authority||this.recovering)return;
   this.publish({type:'snapshot',data:this.decorate(this.authority.snapshot('Player 1'))});
+  this.syncMusicRoutes();
   if(this.authority.hasPendingDiscard('Player 1'))this.publish({type:'discard-pending',data:{revision:this.authority.currentRevision()}});
   for(const seat of this.seats)if(seat.peer)this.output(seat.peer,'snapshot',this.decorate(this.authority.snapshot(seat.id)));
   const spectatorSnapshot=this.decorate(this.authority.spectatorSnapshot());

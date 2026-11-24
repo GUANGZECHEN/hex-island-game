@@ -1,3 +1,4 @@
+import { matchMusicScene } from '../music-outcome.ts';
 import { applySetupCommand, RESOURCES, type GameState, type SetupCommand, type Hand } from '../rules/state.ts';
 import { applyTurnCommand, type TurnCommand } from '../rules/turn.ts';
 import { applyBuildCommand, type BuildCommand } from '../rules/build.ts';
@@ -107,6 +108,7 @@ export class HostAuthority {
  hasPendingDiscard(playerId:string):boolean{return this.state.phase==='discard'&&Object.hasOwn(this.pendingDiscards,playerId);}
  currentRevision():number{return this.revision;}
  boardVersion(){return this.state.board.version;}
+ musicScene(listenerId:string|null){return matchMusicScene(this.state,listenerId);}
  snapshot(playerId:string){const result=projectState(this.state,playerId,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
  spectatorSnapshot(){const result=projectSpectatorState(this.state,this.revision,this.gameId,this.lastTradeSummary);result.public.undoPlayerId=this.lastUndo?.playerId??null;result.public.paused=this.clockPaused;return structuredClone(result);}
  receive(boundPlayer:string, text:string): {ok:boolean;code?:string;revision:number;pending?:boolean} {
