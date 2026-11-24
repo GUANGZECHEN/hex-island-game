@@ -51,7 +51,8 @@ test('each player previews targets independently', () => {
 test('pointer highlighting has dedicated material, cleanup and no game/UI rebuild', () => {
   const source=readFileSync('src/game/board/three/renderer.ts','utf8');
   assert.ok(source.includes('private activeTargetMaterial'));
-  assert.ok(source.includes('object.material = material'));
+  assert.ok(source.includes('const material = active ? activeMaterial : legalMaterial'));
+  assert.ok(source.includes('display.material = material'));
   assert.ok(source.includes('this.activeTargetMaterial.dispose()'));
   const hover=source.slice(source.indexOf('private hover ='),source.indexOf('private corners()'));
   assert.ok(!hover.includes('this.choose(')); assert.ok(!hover.includes('this.resetView('));
