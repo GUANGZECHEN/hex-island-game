@@ -58,7 +58,8 @@ test('Twin Capes is selectable at every Classic table size with mandatory ships'
    assert.equal(settings.boardLayout,'twin-capes');assert.equal(settings.ids.length,count);
    assert.deepEqual(settings.rules,{catchUp:true,ships:true});
    const game=createGame(settings.seed,settings.ids,undefined,{boardLayout:settings.boardLayout,mode:settings.mode,rules:settings.rules});
-   assert.equal(game.board.layout,'twin-capes');assert.ok(game.board.ports.some(port=>port.edgeId===game.board.piratePortEdgeId));
+   assert.equal(game.board.layout,'twin-capes');assert.equal(game.board.piratePortEdgeId,undefined);
+   assert.equal(game.board.hexes.find(hex=>hex.hexId===game.board.robberHexId)?.terrain,'desert');
   }
  }
  assert.throws(()=>createLocalRoomSettings(42,2,0,'harbor-coop',undefined,'twin-capes'),/Classic/);

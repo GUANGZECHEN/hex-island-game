@@ -396,7 +396,8 @@ test('Twin Capes room synchronizes the board, seat range and mandatory ships acr
   for(let i=2;i<=count;i++)host.receive('p'+i,JSON.stringify({protocol:1,type:'ready',ready:true}));
   host.setHostReady(true);host.start(42);
   const first=heard('watch','snapshot');assert.equal(first.private,null);assert.equal(first.public.players.length,count);
-  assert.equal(first.public.board.layout,'twin-capes');assert.ok(first.public.board.piratePortEdgeId);
+  assert.equal(first.public.board.layout,'twin-capes');assert.equal(first.public.board.piratePortEdgeId,undefined);
+  assert.equal(first.public.board.hexes.find((hex:{hexId:string})=>hex.hexId===first.public.board.robberHexId)?.terrain,'desert');
   host.restart();
   const next=heard('p2','snapshot');assert.notEqual(next.gameId,first.gameId);assert.deepEqual(next.public.board,first.public.board);
   const saved=host.recovery();assert.equal(saved.mainlandShips,false);assert.equal(saved.boardLayout,'twin-capes');
