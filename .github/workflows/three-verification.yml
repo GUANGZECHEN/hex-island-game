@@ -1,0 +1,45 @@
+name: Three.js isolated runtime verification
+on:
+  push:
+    branches: [verify/three-runtime]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: three-runtime-verification
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: experiments/three-verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install pinned verification dependencies and reproduce from lock
+        run: |
+          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm ls --depth=0 > resolved-dependencies.txt
+      - name: Typecheck and build isolated preview
+        run: npm run typecheck && npm run build
+      - name: Install test Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify real pixels, input, fit and fallback
+        run: npm run verify
+      - name: Upload build, screenshots and machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: three-runtime-evidence
+          retention-days: 7
+          path: |
+            experiments/three-verify/dist
+            experiments/three-verify/evidence
+            experiments/three-verify/package-lock.json
+            experiments/three-verify/resolved-dependencies.txt
+            experiments/three-verify/README.md
