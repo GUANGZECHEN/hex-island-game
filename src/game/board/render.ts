@@ -1,6 +1,6 @@
 import { PIRATE_CLOTH, PIRATE_COLORS, PIRATE_CROSS, PIRATE_PENNANT, portDescription } from './pirate-art.ts';
 import { createIslandBoard, type Board } from './geometry.ts';
-import { DRAWN_WHEAT, grainClearance, SVG_WHEAT_OFFSETS } from './grain-clearance.ts';
+import { DRAWN_WHEAT, grainPreviewMask, SVG_WHEAT_OFFSETS } from './grain-clearance.ts';
 import { createSetupView } from './presentation.ts';
 import type { BoardSetup, HexSetup, PortType } from './setup.ts';
 import { desertIcon, resourceIcon } from '../ui/icons.ts';
@@ -104,17 +104,14 @@ function appendRobber(group:SVGElement,cx:number,cy:number){
 }
 
 /** The illustration alone recedes; rate, number, robber and resource glyphs keep their normal contrast. */
-export function paintGrainClearance(svg: SVGSVGElement, board: Board,
-  roads: Readonly<Record<string, string>>, buildings: Readonly<Record<string, { kind: string }>>,
-  previewKind: string | null = null, previewId: string | null = null): void {
-  const className = previewKind ? 'wheat-preview' : 'wheat-occupied';
+export function paintGrainPreview(svg: SVGSVGElement, board: Board, kind: string, id: string): void {
   for (const tile of Array.from(svg.querySelectorAll<SVGGElement>('[data-terrain="fields"]'))) {
     const hex = board.hexes.find(hex => hex.id === tile.dataset.hexId);
     if (!hex) continue;
-    const mask = grainClearance(hex, DRAWN_WHEAT, roads, buildings, previewKind, previewId);
-    if (previewKind) tile.querySelector('.terrain-art-fields')?.classList.toggle('wheat-preview-local', !!mask);
+    const mask = grainPreviewMask(hex, DRAWN_WHEAT, kind, id);
+    tile.querySelector('.terrain-art-fields')?.classList.toggle('wheat-preview-local', !!mask);
     for (const stalk of Array.from(tile.querySelectorAll<SVGGElement>('[data-wheat-stalk]'))) {
-      stalk.classList.toggle(className, !!(mask & (1 << Number(stalk.dataset.wheatStalk))));
+      stalk.classList.toggle('wheat-preview', !!(mask & (1 << Number(stalk.dataset.wheatStalk))));
     }
   }
 }

@@ -27,7 +27,7 @@ import { createIslandBoard } from './game/board/geometry';
 import { generateBoardSetup } from './game/board/setup';
 import { createLocalRoomSettings, type LocalRoomSettings } from './game/ui/local-room';
 import { createBoardView } from './game/board/presentation';
-import { paintGrainClearance, renderIslandBoard } from './game/board/render';
+import { paintGrainPreview, renderIslandBoard } from './game/board/render';
 import { createGame, isTwinCapes, publicVictoryPoints, RESOURCES, type GameState, type Hand, type Resource, type Development } from './game/rules/state';
 import { applySetupCommand as localSetup } from './game/rules/state';
 import { applyTurnCommand as localTurn } from './game/rules/turn';
@@ -531,7 +531,6 @@ function drawBoard(legalTargets:readonly string[]){
 function drawSvgBoard(legalTargets:readonly string[]){
  const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const topology=createIslandBoard(s.board.layout),view=createBoardView(topology);const NS='http://www.w3.org/2000/svg';
  const legal=new Set(legalTargets);
- paintGrainClearance(svg, topology, s.roads, s.buildings);
  const roadPiece=(edge:typeof view.edges[number],owner:string,fresh=false)=>{
    const seat=byId(owner).seat+1,piece=document.createElementNS(NS,'g');
    piece.setAttribute('class',`game-road-piece player-${seat}${fresh?' game-piece-enter':''}`);piece.setAttribute('data-road-id',edge.id);
@@ -637,7 +636,7 @@ function drawSvgBoard(legalTargets:readonly string[]){
   for(const hexId of adjacentPlacementHexes(topology,kind,id)){
    svg.querySelector(`[data-hex-id="${hexId}"]`)?.classList.add('placement-neighbor');
   }
-  paintGrainClearance(svg, topology, {}, {}, kind, id);
+  paintGrainPreview(svg, topology, kind, id);
   return ghost;
  };
 }

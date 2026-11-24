@@ -82,6 +82,9 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
+      - name: Verify board targets and grain appearance after placement and Undo
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true'
+        run: node scripts/qa-target-feedback.mjs
       - name: Verify the Twin Capes map and pirate in Chromium
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-twin-capes.mjs
@@ -103,11 +106,10 @@ jobs:
       - name: Verify persistent action availability
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.supplemental != 'true'
         run: node scripts/qa-persistent-actions.mjs
-      - name: Verify compact costs, target feedback and trade camera stability
+      - name: Verify compact costs and trade camera stability
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true'
         run: |
           node scripts/qa-compact-actions.mjs
-          node scripts/qa-target-feedback.mjs
           GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-trade-camera.mjs
       - name: Save screenshots and test reports
         if: always()

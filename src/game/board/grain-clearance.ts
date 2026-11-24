@@ -28,16 +28,10 @@ function borders(crops: readonly Point[], tolerance: number): BorderMasks {
 export const MODELED_WHEAT = borders(WHEAT_PATCHES, .095);
 export const DRAWN_WHEAT = borders(SVG_WHEAT_OFFSETS.map<Point>(x => [x, .08]), .037);
 
-export function grainClearance(hex: Hex, art: BorderMasks,
-  roads: Readonly<Record<string, string>>, buildings: Readonly<Record<string, { kind: string }>>,
-  previewKind: string | null, previewId: string | null): number {
-  let mask = 0;
-  for (let side = 0; side < hex.edgeIds.length; side++) {
-    const edge = hex.edgeIds[side], vertex = hex.vertexIds[side];
-    if (roads[edge] || (previewKind === 'road' && edge === previewId)) mask |= art.edges[side];
-    const kind = buildings[vertex]?.kind;
-    if (kind === 'settlement' || kind === 'city' ||
-        ((previewKind === 'settlement' || previewKind === 'city') && vertex === previewId)) mask |= art.corners[side];
-  }
-  return mask;
+/** A placement preview clears only the wheat nearest its active target. */
+export function grainPreviewMask(hex: Hex, art: BorderMasks, kind: string | null, id: string | null): number {
+  if (!id) return 0;
+  if (kind === 'road') return art.edges[hex.edgeIds.indexOf(id)] ?? 0;
+  if (kind === 'settlement' || kind === 'city') return art.corners[hex.vertexIds.indexOf(id)] ?? 0;
+  return 0;
 }

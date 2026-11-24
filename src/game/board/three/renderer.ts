@@ -1,7 +1,7 @@
 import { portDescription } from '../pirate-art.ts';
 import { makeTradeStation } from './trade-station-art.ts';
 import * as THREE from 'three';
-import { grainClearance, MODELED_WHEAT } from '../grain-clearance.ts';
+import { grainPreviewMask, MODELED_WHEAT } from '../grain-clearance.ts';
 import { setWheatClearance } from './wheat-batches.ts';
 import { PlacementPreview } from './placement-preview.ts';
 import { TargetFeedback, TARGET_COLORS, TAP_MAX_DISTANCE } from '../target-feedback.ts';
@@ -258,7 +258,7 @@ export class ThreeBoardRenderer {
     const structureKey = JSON.stringify([view.roads, view.buildings, view.players, view.stations]);
     if (structureKey !== this.structureKey) {
       const buildStarted = this.profileStructureBuilds ? performance.now() : 0;
-      this.structureKey = structureKey; this.pieces.clear(); this.wheatDirty = true;
+      this.structureKey = structureKey; this.pieces.clear();
       const color = (id: string) => view.players.find(p => p.id === id)?.color || '#6f7c80';
       for (const [id, owner] of Object.entries(view.roads)) {
         const e = this.geometry.edges.get(id); if (!e) continue;
@@ -342,7 +342,7 @@ export class ThreeBoardRenderer {
       for (const hex of this.geometry.topology.hexes) {
         const tile = this.tiles.get(hex.id);
         if (tile?.root.userData.terrain !== 'fields') continue;
-        const mask = grainClearance(hex, MODELED_WHEAT, this.view.roads, this.view.buildings, this.placement.kind, this.placement.target);
+        const mask = grainPreviewMask(hex, MODELED_WHEAT, this.placement.kind, this.placement.target);
         setWheatClearance(tile.root, mask);
       }
       this.wheatDirty = false;

@@ -204,7 +204,7 @@ async function verifyGrainArt(page,fixtureURL,renderer,piece){
    return {stems:tile.stems,faded:tile.fadedStems,opacity:tile.wheatOpacity};
   }
   return page.locator(`#board [data-hex-id="${id}"] .terrain-art-fields [data-wheat-stalk]`).evaluateAll(stalks=>
-   stalks.map(stalk=>Number(getComputedStyle(stalk).opacity)));
+   stalks.map(stalk=>Number(getComputedStyle(stalk).opacity)*Number(getComputedStyle(stalk.parentElement).opacity)));
  };
  await start(page,renderer,fixtureURL);
  const site=await page.evaluate(()=>window.__targetFixture.grainSite());
@@ -212,51 +212,55 @@ async function verifyGrainArt(page,fixtureURL,renderer,piece){
  const [vertex,edge]=renderer==='3d'?[2,1]:[0,0];
  const settlementId=site.vertices[piece==='settlement'?3:vertex],edgeId=site.edges[edge];
  const seat=await page.locator('#player-strip .local-player').getAttribute('data-seat');
- if(piece==='road')await place('settlement',settlementId);
  const before=await read(site.tile),control=await read(site.control);
- await place(piece,piece==='road'?edgeId:settlementId);
- const after=await read(site.tile),label=renderer+' '+piece;
+ const hasPiece=async(kind,id)=>{
+  if(renderer==='3d'){
+   const view=await inspect(page);
+   return kind==='road'?view.roads.includes(id):view.buildings.some(([vertex,building])=>vertex===id&&building.kind===kind);
+  }
+  const selector=kind==='road'?'[data-road-id="'+id+'"]':'[data-building-kind="'+kind+'"][data-vertex-id="'+id+'"]';
+  return page.locator('#board '+selector).isVisible();
+ };
  if(renderer==='3d'){
-  assert.equal(after.stems,before.stems,'wheat remains present on the field');
-  assert.ok(after.faded>before.faded&&after.faded<after.stems,label+' softens nearby but not every stem');
-  assert.ok(after.opacity>0&&after.opacity<=.22,label+' uses a low-opacity material');
+  assert.ok(before.stems>0,'the grain field contains wheat');
+  assert.equal(before.faded,0,'the empty field starts at normal opacity');
  }else{
   assert.equal(before.length,5,'the SVG field has five wheat stalk groups');
-  assert.equal(after.length,before.length);
-  assert.ok(after.some((opacity,index)=>opacity<before[index]&&opacity/before[index]<=.25),label+' visibly softens at least one nearby stalk');
-  assert.ok(after.some(opacity=>opacity>=.95),label+' keeps far-side stalks visible');
+  assert.ok(before.every(opacity=>opacity>0),'all five stalks are visible');
  }
- assert.deepEqual(await read(site.control),control,label+' does not fade a separate field');
+ if(piece==='road'){
+  await place('settlement',settlementId);
+  assert.deepEqual(await read(site.tile),before,'the starting settlement keeps the field at its original opacity');
+ }
+ const pieceId=piece==='road'?edgeId:settlementId,label=renderer+' '+piece;
+ await place(piece,pieceId);
+ assert.ok(await hasPiece(piece,pieceId),label+' is present at the selected site');
+ assert.deepEqual(await read(site.tile),before,label+' leaves the adjacent grain field at its original opacity');
+ assert.deepEqual(await read(site.control),control,label+' leaves a separate field unchanged');
  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
  const name='grain-'+piece+'-'+renderer;
- check(label+' grain art fades locally after actual placement');
- if(renderer==='3d'){
-  await captureWebGLView(page,`${evidence}/${name}.png`);
-  return;
- }
- if(piece!=='road'){
-  await captureSvgView(page,name,site.tile);
-  return;
- }
+ check(label+' leaves grain art unchanged after actual placement');
+ if(renderer==='3d')await captureWebGLView(page,`${evidence}/${name}.png`);
+ else await captureSvgView(page,name,site.tile,{vectorOnly:piece==='road'});
+ if(piece!=='road')return;
 
- const road=page.locator(`#board [data-road-id="${edgeId}"]`);
- assert.ok(await road.isVisible(),'the chosen route was actually placed');
- await captureSvgView(page,name,site.tile,{vectorOnly:true});
  // A setup road passes the device. Hand it back to its owner to use real Undo.
  page.once('dialog',dialog=>dialog.accept('Player '+seat));
  await page.locator('#switch-player').click();
  await page.locator('#reveal').click();
  await page.getByRole('button',{name:'Undo last action',exact:true}).click();
  if(await page.locator('#pass').isVisible())await page.locator('#reveal').click();
- await road.waitFor({state:'detached',timeout:5000});
- assert.deepEqual(await read(site.tile),before,'SVG Undo restores the exact prior grain opacities');
- assert.deepEqual(await read(site.control),control,'SVG Undo leaves the separate field unchanged');
- assert.ok(await page.locator(`#board [data-building-kind="settlement"][data-vertex-id="${settlementId}"]`).isVisible(),
-  'Undo removes the road and preserves its settlement');
+ await settle(page);
+ assert.equal(await hasPiece('road',edgeId),false,'Undo removes the road');
+ assert.ok(await hasPiece('settlement',settlementId),'Undo preserves the settlement');
+ assert.deepEqual(await read(site.tile),before,'Undo leaves the grain field at its original opacity');
+ assert.deepEqual(await read(site.control),control,'Undo leaves the separate field unchanged');
  assert.equal(await page.locator('#game-error').textContent(),'');
- check('SVG road Undo restores the field while retaining the settlement');
- await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
- await captureSvgView(page,'grain-road-undo-2d',site.tile);
+ check(renderer+' road Undo preserves the field and settlement');
+ if(renderer==='2d'){
+  await page.locator('#board .turn-alert').waitFor({state:'hidden',timeout:5000});
+  await captureSvgView(page,'grain-road-undo-2d',site.tile);
+ }
 }
 
 async function verifySvgFixtures(fixtureURL){

@@ -8,7 +8,7 @@ Desert is a continuous sand-dune surface without props, resource icons or placeh
 ## Interaction and lifecycle
 Middle-button drag orbits; Shift+middle pans; wheel on the canvas zooms. A single left click or tap on a legal target performs the selected action. Reset/Top view and camera gestures never issue game commands. Mobile camera gestures require Adjust view; ordinary touch allows page scrolling.
 
-When a road or settlement borders a grain field, the nearby wheat fades so the piece stays visible. Pointer hover previews the same effect on a legal placement. While choosing a robber destination, translucent hex highlights leave the neighboring buildings visible.
+Hovering over a legal road, settlement, or city placement briefly fades the nearest wheat. Moving away or placing the piece restores the field to its normal appearance. While choosing a robber destination, translucent hex highlights leave the neighboring buildings visible.
 
 Terrain is cached by a static map key, excluding robber location. Pieces and targets update independently; snapshots preserve the canvas and camera. Hand/Actions adjacency and compact desktop height-fit remain. Rendering is on demand; shared GPU resources are disposed when replaced.
 

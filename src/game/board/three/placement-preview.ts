@@ -53,7 +53,7 @@ export class PlacementPreview {
     for (const hex of adjacentPlacementHexes(geometry.topology, kind, id)) {
       tiles.get(hex)?.root.traverse(group => {
         if (!group.userData.decorative) return;
-        // The field's near-side bundles have their own reversible opacity, including committed pieces.
+        // Wheat closest to the preview uses its own opacity mask.
         if (group.userData.decorative === 'wheat' && (kind === 'road' || kind === 'settlement' || kind === 'city')) return;
         group.traverse(mesh => {
           if (!(mesh instanceof THREE.Mesh) || this.originals.has(mesh)) return;

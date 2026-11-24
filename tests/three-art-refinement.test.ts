@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ArtAssets, makeTerrain, makeBoatPort, makeBuilding } from '../src/game/board/three/art.ts';
 import { SEAT_EMBLEMS, HULL_STRIPE, SAIL_CLOTH, EMBLEM_INK } from '../src/game/ui/player-emblem.ts';
-import { DRAWN_WHEAT, grainClearance, MODELED_WHEAT } from '../src/game/board/grain-clearance.ts';
+import { DRAWN_WHEAT, grainPreviewMask, MODELED_WHEAT } from '../src/game/board/grain-clearance.ts';
 import { setWheatClearance } from '../src/game/board/three/wheat-batches.ts';
 import { generateBoardSetup } from '../src/game/board/setup.ts';
 import { worldGeometry, portBoatPlan } from '../src/game/board/three/model.ts';
@@ -131,26 +131,27 @@ test('each ship keeps its owner’s colored hull, paint stripe and distinct came
   assets.dispose();
 });
 
-test('roads and settlements subdue only the wheat nearest their border in both presentations', () => {
-  for (const layout of ['standard', 'expanded-5-6'] as const) {
+test('only a placement preview softens nearby wheat in both presentations on each map', () => {
+  for (const layout of ['standard', 'expanded-5-6', 'twin-capes'] as const) {
     const { topology } = worldGeometry(layout);
-    const hex = topology.hexes.find(hex => hex.neighborIds.length === 6)!;
+    const hex = topology.hexes[0];
     const vertex = hex.vertexIds[3], edge = hex.edgeIds[0];
     const distant = topology.hexes.find(other => !other.vertexIds.includes(vertex) && !other.edgeIds.includes(edge))!;
     for (const art of [MODELED_WHEAT, DRAWN_WHEAT]) {
-      const vertexMask = grainClearance(hex, art, {}, {}, 'settlement', vertex);
-      const roadMask = grainClearance(hex, art, {}, {}, 'road', edge);
+      const vertexMask = grainPreviewMask(hex, art, 'settlement', vertex);
+      const roadMask = grainPreviewMask(hex, art, 'road', edge);
       assert.ok(vertexMask > 0 && roadMask > 0 && vertexMask !== roadMask);
-      assert.equal(grainClearance(hex, art, {}, { [vertex]: { kind: 'city' } }, null, null), vertexMask);
-      assert.equal(grainClearance(hex, art, { [edge]: 'p1' }, {}, null, null), roadMask);
-      assert.equal(grainClearance(hex, art, { [edge]: 'p1' }, {}, 'city', vertex), roadMask | vertexMask);
-      assert.equal(grainClearance(distant, art, { [edge]: 'p1' }, { [vertex]: { kind: 'settlement' } }, null, null), 0);
-      assert.equal(grainClearance(hex, art, {}, { [vertex]: { kind: 'ship' } }, 'robber', hex.id), 0);
+      assert.equal(grainPreviewMask(hex, art, 'city', vertex), vertexMask);
+      assert.equal(grainPreviewMask(distant, art, 'settlement', vertex), 0);
+      assert.equal(grainPreviewMask(distant, art, 'road', edge), 0);
+      assert.equal(grainPreviewMask(hex, art, 'ship', vertex), 0);
+      assert.equal(grainPreviewMask(hex, art, 'road', null), 0, 'selecting the build action alone keeps the field clear');
+      assert.equal(grainPreviewMask(hex, art, null, null), 0, 'ending the preview restores the field after placement');
     }
   }
 });
 
-test('grain clearance retains the crop, restores exact matrices after Undo and never changes its token or ground', () => {
+test('a wheat preview preserves the crop, token and ground and restores exact matrices when placement ends', () => {
   const assets = new GeometryAssets(), board = generateBoardSetup(24680), geometry = worldGeometry(board.layout);
   const assignment = board.hexes.find(cell => cell.terrain === 'fields')!;
   const hex = geometry.topology.hexes.find(cell => cell.id === assignment.hexId)!;
@@ -160,7 +161,7 @@ test('grain clearance retains the crop, restores exact matrices after Undo and n
   const solid = root.getObjectByName('upright-wheat-stems') as THREE.InstancedMesh;
   const faded = root.getObjectByName('faded-upright-wheat-stems') as THREE.InstancedMesh;
   const originalMatrices = solid.instanceMatrix.array.slice();
-  const mask = grainClearance(hex, MODELED_WHEAT, {}, { [hex.vertexIds[3]]: { kind: 'settlement' } }, null, null);
+  const mask = grainPreviewMask(hex, MODELED_WHEAT, 'settlement', hex.vertexIds[3]);
   setWheatClearance(root, mask);
   const art = inspectTerrainArt(root);
   assert.equal(art.stems, 15);
@@ -174,8 +175,9 @@ test('grain clearance retains the crop, restores exact matrices after Undo and n
   const version = solid.instanceMatrix.version;
   setWheatClearance(root, mask);
   assert.equal(solid.instanceMatrix.version, version, 'same effective border does not re-upload instances');
-  setWheatClearance(root, 0);
+  setWheatClearance(root, grainPreviewMask(hex, MODELED_WHEAT, null, null));
   assert.equal(solid.count, 15); assert.equal(faded.visible, false); assert.equal(faded.count, 0);
   assert.deepEqual(solid.instanceMatrix.array, originalMatrices);
+  assert.equal(inspectTerrainArt(root).fadedStems, 0);
   disposeArtInstances(root); assets.dispose();
 });

@@ -11,7 +11,6 @@
 
 #board [data-placement-preview]{opacity:.82;pointer-events:none}
 #board .placement-neighbor .terrain-art:not(.wheat-preview-local){opacity:.15}
-#board .terrain-art-fields .wheat-occupied,
 #board .placement-neighbor .wheat-preview-local .wheat-preview{opacity:.08}
 
 /* The coastal marker remains upright and actionable when the board is scaled. */
