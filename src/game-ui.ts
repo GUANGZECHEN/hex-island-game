@@ -664,7 +664,7 @@ function render(){if(!state)return;const s=state,active=s.players[s.currentSeat]
  const reason=isPaused()?'Game paused':s.phase==='finished'?'Game over':viewer!==active.id?'Waiting for your turn':'Unavailable in this phase or with current resources';
  const apply=(b:HTMLButtonElement,a:{enabled:boolean},why=reason)=>setAvailability(b,a,why);
  if(targetMode){
-  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.${targetMode==='robber'?'':' On touchscreens, confirm below the board.'}`;targets.append(description);
+  const description=document.createElement('p');description.textContent=`Click or tap a highlighted ${targetMode} target on the board.`;targets.append(description);
   const cancel=button(targets,'Cancel selection',()=>{targetMode=null;render();});cancel.className='target-cancel';
   if(!legalTargets.length){const none=document.createElement('p');none.textContent='No legal targets are available.';targets.append(none);}
  }

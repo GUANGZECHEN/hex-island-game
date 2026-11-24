@@ -10,7 +10,7 @@ if(!signalingUrl)throw new Error('QA_SIGNALING_URL is required.');
 
 const browser=await chromium.launch({headless:true});
 const hostContext=await browser.newContext();
-const guestContext=await browser.newContext();
+const guestContext=await browser.newContext({hasTouch:true});
 const spectatorContext=await browser.newContext();
 for(const context of [hostContext,guestContext,spectatorContext])await context.addInitScript(()=>{
   globalThis.__hexVisualMessageCount=0;
@@ -505,12 +505,26 @@ try{
 
   const actor=guest;
   const observer=host;
+  const previousViewport=actor.viewportSize();
+  await actor.setViewportSize({width:375,height:812});
   const visualBeforeTarget=await actor.evaluate(()=>globalThis.__hexVisualMessageCount);
-  await actor.getByRole('button',{name:'Build settlement'}).click();
-  if(await actor.locator('[data-legal-target="settlement"]').count()<1)throw new Error('No legal settlement targets were highlighted.');
+  await actor.getByRole('button',{name:'Build settlement'}).tap();
+  const touchTarget=actor.locator('#board [data-legal-target="settlement"]').first();
+  await touchTarget.waitFor({state:'visible'});
+  const touchVertex=await touchTarget.getAttribute('data-target-id');
+  if(!touchVertex)throw new Error('No legal settlement touch target was highlighted.');
   if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget)throw new Error('Opening target mode sent a network message.');
-  await clickBoardTarget(actor);
-  await observer.waitForFunction(rev=>document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}`),guestRevision+1,{timeout:15000});
+  await assertDirectTargets(actor);
+  // A browser touch gesture delivers pointer events and any native compatibility click.
+  await touchTarget.tap();
+  await Promise.all([actor,observer,spectator].map(page=>page.waitForFunction(rev=>
+    document.querySelector('#game-status')?.textContent?.includes(`Revision ${rev}.`),guestRevision+1,{timeout:15000})));
+  if(await actor.evaluate(()=>globalThis.__hexVisualMessageCount)!==visualBeforeTarget+1)
+    throw new Error('A single guest touch did not send exactly one gameplay command.');
+  if(await actor.locator('#game-error').textContent())throw new Error('Guest touch placement failed validation.');
+  if(await observer.locator(`#board [data-building-kind="settlement"][data-vertex-id="${touchVertex}"]`).count()!==1)
+    throw new Error('The host did not place the settlement at the tapped target.');
+  if(previousViewport)await actor.setViewportSize(previousViewport);
   await observer.waitForFunction(()=>document.querySelector('#public-action')?.textContent?.includes('Player 2 built a settlement'),null,{timeout:15000});
   await observer.waitForFunction(()=>document.querySelector('#turn-banner')?.textContent?.includes('Player 2'),null,{timeout:15000});
   if(await observer.locator('#board [data-building-kind="settlement"]').count()<1)throw new Error('B3 settlement icon did not render on the board.');

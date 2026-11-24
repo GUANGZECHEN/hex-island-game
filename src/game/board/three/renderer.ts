@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { grainClearance, MODELED_WHEAT } from '../grain-clearance.ts';
 import { setWheatClearance } from './wheat-batches.ts';
 import { PlacementPreview } from './placement-preview.ts';
-import { TargetFeedback, TARGET_COLORS, isPlacement } from '../target-feedback.ts';
+import { TargetFeedback, TARGET_COLORS, TAP_MAX_DISTANCE, TAP_MAX_DURATION_MS } from '../target-feedback.ts';
 import { resizeManualFrustum } from './camera-layout.ts';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArtAssets, makeBoatPort, makeBuilding, makeTerrain, PORT_SAIL } from './art.ts';
@@ -76,7 +76,9 @@ export class ThreeBoardRenderer {
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private withinViewport = true;
   private visibilityObserver: IntersectionObserver | null = null;
-  private down: { x: number; y: number } | null = null;
+  private down: {
+    pointerId: number; x: number; y: number; started: number; touch: boolean; target: string | null;
+  } | null = null;
   private abort = new AbortController();
   private observer: ResizeObserver;
   private disposed = false;
@@ -90,7 +92,7 @@ export class ThreeBoardRenderer {
   private static instances = 0;
   private instanceId = ++ThreeBoardRenderer.instances;
 
-  constructor(private host: HTMLElement, view: BoardSceneView, private choose: (id: string) => void, private failed: (reason: string) => void, private stageTouch: (id: string) => void) {
+  constructor(private host: HTMLElement, view: BoardSceneView, private choose: (id: string) => void, private failed: (reason: string) => void) {
     this.view = view; this.geometry = worldGeometry(view.board.layout);
     this.canvas = document.createElement('canvas'); this.canvas.className = 'three-island-board';
     this.canvas.setAttribute('aria-label', '3D island board. Click or tap a highlighted location. Use 2D view for keyboard placement.'); this.canvas.setAttribute('role', 'img');
@@ -113,15 +115,26 @@ export class ThreeBoardRenderer {
     this.controls.addEventListener('start', () => { this.manualView = true; });
     this.controls.addEventListener('start', this.leaveTarget);
     const signal = this.abort.signal;
+    // A second finger can land outside the canvas during a page pinch.
+    document.addEventListener('pointerdown', event => {
+      if (this.down?.touch && event.pointerType === 'touch' && !event.isPrimary) this.leaveTarget();
+    }, { capture: true, passive: true, signal });
     this.canvas.addEventListener('pointerdown', event => {
-      if (!event.isPrimary) { this.leaveTarget(); return; }
       if (event.button === 1) event.preventDefault();
-      if (event.isPrimary && event.button === 0 && !this.adjustTouch) { this.down = { x: event.clientX, y: event.clientY }; this.hover(event); }
+      if (!event.isPrimary || event.button !== 0 || this.adjustTouch) return;
+      this.down = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+        started: event.timeStamp, touch: event.pointerType === 'touch', target: null };
+      this.hover(event);
+      if (this.down) this.down.target = this.preview.active;
     }, { signal });
     this.canvas.addEventListener('pointerup', this.pick, { signal });
     this.canvas.addEventListener('pointermove', this.hover, { signal });
     this.canvas.addEventListener('pointerleave', this.leaveTarget, { signal });
     this.canvas.addEventListener('pointercancel', this.leaveTarget, { signal });
+    this.canvas.addEventListener('lostpointercapture', event => {
+      if (this.down?.pointerId === event.pointerId) this.leaveTarget();
+    }, { signal });
+    this.canvas.addEventListener('contextmenu', this.leaveTarget, { signal });
     this.canvas.addEventListener('auxclick', event => { if (event.button === 1) event.preventDefault(); }, { signal });
     this.canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault(); queueMicrotask(() => { if (!this.disposed) this.failed('3D connection to the graphics device was lost. Switched to 2D.'); });
@@ -196,8 +209,14 @@ export class ThreeBoardRenderer {
   }
   update(view: BoardSceneView): void {
     if (this.disposed) return;
+    const key = staticBoardKey(view.board);
+    if (this.down?.touch && (key !== this.key || this.view.targetMode !== view.targetMode
+      || this.view.placementPlayerId !== view.placementPlayerId
+      || (this.down.target !== null && !view.legalTargets.includes(this.down.target)))) {
+      this.leaveTarget();
+    }
     this.view = view;
-    const key = staticBoardKey(view.board); if (key !== this.key) { this.key = key; this.rebuildMap(); }
+    if (key !== this.key) { this.key = key; this.rebuildMap(); }
     const structureKey = JSON.stringify([view.roads, view.buildings, view.players, view.stations]);
     if (structureKey !== this.structureKey) {
       const buildStarted = this.profileStructureBuilds ? performance.now() : 0;
@@ -269,11 +288,6 @@ export class ThreeBoardRenderer {
     }
     this.paintTargets(); this.resize(); this.invalidate(); this.scheduleMotion();
   }
-  /** Presentation-only highlight: never changes the camera, scene identity or game. */
-  highlightTarget(id: string | null): void {
-    if (this.preview.selected !== id) this.preview.select(id);
-    this.paintTargets();
-  }
   private paintTargets(): void {
     let changed = this.placement.update(this.preview.active, this.view, this.geometry, this.tiles, this.assets);
     if (this.wheatDirty || changed) {
@@ -308,8 +322,8 @@ export class ThreeBoardRenderer {
     return id && this.view.legalTargets.includes(id) ? id : null;
   }
   private hover = (event: PointerEvent): void => {
-    if (!event.isPrimary) return;
-    const dragging = (event.buttons & 6) !== 0 || !!this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 5;
+    if (!event.isPrimary || (this.down && event.pointerId !== this.down.pointerId)) return;
+    const dragging = (event.buttons & 6) !== 0 || !!this.down && Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > TAP_MAX_DISTANCE;
     if (dragging) this.down = null;
     const id = dragging || event.pointerType === 'touch' && !this.down ? null : this.targetAt(event.clientX, event.clientY);
     const decorative = !dragging && !id ? this.decorationAt(event.clientX, event.clientY) : null;
@@ -522,14 +536,20 @@ export class ThreeBoardRenderer {
     this.invalidate(); this.scheduleMotion();
   };
   private pick = (event: PointerEvent): void => {
-    const down = this.down; this.down = null;
-    if (this.disposed || event.button !== 0 || !down || this.adjustTouch || document.body.classList.contains('network-resyncing') || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return;
-    const id = this.targetAt(event.clientX, event.clientY);
-    if (id) {
-      if (event.pointerType === 'touch' && isPlacement(this.view.targetMode)) this.stageTouch(id);
-      else { this.preview.hover(id); this.paintTargets(); this.pickCount++; this.choose(id); }
+    const down = this.down;
+    if (!event.isPrimary || !down || event.pointerId !== down.pointerId) return;
+    this.down = null;
+    if (this.disposed || event.button !== 0 || this.adjustTouch || document.body.classList.contains('network-resyncing')
+      || Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_MAX_DISTANCE
+      || (down.touch && event.timeStamp - down.started >= TAP_MAX_DURATION_MS)) {
+      if (down.touch && !this.disposed) this.leaveTarget();
+      return;
     }
-    else if (!this.view.targetMode) {
+    const id = this.targetAt(event.clientX, event.clientY);
+    if (down.touch && id !== down.target) { this.leaveTarget(); return; }
+    if (id) {
+      this.preview.hover(id); this.paintTargets(); this.pickCount++; this.choose(id);
+    } else if (!this.view.targetMode) {
       const decorative = this.decorationAt(event.clientX, event.clientY);
       if (decorative) this.touchDecoration(decorative);
     }
@@ -547,7 +567,7 @@ export class ThreeBoardRenderer {
   inspect() {
     return { frustum: [this.camera.left, this.camera.right, this.camera.top, this.camera.bottom], projection: this.camera.projectionMatrix.toArray(), quaternion: this.camera.quaternion.toArray(), canvasSize: [this.width, this.height], staticKey: this.key, manualView: this.manualView, mapBuilds: this.mapBuilds, instanceId: this.instanceId, mode: '3d', device: this.device, frames: this.frameCount, picks: this.pickCount, hexCount: this.tiles.size, portCount: this.view.board.ports.length,
       camera: this.camera.position.toArray(), target: this.controls.target.toArray(), zoom: this.camera.zoom, stations:Object.keys(this.view.stations??{}), roads: Object.keys(this.view.roads), buildings: Object.entries(this.view.buildings), robber: this.robberId,
-      targets: [...this.view.legalTargets], targetMode: this.view.targetMode, highlightedTarget: this.preview.active, selectedTarget: this.preview.selected,
+      targets: [...this.view.legalTargets], targetMode: this.view.targetMode, highlightedTarget: this.preview.active,
       placementPiece: this.placement.kind, previewTargetId: this.placement.target, structureBuildMs: this.lastStructureBuildMs,
       targetColors: this.targets.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh).map(o => {
         const material = o.material as THREE.MeshBasicMaterial;

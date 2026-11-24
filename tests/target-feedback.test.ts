@@ -9,27 +9,44 @@ import { readFileSync } from 'node:fs';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 import { adjacentPlacementHexes, isPlacement, TargetFeedback, TARGET_COLORS } from '../src/game/board/target-feedback.ts';
 
-test('one hovered target is orange and the prior selection returns on leave', () => {
-  const view = new TargetFeedback(); view.update('board:road', ['a','b']);
-  view.select('a'); assert.equal(view.active,'a');
-  view.hover('b'); assert.equal(view.active,'b'); assert.equal(view.selected,'a');
-  view.hover(null); assert.equal(view.active,'a');
-  assert.equal(TARGET_COLORS.legal,'#fff3a0'); assert.equal(TARGET_COLORS.active,'#ff981f');
+test('only the current legal target is highlighted and leaving it clears the preview', () => {
+  const feedback = new TargetFeedback();
+  feedback.update('board:road', ['a', 'b']);
+  feedback.hover('a');
+  assert.equal(feedback.active, 'a');
+  feedback.hover('b');
+  assert.equal(feedback.active, 'b');
+  feedback.hover(null);
+  assert.equal(feedback.active, null);
+  feedback.hover('illegal');
+  assert.equal(feedback.active, null);
+  assert.equal(TARGET_COLORS.legal, '#fff3a0');
+  assert.equal(TARGET_COLORS.active, '#ff981f');
 });
-test('selection, cancellation, new board and mode changes clear obsolete highlights', () => {
-  const view = new TargetFeedback(); view.update('board:road',['a','b']);
-  view.hover('b'); view.select('a'); assert.equal(view.active,'a');
-  view.update('board:road',['a','c']); assert.equal(view.active,'a');
-  view.update('board:road',['c']); assert.equal(view.active,null);
-  view.select('invalid'); view.hover('invalid'); assert.equal(view.active,null);
-  view.select('c'); view.update('board:city',['c']); assert.equal(view.active,null);
-  view.select('c'); view.update('another:city',['c']); assert.equal(view.active,null);
-  view.select('c'); view.update('another:',[]); assert.equal(view.active,null);
+
+test('a changed board, mode or set of legal targets clears obsolete highlights', () => {
+  const feedback = new TargetFeedback();
+  feedback.update('board:road', ['a', 'b']);
+  feedback.hover('a');
+  feedback.update('board:road', ['a', 'c']);
+  assert.equal(feedback.active, 'a');
+  feedback.update('board:road', ['c']);
+  assert.equal(feedback.active, null);
+  feedback.hover('c');
+  feedback.update('board:city', ['c']);
+  assert.equal(feedback.active, null);
+  feedback.hover('c');
+  feedback.update('another:city', ['c']);
+  assert.equal(feedback.active, null);
 });
-test('preview is local and independent for each player', () => {
-  const a = new TargetFeedback(), b = new TargetFeedback();
-  for (const v of [a,b]) v.update('road',['r1','r2']);
-  a.hover('r1'); b.select('r2'); assert.equal(a.active,'r1'); assert.equal(b.active,'r2');
+
+test('each player previews targets independently', () => {
+  const first = new TargetFeedback(), second = new TargetFeedback();
+  for (const feedback of [first, second]) feedback.update('road', ['r1', 'r2']);
+  first.hover('r1');
+  second.hover('r2');
+  assert.equal(first.active, 'r1');
+  assert.equal(second.active, 'r2');
 });
 test('pointer highlighting has dedicated material, cleanup and no game/UI rebuild', () => {
   const source=readFileSync('src/game/board/three/renderer.ts','utf8');
@@ -38,7 +55,6 @@ test('pointer highlighting has dedicated material, cleanup and no game/UI rebuil
   assert.ok(source.includes('this.activeTargetMaterial.dispose()'));
   const hover=source.slice(source.indexOf('private hover ='),source.indexOf('private corners()'));
   assert.ok(!hover.includes('this.choose(')); assert.ok(!hover.includes('this.resetView('));
-  assert.ok(source.includes("this.canvas.addEventListener('pointercancel', this.leaveTarget"));
 });
 test('3D and SVG keep on-board feedback without coordinate selection controls', () => {
   const ui=readFileSync('src/game-ui.ts','utf8');

@@ -334,90 +334,150 @@ async function verifyShipArt(page,fixtureURL){
  check('Placed ships match their owner cards in 3D and SVG with desktop and phone color and grayscale evidence');
 }
 async function verifyTouchPlacement(browser,renderer){
- const context=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true});
- const phone=await context.newPage();phone.on('pageerror',e=>report.errors.push(String(e)));
- const confirm=phone.locator('#board-confirm-placement');
- const build=phone.getByRole('button',{name:'Build settlement',exact:true});
- const cancel=phone.getByRole('button',{name:'Cancel selection',exact:true});
- const pause=phone.locator('#turn-clock-pause');
- const placements=async ()=>renderer==='3d'?(await inspect(phone)).buildings.length:phone.locator('#board [data-building-kind]').count();
- const assertPreview=async id=>{
-  if(renderer==='2d')assert.equal(await phone.locator('#board [data-placement-preview]').getAttribute('data-preview-target'),id);
-  else{
-   const info=await inspect(phone);
-   assert.equal(info.placementPiece,'settlement');
-   assert.equal(info.previewTargetId,id);
+ const context=await browser.newContext({viewport:{width:375,height:812},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+ const phone=await context.newPage();phone.on('pageerror',error=>report.errors.push(String(error)));
+ const buildSettlement=phone.getByRole('button',{name:'Build settlement',exact:true});
+ const buildRoad=phone.getByRole('button',{name:'Build road',exact:true});
+ const reveal=async()=>{if(await phone.locator('#pass').isVisible())await phone.locator('#reveal').tap();};
+ const seat=()=>phone.locator('#player-strip .local-player').getAttribute('data-seat');
+ const pieces=async()=>{
+  if(renderer==='3d'){
+   const {buildings,roads,picks}=await inspect(phone);
+   return {settlements:buildings.filter(([,piece])=>piece.kind==='settlement').map(([id])=>id),roads,picks};
   }
+  const ids=(selector,attribute)=>phone.locator(selector).evaluateAll((nodes,attribute)=>nodes.map(node=>node.getAttribute(attribute)),attribute);
+  return {
+   settlements:await ids('#board [data-building-kind="settlement"]','data-vertex-id'),
+   roads:await ids('#board [data-road-id]','data-road-id')
+  };
  };
+ const pointOf=async(id,touchId=0)=>{
+  const point=await boardTargetPoint(phone,id);
+  assert.ok(point&&Number.isFinite(point.x)&&Number.isFinite(point.y),'touch target must be on the board');
+  return {...point,id:touchId};
+ };
+ const offset=point=>({...point,x:point.x+(point.x<phone.viewportSize().width-40?32:-32)});
+ const touch=await context.newCDPSession(phone);
+ const send=(type,touchPoints=[])=>touch.send('Input.dispatchTouchEvent',{type,touchPoints});
  const tapTarget=async id=>{
-  const point=await boardTargetPoint(phone,id);assert.ok(point,'touch target must be on the board');
+  const before=await pieces();
+  const point=await pointOf(id);
   await phone.touchscreen.tap(point.x,point.y);
-  await confirm.waitFor({state:'visible'});
-  assert.match(await confirm.innerText(),/Confirm settlement/i);
-  assert.equal((await inspect(phone)).selectedTarget,id,'release pins this target without placing it');
-  await assertPreview(id);
-  assert.equal(await placements(),0);
+  await settle(phone);
+  if(renderer==='3d')assert.equal((await pieces()).picks,before.picks+1,'one physical tap emits one canvas pick');
+  assert.equal(await phone.locator('#game-error').textContent(),'');
+ };
+ const undo=async owner=>{
+  await reveal();
+  if(await seat()!==owner){
+   phone.once('dialog',dialog=>dialog.accept('Player '+owner));
+   await phone.locator('#switch-player').tap();
+   await reveal();
+  }
+  await phone.getByRole('button',{name:'Undo last action',exact:true}).tap();
+  await reveal();
+  await settle(phone);
  };
  try{
   await start(phone,renderer);
-  await build.tap();
+  const owner=await seat();
+  assert.ok(owner);
+  assert.equal(await phone.locator('#board-confirm-placement').count(),0,'phone placement has no confirmation control');
+  await buildSettlement.tap();
+  await assertDirectTargets(phone);
   const ids=await boardTargetIds(phone);assert.ok(ids.length>=3);
   const first=ids[1],second=ids[2];
-  const point=await boardTargetPoint(phone,first);assert.ok(point);
-  const touch=await context.newCDPSession(phone);
-  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:point.x,y:point.y}]});
-  await settle(phone);
-  await assertPreview(first);
-  assert.equal(await confirm.isVisible(),false,'press alone cannot select a placement');
-  await touch.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
-  await settle(phone);
-  assert.equal(await confirm.isVisible(),false,'touch cancellation leaves no confirmation');
-  assert.equal(await placements(),0,'touch cancellation must not place a building');
-  await tapTarget(first);
-  await cancel.tap();
-  assert.equal(await confirm.isVisible(),false,'Cancel selection clears the touch confirmation');
-  assert.equal((await inspect(phone)).selectedTarget,null);
-  await build.tap();
-  await tapTarget(first);
-  await pause.tap();
-  assert.equal(await confirm.isVisible(),false,'loss of placement legality clears stale confirmation');
-  assert.equal((await inspect(phone)).selectedTarget,null);
-  await pause.tap();
-  assert.equal(await placements(),0,'resuming cannot apply the discarded target');
-  await build.tap();
-  await tapTarget(first);
-  await tapTarget(second);
-  await confirm.tap();
-  await settle(phone);
-  assert.equal(await placements(),1,'exactly one confirmation places the replacement target');
-  const placed=renderer==='2d'?await phone.locator('#board [data-building-kind="settlement"]').getAttribute('data-vertex-id'):(await inspect(phone)).buildings[0][0];
-  assert.equal(placed,second);
-  assert.equal(await confirm.isVisible(),false);
-  assert.equal((await inspect(phone)).selectedTarget,null);
-  assert.equal(await phone.locator('#game-error').textContent(),'');
-  await phone.getByRole('button',{name:'Build road',exact:true}).tap();
-  const [edge]=await boardTargetIds(phone);assert.ok(edge);
-  const roadPoint=await boardTargetPoint(phone,edge);assert.ok(roadPoint);
-  await phone.touchscreen.tap(roadPoint.x,roadPoint.y);
-  await confirm.waitFor({state:'visible'});
-  assert.match(await confirm.innerText(),/Confirm road/i);
-  assert.equal((await inspect(phone)).selectedTarget,edge);
-  const roads=async ()=>renderer==='3d'?(await inspect(phone)).roads.length:phone.locator('#board [data-road-id]').count();
-  if(renderer==='2d'){
-   const preview=phone.locator('#board [data-placement-preview="road"]');
-   assert.equal(await preview.getAttribute('data-preview-target'),edge);
-   assert.equal(await preview.getAttribute('data-road-id'),null,'an SVG preview has no committed road ID');
+  const empty=await pieces();
+  const noPlacement=async label=>{
+   await settle(phone);
+   assert.deepEqual(await pieces(),empty,label+' must not commit or pick a piece');
+  };
+
+  let point=await pointOf(first);
+  await send('touchStart',[point]);
+  await noPlacement('touch press');
+  if(renderer==='3d'){
+   const info=await inspect(phone);
+   assert.equal(info.placementPiece,'settlement');
+   assert.equal(info.previewTargetId,first);
+  }else{
+   assert.equal(await phone.locator('#board [data-placement-preview="settlement"]').getAttribute('data-preview-target'),first);
   }
-  assert.equal(await roads(),0,'touch release previews a road without placing it');
-  await confirm.tap();
-  await settle(phone);
-  assert.equal(await roads(),1,'road confirmation places exactly one road');
-  if(renderer==='2d')assert.equal(await phone.locator('#board [data-road-id]').getAttribute('data-road-id'),edge);
-  check(renderer+' touch settlement and road previews require explicit confirmation; Cancel, retarget and stale paths pass');
+  await send('touchCancel');
+  await noPlacement('touch cancellation');
+  if(renderer==='3d')assert.equal((await inspect(phone)).highlightedTarget,null);
+  else assert.equal(await phone.locator('#board [data-placement-preview]').count(),0);
+
+  point=await pointOf(first);
+  await send('touchStart',[point]);
+  await send('touchMove',[offset(point)]);
+  await send('touchMove',[point]);
+  await send('touchEnd');
+  await noPlacement('drag out and back');
+
+  point=await pointOf(first);
+  await send('touchStart',[point]);
+  await send('touchStart',[point,{...offset(point),id:1}]);
+  await send('touchEnd');
+  await noPlacement('second finger');
+
+  await send('touchStart',[await pointOf(first)]);
+  await delay(600);
+  await send('touchEnd');
+  await noPlacement('long press');
+
+  if(renderer==='3d'){
+   const adjust=phone.locator('#board-adjust-view');
+   await adjust.check();
+   point=await pointOf(first);
+   await phone.touchscreen.tap(point.x,point.y);
+   await noPlacement('tap while adjusting the view');
+   const camera=(await inspect(phone)).camera;
+   await send('touchStart',[point]);
+   await send('touchMove',[offset(point)]);
+   await send('touchEnd');
+   await noPlacement('camera drag');
+   assert.notDeepEqual((await inspect(phone)).camera,camera,'Adjust view still moves the camera');
+   await adjust.uncheck();
+   await phone.locator('#board-view-reset').tap();
+  }
+
+  await phone.getByRole('button',{name:'Cancel selection',exact:true}).tap();
+  assert.equal((await boardTargetIds(phone)).length,0);
+  await buildSettlement.tap();
+  const pause=phone.locator('#turn-clock-pause');
+  await pause.tap();
+  assert.equal((await boardTargetIds(phone)).length,0,'pausing invalidates legal placement targets');
+  await pause.tap();
+  await noPlacement('cancel and resume');
+
+  await buildSettlement.tap();
+  await tapTarget(second);
+  assert.deepEqual((await pieces()).settlements,[second],'one tap places the pointed settlement');
+  await undo(owner);
+  assert.deepEqual((await pieces()).settlements,[],'one Undo removes the only settlement');
+  await buildSettlement.tap();
+  await tapTarget(first);
+  assert.deepEqual((await pieces()).settlements,[first],'the next tap can choose another settlement vertex');
+
+  await buildRoad.tap();
+  const [edge]=await boardTargetIds(phone);assert.ok(edge);
+  await tapTarget(edge);
+  await reveal();
+  assert.deepEqual((await pieces()).roads,[edge],'one tap places the pointed road');
+  await undo(owner);
+  assert.deepEqual((await pieces()).roads,[],'one Undo removes the only road');
+  assert.deepEqual((await pieces()).settlements,[first],'road Undo keeps the settlement');
+  await buildRoad.tap();
+  await tapTarget(edge);
+  await reveal();
+  assert.deepEqual((await pieces()).roads,[edge],'the undone road can be placed with one tap again');
+  check(renderer+' one tap places each phone piece; Undo and retap work, while non-tap gestures never build');
  }finally{
   await context.close();
  }
 }
+
 try{
  if(svgOnly&&process.env.QA_URL)throw new Error('TARGET_SVG_ONLY uses the local Vite fixture; unset QA_URL');
  if(!process.env.QA_URL){

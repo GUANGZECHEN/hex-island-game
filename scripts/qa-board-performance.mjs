@@ -98,66 +98,65 @@ async function touch(session, type, point) {
   await session.send('Input.dispatchTouchEvent', { type, touchPoints: point ? [{ ...point, id: 1 }] : [] });
 }
 
-// Native release timestamp to the first post-render task. This is a browser
-// proxy for visible feedback. It cannot time physical display scanout.
-async function measureTap(page, session, point, feedback) {
-  await page.evaluate(feedback => {
+// Native release timestamp to the first post-render task showing the new piece.
+// The browser measures feedback before the physical display scans it out.
+async function measureConstruction(page, session, point, id, kind) {
+  await page.evaluate(({ id, kind }) => {
     window.__boardTap = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timed out waiting for ' + feedback + ' feedback')), 8000);
+      const listener = new AbortController();
+      const channel = new MessageChannel();
+      let frame;
+      function stop() {
+        clearTimeout(timer);
+        cancelAnimationFrame(frame);
+        listener.abort();
+        channel.port1.close();
+        channel.port2.close();
+      }
+      const timer = setTimeout(() => {
+        stop();
+        reject(new Error('Timed out waiting for the tapped ' + kind + ' to render at ' + id));
+      }, 8000);
       document.addEventListener('pointerup', event => {
-        const before = window.__hex3D.renderedFrames();
-        function checkFrame() {
-          const confirm = document.getElementById('board-confirm-placement');
-          const shown = !!confirm && !confirm.hidden && confirm.getClientRects().length > 0;
-          if ((feedback === 'preview') !== shown || window.__hex3D.renderedFrames() <= before) {
-            requestAnimationFrame(checkFrame);
-            return;
-          }
-          const channel = new MessageChannel();
-          channel.port1.onmessage = () => {
-            clearTimeout(timer);
-            channel.port1.close();
-            channel.port2.close();
-            resolve(performance.now() - event.timeStamp);
-          };
-          channel.port2.postMessage(null);
+        if (event.pointerType !== 'touch' || event.target !== document.querySelector('#board canvas')) {
+          stop();
+          reject(new Error('Expected the touch release on the game board canvas'));
+          return;
         }
-        requestAnimationFrame(checkFrame);
-      }, { once: true, capture: true });
+        const before = window.__hex3D.renderedFrames();
+        const checkNextFrame = () => {
+          frame = requestAnimationFrame(() => channel.port2.postMessage(null));
+        };
+        channel.port1.onmessage = () => {
+          const now = performance.now();
+          if (window.__hex3D.renderedFrames() > before) {
+            const scene = window.__hex3D.inspect();
+            if (scene.buildings.some(([key, piece]) => key === id && piece.kind === kind)) {
+              stop();
+              resolve({ constructionMs: now - event.timeStamp, structureGroupCpuMs: scene.structureBuildMs });
+              return;
+            }
+          }
+          checkNextFrame();
+        };
+        checkNextFrame();
+      }, { once: true, capture: true, signal: listener.signal });
     });
-  }, feedback);
+  }, { id, kind });
   await touch(session, 'touchStart', point);
   await touch(session, 'touchEnd');
   return page.evaluate(() => window.__boardTap);
 }
 
-async function place(page, session, label) {
+async function place(page, session, label, kind) {
   await page.getByRole('button', { name: label, exact: true }).click();
   const [id] = await boardTargetIds(page);
   assert.ok(id, 'Expected a legal target');
   const point = await boardTargetPoint(page, id);
   assert.ok(point);
-  const preview = await measureTap(page, session, point, 'preview');
-  const confirm = page.locator('#board-confirm-placement');
-  await confirm.evaluate(button => {
-    if (button.hidden) throw new Error('Placement preview disappeared before confirmation');
-    button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-  });
-  await settle(page);
-  const confirmPoint = await confirm.evaluate(button => {
-    const rect = button.getBoundingClientRect();
-    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-    if (button.hidden || !button.contains(document.elementFromPoint(x, y))) throw new Error('Confirmation button cannot receive touch at its center');
-    return { x, y };
-  });
-  const construction = await measureTap(page, session, confirmPoint, 'construction');
-  const metrics = await page.evaluate(id => {
-    const state = window.__hex3D.inspect();
-    return { kind: state.buildings.find(([key]) => key === id)?.[1].kind, groupBuild: state.structureBuildMs };
-  }, id);
-  assert.equal(metrics.kind, label === 'Build settlement' ? 'settlement' : 'city');
+  const result = await measureConstruction(page, session, point, id, kind);
   assert.equal(await page.locator('#game-error').textContent(), '');
-  return { preview, construction, groupBuild: metrics.groupBuild };
+  return result;
 }
 
 async function orbit(page, session) {
@@ -223,7 +222,7 @@ export async function measureExpandedBoard(page, { sameContext = false } = {}) {
   const live = await attachInput(page);
   let opening;
   try {
-    opening = await place(page, live.session, 'Build settlement');
+    opening = await place(page, live.session, 'Build settlement', 'settlement');
   } finally {
     await live.reset();
   }
@@ -247,14 +246,13 @@ export async function measureExpandedBoard(page, { sameContext = false } = {}) {
       await dense.evaluate(() => window.__startPerformanceTrial());
       let result;
       try {
-        result = await place(dense, input.session, 'Upgrade house to city');
+        result = await place(dense, input.session, 'Upgrade house to city', 'city');
       } catch (cause) {
         const diagnostic = await dense.evaluate(() => ({
           status: document.getElementById('game-status')?.textContent,
           clock: document.getElementById('turn-action-clock-seconds')?.textContent,
           handoff: !document.getElementById('pass')?.hidden,
-          confirmHidden: document.getElementById('board-confirm-placement')?.hidden,
-          selected: window.__hex3D?.inspect().selectedTarget,
+          renderer: document.getElementById('board')?.dataset.renderer,
           mode: window.__hex3D?.inspect().targetMode,
         }));
         throw new Error('Dense construction trial ' + i + ' failed: ' + String(cause) + ' ' + JSON.stringify(diagnostic), { cause });
@@ -268,9 +266,9 @@ export async function measureExpandedBoard(page, { sameContext = false } = {}) {
     const camera = await orbit(dense, cameraSession);
     await cameraSession.detach();
     assert.deepEqual(errors, []);
-    return { scope: 'Release to first post-render task in local play, synthetic dense position; hardware targets apply only on physical devices', opening, board,
-      previewMs: distribution(samples.map(s => s.preview)), constructionMs: distribution(samples.map(s => s.construction)),
-      structureGroupCpuMs: distribution(samples.map(s => s.groupBuild)), camera };
+    return { scope: 'Single touch release to first post-render task showing the placed piece in local play; the dense position is synthetic and hardware targets apply on physical devices', opening, board,
+      constructionMs: distribution(samples.map(s => s.constructionMs)),
+      structureGroupCpuMs: distribution(samples.map(s => s.structureGroupCpuMs)), camera };
   } finally {
     await dense.close();
     await page.bringToFront();

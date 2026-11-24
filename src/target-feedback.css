@@ -1,4 +1,4 @@
-/* Legal choices stay yellow; only the hovered/focused/selected choice is orange. */
+/* Legal choices stay yellow; only the hovered, focused or pressed choice is orange. */
 #board .game-target-vertex.target-active{fill:#ff981f!important;stroke:#b75c0a!important;stroke-width:.065;opacity:1;filter:none!important}
 #board .game-target-road.target-active{stroke:#ff981f!important;stroke-opacity:1;opacity:1;filter:none!important}
 #board .game-target-city.target-active .game-building-shell{stroke:#ff981f!important;stroke-width:.10;filter:none!important}
@@ -13,5 +13,3 @@
 #board .placement-neighbor .terrain-art:not(.wheat-preview-local){opacity:.15}
 #board .terrain-art-fields .wheat-occupied,
 #board .placement-neighbor .wheat-preview-local .wheat-preview{opacity:.08}
-#board-confirm-placement{min-height:44px;justify-self:center}
-#board-confirm-placement[hidden]{display:none}

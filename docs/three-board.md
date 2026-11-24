@@ -6,9 +6,9 @@ The default board is Three.js r180/WebGL2 for local and existing host-authoritat
 Desert is a continuous sand-dune surface without props, resource icons or placeholder dash. The rule-required robber remains on its occupied tile. Each port uses the original two coastal vertices: two separate wooden decks connect to distinct points on one small boat. Ratios are printed on boat sails; resource-specific sails also use the existing resource icon; generic sails show only 3:1.
 
 ## Interaction and lifecycle
-Middle-button drag orbits; Shift+middle pans; wheel on the canvas zooms. A left click acts on a legal target. On touchscreens, releasing a construction target previews the piece and a separate button confirms it. Reset/Top view and camera gestures never issue game commands. Mobile camera gestures require Adjust view; ordinary touch allows page scrolling.
+Middle-button drag orbits; Shift+middle pans; wheel on the canvas zooms. A single left click or tap on a legal target performs the selected action. Reset/Top view and camera gestures never issue game commands. Mobile camera gestures require Adjust view; ordinary touch allows page scrolling.
 
-When a road or settlement borders a grain field, the nearby wheat fades so the piece stays visible. The same cue previews a legal placement. While choosing a robber destination, translucent hex highlights leave the neighboring buildings visible.
+When a road or settlement borders a grain field, the nearby wheat fades so the piece stays visible. Pointer hover previews the same effect on a legal placement. While choosing a robber destination, translucent hex highlights leave the neighboring buildings visible.
 
 Terrain is cached by a static map key, excluding robber location. Pieces and targets update independently; snapshots preserve the canvas and camera. Hand/Actions adjacency and compact desktop height-fit remain. Rendering is on demand; shared GPU resources are disposed when replaced.
 
@@ -17,7 +17,7 @@ User-selected 2D, unavailable WebGL2 and context loss use the existing SVG rende
 ## Verification
 TypeScript, unit tests and production build; pure tests validate dual-deck geometry, dunes, static keys and privacy boundaries. scripts/qa-three-live.mjs exercises actual pixels, ray-picked game commands, Undo, standard/expanded maps, responsive layout, restart, input preservation, fallback, host/guest/spectator sync and reconnect. The legacy qa-e2e.mjs deliberately uses renderer=2d for SVG-specific regression; passing it alone does not count as 3D validation.
 
-Browser CI uses SwiftShader. The expanded-board benchmark records touch-release-to-feedback time for a preview and a confirmed build, the CPU time to update placed structures, and actual frames while the camera moves. The dense six-seat fixture has 48 roads and 18 buildings and times 20 city upgrades after a warm-up. Physical-device targets are a p95 local response under 100 ms, at least 30 fps during a camera drag on a midrange phone, and a goal of 60 fps on an integrated-graphics laptop.
+Browser CI uses SwiftShader. The expanded-board benchmark measures the time from a single touch release to the first post-render task showing the completed build, the CPU time to update placed structures, and actual frames while the camera moves. The dense six-seat fixture has 48 roads and 18 buildings and times 20 city upgrades after a warm-up. Physical-device targets are a p95 local response under 100 ms, at least 30 fps during a camera drag on a midrange phone, and a goal of 60 fps on an integrated-graphics laptop.
 
 To repeat on hardware, install the repository dependencies and the same Playwright version used in browser CI (`npm install --no-save --no-package-lock playwright@1.58.0`). From the matching checkout, point `QA_URL` at the running site's full URL and run `node scripts/qa-board-performance.mjs` with an installed Chrome browser. Set `QA_CDP_URL` to an attached Android Chrome debugging endpoint to measure the phone. The JSON output includes GPU, viewport, sample counts and timings. The benchmark uses a fresh tab for local play.
 
