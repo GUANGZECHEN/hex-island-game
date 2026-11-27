@@ -17,7 +17,7 @@ test('desert uses a local SVG icon',()=>{
 test('resource chips provide an accessible resource and count',()=>{
  class Element { attributes=new Map<string,string>();children:Element[]=[];textContent='';className='';tag:string;constructor(tag:string){this.tag=tag;}setAttribute(key:string,value:string){this.attributes.set(key,value);}append(...items:Element[]){this.children.push(...items);} }
  const previous=globalThis.document;Object.assign(globalThis,{document:{createElement:(tag:string)=>new Element(tag),createElementNS:(_ns:string,tag:string)=>new Element(tag)}});
- try {const chip=resourceChip('lumber',3) as unknown as Element;assert.equal(chip.attributes.get('role'),'img');assert.equal(chip.attributes.get('aria-label'),'lumber: 3');assert.equal(chip.children[0].attributes.get('data-resource-icon'),'lumber');assert.equal(chip.children[1].textContent,'3');}
+ try {const chip=resourceChip('lumber',3) as unknown as Element;assert.equal(chip.attributes.get('role'),'img');assert.equal(chip.attributes.get('aria-label'),'lumber: 3');assert.equal(chip.children[0].attributes.get('data-resource-icon'),'lumber');assert.equal(chip.children[1].textContent,'3');const unlimited=resourceChip('ore','∞') as unknown as Element;assert.equal(unlimited.attributes.get('aria-label'),'ore: unlimited');assert.equal(unlimited.children[1].textContent,'∞');}
  finally {Object.assign(globalThis,{document:previous});}
 });
 test('affordability checks all required resource quantities',()=>{

@@ -157,3 +157,16 @@ D037: The Product Owner approved a 25-land-hex revision of Twin Capes. Remove th
 One desert replaces the proposed extra 6. The 24 productive tiles use the standard 18 number tokens plus 5, 9, 4, 10, 3 and 11. New matches use the ordinary Classic robber, production blocking, discard and theft rules. Harbors stay open and ships remain unlimited. Previously started 29-hex games retain their original board and rules.
 
 After each roll the game log shows the actual resource card count credited to every player, including zero. This applies to desktop and mobile play. Public payout entries disclose counts only.
+
+
+## 2026 11 27 Unlimited bank resources
+
+D038: The Product Owner approved replacing finite bank supply with unlimited resources after observing eligible dice results without payouts. The previous implementation withheld a resource from every recipient when several players were owed more cards than the bank held; a sole recipient received only the remaining stock. This shortage behavior is removed for all Classic maps and Harbor Co-op.
+
+Ordinary production, setup grants, Catch-up, cooperative seven rewards, bank and port trades, Year of Plenty and archived cooperative resource-granting card effects draw their full rule-defined amounts. Two-card Catch-up and Harbor v3 seven rewards still choose two distinct types. The bank display shows infinity for each resource. Player-hand costs and ownership, trade ratios, development deck supply, robber and discard rules, and the existing 60-second clock and two-second Bot interval remain in force.
+
+The rule applies to subsequent actions in new and recovered matches without an additional toggle. Preserve existing hands and cargo, map and cooperative rule versions, entropy state, pending phases and already-recorded payout metadata; do not award missed historical resources or replay an earlier bonus. This supersedes all earlier finite-bank shortage instructions, including those in archived cooperative rules.
+
+Architect classification: complex because the change spans production, economy, UI, Bots, public projections and checkpoint recovery. Retain the JSON-safe numeric bank fields as a signed transfer ledger anchored at the existing initial value of 19 per resource. Every draw and return remains accounted for, but the ledger never restricts supply and is displayed as infinity. Do not serialize numeric Infinity or replace the rule with a large finite stock. Public ledger deltas continue supporting existing trade notices and aggregate Bot estimates; no individual private hands are exposed.
+
+Acceptance covers exhausted and negative ledgers, multiple simultaneous recipients, city payouts, repeat production beyond 19 cards, setup, bonuses, trades, resource cards, Bot choices, public labels and mobile logs. Verify player affordability, robber blocking, Classic seven discards, JSON round-trip recovery, unchanged prior awards and duplicate-command protection. Publish through the existing game/mvp workflow and verify the deployed revision without merging main.

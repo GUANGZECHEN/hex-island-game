@@ -47,6 +47,9 @@ export class HostAuthority {
  constructor(gameId:string,state:GameState,random:()=>number,revision=0,clockNow:()=>number=Date.now){if(!idPattern.test(gameId)||!Number.isSafeInteger(revision)||revision<0)throw new Error('Invalid game authority.');this.gameId=gameId;this.state=structuredClone(state);this.random=random;this.revision=revision;this.clockNow=clockNow;this.refreshClock();}
  static fromRecovery(value:AuthorityRecovery,random:()=>number,clockNow:()=>number=Date.now):HostAuthority {
   if(!value||value.version!==1||typeof value.gameId!=='string'||!idPattern.test(value.gameId)||!Number.isSafeInteger(value.revision)||value.revision<0||!value.state||value.state.version!==1)throw new Error('Invalid saved authority.');
+  // Check recovered accounting separately: ledger balances may be negative, hands may not.
+  const validResourceRecord=(record:Hand,nonnegative:boolean)=>!!record&&typeof record==='object'&&!Array.isArray(record)&&RESOURCES.every(r=>Number.isSafeInteger(record[r])&&(!nonnegative||record[r]>=0));
+  if(!validResourceRecord(value.state.bank,false)||!Array.isArray(value.state.players)||value.state.players.some(player=>!player||!validResourceRecord(player.hand,true)))throw new Error('Invalid saved resource accounting.');
   validateHarborState(value.state);
   validateSavedBoard(value.state);
   validateSavedRollPayout(value.state);

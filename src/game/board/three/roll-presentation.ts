@@ -19,7 +19,7 @@ export interface RollPresentation {
 
 type PublicBoard = Pick<GameState, 'board' | 'buildings' | 'bank'> & { players: readonly { id: string }[] };
 
-/** Mirror the authoritative resource rules, including robber and bank shortages,
+/** Mirror the authoritative resource rules, including robber blocking,
  * then distribute the publicly known award over buildings for display only. */
 export function describeRoll(before: PublicBoard, dice: readonly [number, number],
   after?: {turn:number;mode?:GameState['mode']|null;harbor?:GameState['harbor']|null;catchUpReward?:GameState['catchUpReward']|null}): RollPresentation {
@@ -58,7 +58,7 @@ export function describeRoll(before: PublicBoard, dice: readonly [number, number
   const awards = new Map<string, BuildingRollGain>();
 
   // Same resource-by-resource and hex/vertex traversal as calculateDiceProduction;
-  // available bank stock is already resolved in remaining, so no phantom +1s.
+  // the public awards are already resolved in remaining, so no phantom +1s.
   for (const resource of RESOURCES) for (const hex of hexes) {
     if (setupById.get(hex.id)?.resource !== resource) continue;
     for (const vertexId of hex.vertexIds) {

@@ -214,10 +214,10 @@ test('Twin Capes dice receipts match actual city, settlement and bank transfers,
   assert.deepEqual(after.lastRollPayout,{turn:4,playerId:'b',dice:[1,6],gains:{a:0,b:0,c:0}});
 
   state.bank[resource]=2;
-  check(rollSix(),0,0);
+  check(rollSix(),1,2);
   delete state.buildings[hex.vertexIds[0]];
   state.bank[resource]=1;
-  check(rollSix(),0,1);
+  check(rollSix(),0,2);
   state.board.robberHexId=tile.hexId;
   check(rollSix(),0,0);
 });

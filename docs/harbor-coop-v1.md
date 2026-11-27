@@ -1,5 +1,7 @@
 # Harbor Co-op: first playable ruleset
 
+Bank amendment approved 2026-11-27: the unlimited supply rule in [the current rules](game/GAME_MVP.md#unlimited-bank-resources) supersedes any finite-stock limits below, including for recovered archived matches. All other version-specific mechanics and recorded awards remain as described.
+
 Product Owner approval: 2026-11-15. Implementation: complex. Scope: online two-person team; local two-person hotseat (also usable by one person managing both seats); local Player 1 + one deterministic teammate Bot. Classic remains the default and keeps its rules. No remote bots or new paid service.
 
 ## Objective and first-play balance defaults

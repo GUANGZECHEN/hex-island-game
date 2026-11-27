@@ -118,15 +118,13 @@ test('seven: rewards can match, and both seats follow the same rule when rolling
  }
 });
 
-test('seven: draw only stocked types, handle exhausted bank without negative cards or redraw loops',()=>{
- for(const stock of [0,1,2]){
-  const s=game();s.currentSeat=1;s.turn=2;
-  wallet(s,'b',{});wallet(s,'a',{lumber:19,brick:19,wool:19,grain:19,ore:19-stock});
-  const next=roll(s,[2,3,...Array(stock).fill(0)]);
-  assert.equal(size(next.harbor!.sevenReward!.gains.b),Math.min(stock,1));
-  assert.equal(size(next.harbor!.sevenReward!.gains.a),stock===2?1:0);
-  assert.equal(next.bank.ore,0);assert.equal(next.phase,'action');conserved(next);validateHarborState(next);
- }
+test('seven: version 2 rewards each partner even with an empty ledger',()=>{
+ const s=game();s.currentSeat=1;s.turn=2;
+ wallet(s,'b',{});wallet(s,'a',{lumber:19,brick:19,wool:19,grain:19,ore:19});
+ const next=roll(s,[2,3,0,0]);
+ for(const player of next.players)assert.equal(size(next.harbor!.sevenReward!.gains[player.id]),1);
+ assert.equal(next.bank.lumber,-2);assert.equal(next.phase,'action');validateHarborState(next);
+ for(const r of RESOURCES)assert.equal(next.bank[r]+next.players.reduce((n,p)=>n+p.hand[r],0)+(next.harbor?.orders.reduce((n,o)=>n+o.loaded[r],0)??0),19);
 });
 
 test('seven: local seeded randomness is reproducible; non-seven production remains normal',()=>{

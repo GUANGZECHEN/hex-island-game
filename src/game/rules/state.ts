@@ -25,7 +25,9 @@ export interface GameState {
   mode?:GameMode; harbor?:HarborState; rules?:OptionalRules;
   lastRollPayout?: RollPayout;
   catchUpReward?: {turn:number;playerId:string;gains:Hand};
-  version: 1; board: BoardSetup; players: Player[]; bank: Hand; deck: Development[];
+  version: 1; board: BoardSetup; players: Player[];
+  /** Signed accounting ledger anchored at 19 per resource, not a limit on supply. */
+  bank: Hand; deck: Development[];
   randomState: number; playedCards: Development[]; startingSeat: number; currentSeat: number; turn: number;
   phase: 'setup-settlement' | 'setup-city' | 'setup-road' | 'roll' | 'discard' | 'robber' | 'pirate' | 'steal' | 'action' | 'free-road' | 'finished'; setupStep: number;
   longestHolder: string | null; armyHolder: string | null; playedDevelopment: boolean; resumePhase: 'roll' | 'action' | null; freeRoads: number; winner: string | null;
@@ -117,7 +119,7 @@ export function applySetupCommand(original:GameState,command:SetupCommand):GameS
   state.pendingSettlement=vertex.id;
   if(state.setupStep>=state.players.length)for(const hex of board.hexes.filter(h=>h.vertexIds.includes(vertex.id))){
    const resource=state.board.hexes.find(item=>item.hexId===hex.id)!.resource;
-   if(resource){const count=Math.min(city?2:1,state.bank[resource]);state.bank[resource]-=count;player.hand[resource]+=count;}
+   if(resource){const count=city?2:1;state.bank[resource]-=count;player.hand[resource]+=count;}
   }
   if(city)advanceSetup(state);else{state.phase='setup-road';if(usesTradeStations(state))state.setupRoadEdges=[];}
  }else if(command.type==='place-road'&&state.phase==='setup-road'){

@@ -26,7 +26,7 @@ export function robberVictims(state: GameState, hexId: string): string[] {
 }
 
 /** Public dice yields: identical resource rules for the reducer and the player-facing announcement.
- * Depends only on the visible board, bank stock, and dice; private hands are never inspected.
+ * Depends only on the visible board and dice; private hands are never inspected.
  */
 export function calculateDiceProduction(
  state: Pick<GameState,'board'|'buildings'|'bank'> & {players:readonly {id:string}[]},total:number,
@@ -44,14 +44,9 @@ export function calculateDiceProduction(
     if(building)owes.set(building.playerId,(owes.get(building.playerId)??0)+(building.kind==='city'?2:1));
    }
   }
-  const totalOwed=[...owes.values()].reduce((a,b)=>a+b,0);
-  if(owes.size>1&&totalOwed>state.bank[resource])continue;
-  let available=state.bank[resource];
   for(const [id,amount] of owes){
    if(!gains[id])throw new Error('Invalid building owner.');
-   const quantity=Math.min(amount,available);
-   gains[id][resource]+=quantity;
-   available-=quantity;
+   gains[id][resource]+=amount;
   }
  }
  return gains;
@@ -69,7 +64,7 @@ export function diceProductionSummary(
  }
  return calculateDiceProduction(before,total);
 }
-/** Draw distinct stocked resources for a lagging player after their roll.
+/** Draw distinct resources for a lagging player after their roll.
  * Host RNG remains authoritative; the public reward metadata makes UI/recovery exact. */
 export function awardCatchUp(state: GameState, secureRandom?: () => number): void {
   delete state.catchUpReward;
@@ -79,7 +74,7 @@ export function awardCatchUp(state: GameState, secureRandom?: () => number): voi
   if(leader<5||publicVictoryPoints(state,active.id)>leader-3)return;
   const count=leader>7?2:1;
   const gains:Hand={lumber:0,brick:0,wool:0,grain:0,ore:0};
-  const remaining=RESOURCES.filter(resource=>state.bank[resource]>0);
+  const remaining=[...RESOURCES];
   for(let i=0;i<count&&remaining.length;i++){
     const draw=secureRandom?secureIndex(secureRandom,remaining.length):drawIndex(state.randomState,remaining.length);
     state.randomState=draw.state??state.randomState;
@@ -88,7 +83,7 @@ export function awardCatchUp(state: GameState, secureRandom?: () => number): voi
   }
   if(RESOURCES.some(resource=>gains[resource]))state.catchUpReward={turn:state.turn,playerId:active.id,gains};
 }
-/** Apply exactly the publicly computable awards, preserving single-recipient shortage behavior. */
+/** Apply exactly the publicly computable awards, regardless of the signed bank ledger. */
 export function produce(state:GameState,total:number):void {
  const gains=calculateDiceProduction(state,total);
  for(const player of state.players){

@@ -45,21 +45,22 @@ test('catch-up uses the public leader-relative threshold and awards only the rol
  assert.throws(()=>applyTurnCommand(catchUpGame(8,2),{type:'roll',playerId:'leader'},()=>0),/authorized/);
 });
 
-test('catch-up draws distinct stocked types with host entropy and handles shortages',()=>{
+test('catch-up draws distinct types with host entropy even with an empty ledger',()=>{
  const s=catchUpGame(8,5);
  for(const r of RESOURCES)s.bank[r]=0;
  s.bank.ore=2;
  let calls=0;
  const result=applyTurnCommand(s,{type:'roll',playerId:'behind'},()=>{calls++;return 0;});
- assert.equal(result.catchUpReward?.gains.ore,1);
- assert.equal(RESOURCES.reduce((sum,r)=>sum+(result.catchUpReward?.gains[r]??0),0),1);
- assert.equal(result.bank.ore,1,'no duplicate type even when stock remains');
- assert.equal(calls,3,'two dice and one stocked-type draw');
+ assert.equal(result.catchUpReward?.gains.lumber,1);
+ assert.equal(RESOURCES.reduce((sum,r)=>sum+(result.catchUpReward?.gains[r]??0),0),2);
+ assert.ok(result.bank.lumber<0);
+ assert.equal(calls,4,'two dice and two distinct draws');
  assert.equal(result.randomState,s.randomState,'host entropy does not advance public seeded RNG');
  const empty=catchUpGame(8,5);for(const r of RESOURCES)empty.bank[r]=0;
  calls=0;
- assert.equal(applyTurnCommand(empty,{type:'roll',playerId:'behind'},()=>{calls++;return 0;}).catchUpReward,undefined);
- assert.equal(calls,2,'no random draw from an empty bank');
+ const applyResult=applyTurnCommand(empty,{type:'roll',playerId:'behind'},()=>{calls++;return 0;});
+ assert.equal(RESOURCES.reduce((n,r)=>n+applyResult.catchUpReward!.gains[r],0),2);
+ assert.equal(calls,4);
  const full=catchUpGame(8,5);const values=[0,0,4,2];
  const drawn=applyTurnCommand(full,{type:'roll',playerId:'behind'},()=>values.shift()!);
  assert.deepEqual(RESOURCES.filter(r=>drawn.catchUpReward!.gains[r]),['wool','ore']);

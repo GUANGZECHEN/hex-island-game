@@ -68,3 +68,16 @@ test('expanded and standard player-count limits are enforced separately',()=>{
  assert.doesNotThrow(()=>createGame(1,['a','b','c','d','e','f'],undefined,{boardLayout:'expanded-5-6'}));
  assert.throws(()=>createGame(1,['a','b','c','d','e','f','g'],undefined,{boardLayout:'expanded-5-6'}));
 });
+
+
+test('second setup building grants all adjacent resources from an empty ledger',()=>{
+ for(const mode of ['classic','harbor-coop'] as const){
+  const s=createGame(123,['a','b'],undefined,{mode});s.setupStep=2;s.currentSeat=mode==='harbor-coop'?1:0;s.phase=mode==='harbor-coop'?'setup-city':'setup-settlement';
+  for(const r of RESOURCES)s.bank[r]=0;
+  const geometry=createIslandBoard();const hex=geometry.hexes.find(h=>s.board.hexes.find(x=>x.hexId===h.id)!.resource)!;const resource=s.board.hexes.find(x=>x.hexId===hex.id)!.resource!;
+  const vertex=hex.vertexIds[0],before=s.players[s.currentSeat].hand[resource];
+  const next=applySetupCommand(s,{type:mode==='harbor-coop'?'place-city':'place-settlement',playerId:s.players[s.currentSeat].id,vertexId:vertex});
+  const adjacency=geometry.hexes.filter(h=>h.vertexIds.includes(vertex)&&s.board.hexes.find(x=>x.hexId===h.id)!.resource===resource).length;
+  const award=adjacency*(mode==='harbor-coop'?2:1);assert.equal(next.players[s.currentSeat].hand[resource]-before,award);assert.equal(next.bank[resource],-award);
+ }
+});

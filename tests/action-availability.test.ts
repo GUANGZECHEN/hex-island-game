@@ -24,12 +24,12 @@ test('all bank pairs match reducer, rate and stock',()=>{
  const a=availability(s,'a');assert.equal(Object.keys(a.bankTrades).length,20);
  for(const give of RESOURCES)for(const receive of RESOURCES)if(give!==receive){let legal=true;try{applyEconomyCommand(s,{type:'bank-trade',playerId:'a',give,receive,rate:bankTradeRate(s,'a',give)});}catch{legal=false;}assert.equal(a.bankTrades[`${give}:${receive}`].enabled,legal);}
 });
-test('development phases, ownership, purchase age, and invention bank stock',()=>{
+test('development phases, ownership, purchase age, and unlimited invention resources',()=>{
  const s=game();s.players[0].cards=[{type:'knight',boughtTurn:1},{type:'road-building',boughtTurn:2},{type:'monopoly',boughtTurn:1},{type:'invention',boughtTurn:1}];
  assert.equal(availability(s,'a',{deckCount:0}).buyDevelopment.enabled,false);
  assert.equal(availability(s,'a',{deckCount:1}).buyDevelopment.enabled,true);
  assert.equal(availability(s,'a').knight.enabled,true);assert.equal(availability(s,'a').roadBuilding.enabled,false);
- s.bank.ore=1;assert.equal(availability(s,'a',{invention:['ore','ore']}).yearOfPlenty.enabled,false);
+ s.bank.ore=-1;assert.equal(availability(s,'a',{invention:['ore','ore']}).yearOfPlenty.enabled,true);
  assert.equal(availability(s,'a',{invention:['ore','brick']}).yearOfPlenty.enabled,true);
  s.playedDevelopment=true;assert.equal(availability(s,'a').monopoly.enabled,false);
  s.playedDevelopment=false;s.phase='roll';assert.equal(availability(s,'a').knight.enabled,true);s.phase='robber';assert.equal(availability(s,'a').knight.enabled,false);

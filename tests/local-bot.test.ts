@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createGame, applySetupCommand } from '../src/game/rules/state.ts';
 import { chooseBotCommand } from '../src/game/bot/policy.ts';
 import { applyBotCommand } from '../src/game/bot/runner.ts';
-import { monopolyResource, rankExpansionTargets, settlementScore } from '../src/game/bot/strategy.ts';
+import { monopolyResource, rankExpansionTargets, settlementScore, chooseInventionResources } from '../src/game/bot/strategy.ts';
 import { createLocalRoomSettings } from '../src/game/ui/local-room.ts';
 import { legalTargetIds } from '../src/game/rules/legal.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
@@ -155,7 +155,7 @@ test('bot preserves a near-complete settlement instead of spending its wool and 
  state.players[1].hand={lumber:1,brick:0,wool:1,grain:1,ore:1};
  assert.ok(settlementScore(state,'Bot',target)>0);
  assert.deepEqual(chooseBotCommand(state,'Bot'),{type:'end-turn',playerId:'Bot'});
- state.players[1].hand={lumber:1,brick:0,wool:1,grain:1,ore:4};state.bank.ore=15;
+ state.players[1].hand={lumber:1,brick:0,wool:1,grain:1,ore:4};state.bank.ore=15;state.bank.brick=-2;
  assert.deepEqual(chooseBotCommand(state,'Bot'),{type:'bank-trade',playerId:'Bot',give:'ore',receive:'brick',rate:4});
  state.players[1].hand={lumber:1,brick:1,wool:1,grain:1,ore:1};
  const command=chooseBotCommand(state,'Bot');
@@ -323,4 +323,13 @@ test('Twin Capes bot can build a third legal ship through the usual reducer',()=
   state=applyBotCommand(state,command);
  }
  assert.equal(Object.values(state.buildings).filter(piece=>piece.playerId==='Bot'&&piece.kind==='ship').length,3);
+});
+
+
+test('bot chooses Year of Plenty resources when every bank ledger is empty',()=>{
+ const s=createGame(51,['Player 1','Bot']),board=createIslandBoard();s.phase='action';s.currentSeat=1;s.turn=5;
+ const first=board.edges[0],shared=first.vertexIds[1];const second=board.edges.find(e=>e.id!==first.id&&e.vertexIds.includes(shared))!;
+ s.buildings={[first.vertexIds[0]]:{playerId:'Bot',kind:'settlement'}};s.roads={[first.id]:'Bot',[second.id]:'Bot'};
+ s.players[1].hand={lumber:1,brick:0,wool:1,grain:1,ore:1};for(const r of ['lumber','brick','wool','grain','ore'] as const)s.bank[r]=-2;
+ const resources=chooseInventionResources(s,'Bot');assert.equal(resources?.length,2);assert.ok(resources?.includes('brick'));
 });

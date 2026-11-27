@@ -5,7 +5,7 @@ import { applyTurnCommand, produce, calculateDiceProduction } from '../src/game/
 import { createIslandBoard } from '../src/game/board/geometry.ts';
 const zero = (): Hand => ({ lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
 
-test('production handles city, robber and bank shortages', () => {
+test('production pays full city and settlement yields regardless of ledger balance', () => {
   const state = createGame(4, ['a','b','c']);
   const geometry = createIslandBoard();
   const assignment = state.board.hexes.find(hex => hex.token !== null)!;
@@ -14,10 +14,11 @@ test('production handles city, robber and bank shortages', () => {
   state.buildings[hex.vertexIds[0]] = { playerId: 'a', kind: 'city' };
   state.buildings[hex.vertexIds[3]] = { playerId: 'b', kind: 'settlement' };
   state.bank[resource] = 2;
-  produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 0); assert.equal(state.players[1].hand[resource], 0);
+  produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 2); assert.equal(state.players[1].hand[resource], 1); assert.equal(state.bank[resource],-1);
   delete state.buildings[hex.vertexIds[3]];
-  state.bank[resource] = 1; produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 1); assert.equal(state.bank[resource], 0);
-  state.bank[resource] = 19; state.board = {...state.board, robberHexId: hex.id}; produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 1);
+  state.bank[resource] = 0; produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 4); assert.equal(state.bank[resource], -2);
+  for(let i=0;i<10;i++)produce(state,assignment.token!);assert.equal(state.players[0].hand[resource],24);assert.equal(state.bank[resource],-22);
+  state.bank[resource] = 19; state.board = {...state.board, robberHexId: hex.id}; produce(state, assignment.token!); assert.equal(state.players[0].hand[resource], 24);
 });
 
 test('seven forces exact discards before robber movement and deterministic eligible theft', () => {
@@ -67,7 +68,7 @@ test('public dice yields report exact resource types and amounts without private
  assert.deepEqual(preBank,publicView.bank); // pure public calculation does not change the bank
  assert.ok(!JSON.stringify(publicView).includes('"hand"'));
 });
-test('public dice yields respect the robber, seven and both bank shortage cases',()=>{
+test('public dice yields respect the robber and seven even with an empty ledger',()=>{
  const state=createGame(41,['a','b']);
  const hex=state.board.hexes.find(item=>item.resource&&item.token!==null&&item.hexId!==state.board.robberHexId)!;
  const geometry=createIslandBoard();
@@ -77,10 +78,10 @@ test('public dice yields respect the robber, seven and both bank shortage cases'
  state.buildings[corners[3]]={playerId:'b',kind:'settlement'};
  state.bank[resource]=2;
  const preview={board:state.board,buildings:state.buildings,bank:state.bank,players:state.players.map(({id})=>({id}))};
- assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],0);
- assert.equal(calculateDiceProduction(preview,hex.token!).b[resource],0);
+ assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],2);
+ assert.equal(calculateDiceProduction(preview,hex.token!).b[resource],1);
  delete state.buildings[corners[3]];state.bank[resource]=1;
- assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],1);
+ assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],2);
  state.bank[resource]=19;state.board={...state.board,robberHexId:hex.hexId};preview.board=state.board;
  assert.equal(calculateDiceProduction(preview,hex.token!).a[resource],0);
  const onSeven=calculateDiceProduction(preview,7);
