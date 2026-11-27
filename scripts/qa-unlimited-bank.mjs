@@ -79,14 +79,25 @@ try{
   const deliver=async revision=>{const packet=await active.evaluate(revision=>window.__unlimitedFixture.snapshot(revision,'Player 2'),revision);await guest.evaluate(({packet,id})=>window.__unlimitedDeliver(packet,id),packet);};
   await deliver(0);await checkBank(active);await checkBank(guest);
   const before=[await hand(active),await hand(guest)];
+  // The guest was opened after the host. Keep the host visible and wait for its
+  // renderer before rolling, as the 3D animation is shortened in a hidden tab.
+  await active.bringToFront();
+  await active.waitForFunction(mode=>!document.hidden&&window.__hex3D?.inspect().mode===mode,mode,{timeout:12000});
+  // Observe before clicking: a slow awaited click can outlive the transient
+  // landing and labels, even though the roll and payout already succeeded.
+  await active.evaluate(({mode,city,settlement,resource})=>{
+   window.__unlimitedLanding=null;
+   const timer=setInterval(()=>{
+    const effect=window.__hex3D?.inspect().rollEffect;
+    if(!effect?.landed)return;
+    window.__unlimitedLanding=mode==='3d'
+     ?effect.gainLabels.map(label=>({vertexId:label.vertexId,gains:label.gains}))
+     :[city,settlement].map(vertexId=>({vertexId,text:document.querySelector(`[data-roll-building="${vertexId}"] [data-resource="${resource}"]`)?.textContent}));
+    clearInterval(timer);
+   },20);
+  },{mode,city:plan.city,settlement:plan.settlement,resource:plan.resource});
   await active.getByRole('button',{name:'Roll dice',exact:true}).click();
-  // Capture transient labels in the same browser task that observes landing.
-  const labels=await (await active.waitForFunction(({mode,city,settlement,resource})=>{
-   const effect=window.__hex3D?.inspect().rollEffect;
-   if(!effect?.landed)return null;
-   if(mode==='3d')return effect.gainLabels.map(label=>({vertexId:label.vertexId,gains:label.gains}));
-   return [city,settlement].map(vertexId=>({vertexId,text:document.querySelector(`[data-roll-building="${vertexId}"] [data-resource="${resource}"]`)?.textContent}));
-  },{mode,city:plan.city,settlement:plan.settlement,resource:plan.resource},{timeout:10000})).jsonValue();
+  const labels=await (await active.waitForFunction(()=>window.__unlimitedLanding,null,{timeout:10000})).jsonValue();
   if(mode==='3d'){
    for(const [id,count] of [[plan.city,2],[plan.settlement,1]])assert.equal(labels.find(x=>x.vertexId===id)?.gains.find(x=>x.resource===plan.resource)?.count,count);
   }else for(const [id,count] of [[plan.city,2],[plan.settlement,1]])assert.equal(labels.find(x=>x.vertexId===id)?.text,'+'+count);
