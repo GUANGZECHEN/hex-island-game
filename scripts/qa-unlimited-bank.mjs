@@ -75,7 +75,9 @@ try{
   active=await browser.newPage(mode==='2d'?phone:{viewport:{width:1280,height:900}});active.setDefaultTimeout(12000);active.on('pageerror',e=>errors.push(String(e)));
   const target=url+(mode==='2d'?'&renderer=2d':'');await active.goto(target,{waitUntil:'networkidle'});
   const plan=await active.evaluate(()=>window.__unlimitedFixture.load());
-  const guest=await browser.newPage(phone);guest.on('pageerror',e=>errors.push(String(e)));await guest.goto(target,{waitUntil:'networkidle'});
+  // Guest checks concern the real mobile receipt and hand, not its renderer.
+  // Avoid running two concurrent software-rendered 3D scenes in CI.
+  const guest=await browser.newPage(phone);guest.on('pageerror',e=>errors.push(String(e)));await guest.goto(url+'&renderer=2d',{waitUntil:'networkidle'});
   const deliver=async revision=>{const packet=await active.evaluate(revision=>window.__unlimitedFixture.snapshot(revision,'Player 2'),revision);await guest.evaluate(({packet,id})=>window.__unlimitedDeliver(packet,id),packet);};
   await deliver(0);await checkBank(active);await checkBank(guest);
   const before=[await hand(active),await hand(guest)];
@@ -83,12 +85,18 @@ try{
   // renderer before rolling, as the 3D animation is shortened in a hidden tab.
   await active.bringToFront();
   await active.waitForFunction(mode=>!document.hidden&&window.__hex3D?.inspect().mode===mode,mode,{timeout:12000});
+  if(mode==='3d')await active.waitForFunction(()=>window.__hex3D.renderedFrames()>0,null,{timeout:12000});
   // Observe before clicking: a slow awaited click can outlive the transient
   // landing and labels, even though the roll and payout already succeeded.
   await active.evaluate(({mode,city,settlement,resource})=>{
    window.__unlimitedLanding=null;
+   window.__unlimitedObservation={samples:0,maxGapMs:0,sawRoll:false,lastEffect:null};
+   let last=performance.now();
    const timer=setInterval(()=>{
+    const now=performance.now(), observation=window.__unlimitedObservation;
+    observation.samples++;observation.maxGapMs=Math.max(observation.maxGapMs,now-last);last=now;
     const effect=window.__hex3D?.inspect().rollEffect;
+    if(effect){observation.sawRoll=true;observation.lastEffect={landed:effect.landed};}
     if(!effect?.landed)return;
     window.__unlimitedLanding=mode==='3d'
      ?effect.gainLabels.map(label=>({vertexId:label.vertexId,gains:label.gains}))
@@ -119,5 +127,20 @@ try{
   await browser.close();browser=null;active=null;
  }
  assert.deepEqual(errors,[]);
-}catch(error){console.error(error?.stack||error);process.exitCode=1;try{await active?.screenshot({path:join(evidence,'failure.png')});}catch{}}
+}catch(error){
+ console.error(error?.stack||error);process.exitCode=1;
+ try{
+  if(active){
+   const diagnostic=await active.evaluate(()=>{
+    const view=window.__hex3D?.inspect(),rect=document.querySelector('#board')?.getBoundingClientRect();
+    const data=window.__unlimitedFixture?.data();
+    return {mode:view?.mode,frames:window.__hex3D?.renderedFrames(),rollEffect:view?.rollEffect??null,
+     hidden:document.hidden,board:rect?{x:rect.x,y:rect.y,width:rect.width,height:rect.height}:null,
+     observation:window.__unlimitedObservation??null,hands:data?.players.map(p=>({id:p.id,hand:p.hand})),receipt:data?.receipt??null};
+   });
+   console.error('Unlimited-bank diagnostics:',JSON.stringify(diagnostic));
+   await active.screenshot({path:join(evidence,'failure.png')});
+  }
+ }catch(diagnosticError){console.error('Could not collect diagnostics:',String(diagnosticError));}
+}
 finally{await browser?.close();server?.kill('SIGTERM');await rm(join(root,source),{force:true});await rm(join(root,html),{force:true});}

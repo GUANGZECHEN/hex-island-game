@@ -82,6 +82,9 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
+      - name: Verify unlimited-bank production and trading
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-unlimited-bank.mjs
       - name: Verify personal ending music on local and shared guest players
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-outcome-music.mjs
@@ -94,9 +97,6 @@ jobs:
       - name: Verify real dice geometry, resource payout and 2D fallback
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
-      - name: Verify unlimited-bank production and trading
-        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
-        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-unlimited-bank.mjs
       - name: Verify 3D graphics, input, camera, audio-independent behavior and layouts
         if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
         run: node scripts/qa-three-live.mjs
