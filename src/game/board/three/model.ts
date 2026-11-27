@@ -6,6 +6,7 @@ import type { TargetMode } from '../../rules/legal.ts';
 /** Public scene data only: never hands, deck, entropy or room credentials. */
 export interface BoardSceneView {
   harborPorts?:boolean;
+  setupCity?:boolean;
   stations?:Readonly<Record<string,{builtBy:string}>>;
   board: BoardSetup;
   players: readonly { id: string; name: string; color: string; seat?: number }[];
@@ -14,6 +15,13 @@ export interface BoardSceneView {
   placementPlayerId?: string;
   targetMode: TargetMode | null;
   legalTargets: readonly string[];
+}
+/** Everything drawn by the SVG board, excluding hands, clocks and game phase
+ * except for the special empty-city targets during cooperative setup. */
+export function svgBoardKey(view: BoardSceneView): string {
+  return JSON.stringify([view.board, view.roads, view.buildings, view.players,
+    view.stations, view.harborPorts, view.setupCity, view.targetMode,
+    view.targetMode ? view.placementPlayerId : null, view.legalTargets]);
 }
 export interface GroundPoint { x: number; z: number }
 export interface PortBoatPlan {

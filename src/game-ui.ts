@@ -527,7 +527,7 @@ function drawBoard(legalTargets:readonly string[]){
  if(!boardRenderer)boardRenderer=new BoardRendererController(el('board'),drawSvgBoard,id=>attempt(()=>moveTarget(id)),rememberedBoardCamera);
  boardRenderer.update({board:state.board,roads:state.roads,buildings:state.buildings,
   players:state.players.map(p=>({id:p.id,name:playerName(p.id),seat:p.seat,color:PLAYER_PIECE_PALETTE[p.seat]?.body??'#68767b'})),
-  stations:state.harbor?.stations,harborPorts:isHarbor(state),placementPlayerId:viewer,targetMode,legalTargets});
+  stations:state.harbor?.stations,harborPorts:isHarbor(state),setupCity:state.phase==='setup-city',placementPlayerId:viewer,targetMode,legalTargets});
 }
 function drawSvgBoard(legalTargets:readonly string[]){
  const s=state,container=el('board');if(!s){if(lobbyPreviewBoard)renderIslandBoard(container,lobbyPreviewBoard);return;}renderIslandBoard(container,s.board);const svg=container.querySelector('svg')!;const topology=createIslandBoard(s.board.layout,s.board.version),view=createBoardView(topology);const NS='http://www.w3.org/2000/svg';

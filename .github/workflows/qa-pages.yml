@@ -300,11 +300,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/qa-e2e"
-          cp scripts/qa-twin-capes.mjs scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-board-performance.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs scripts/qa-catch-up.mjs scripts/qa-bot-catch-up.mjs scripts/qa-unlimited-bank.mjs "$RUNNER_TEMP/qa-e2e/"
+          cp scripts/qa-twin-capes.mjs scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-board-performance.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs scripts/qa-catch-up.mjs scripts/qa-bot-catch-up.mjs scripts/qa-unlimited-bank.mjs scripts/qa-discard-map.mjs "$RUNNER_TEMP/qa-e2e/"
           cd "$RUNNER_TEMP/qa-e2e"
           npm init -y >/dev/null 2>&1
           npm install --silent playwright@1.58.0 pngjs@7.0.0
           npx playwright install --with-deps chromium >/dev/null
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-discard-map.mjs; fi
           if [[ "$E2E_FIXTURE_ONLY" != true ]]; then GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-unlimited-bank.mjs; fi
           if [[ "$E2E_FIXTURE_ONLY" != true ]]; then node qa-twin-capes.mjs; fi
           node qa-e2e.mjs
@@ -337,6 +338,7 @@ jobs:
             ${{ runner.temp }}/qa-e2e/catch-up-evidence
             ${{ runner.temp }}/qa-e2e/bot-catch-up-evidence
             ${{ runner.temp }}/qa-e2e/unlimited-bank-evidence
+            ${{ runner.temp }}/qa-e2e/discard-map-evidence
 
       - name: Report QA environment
         env:

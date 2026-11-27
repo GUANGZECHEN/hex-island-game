@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { isPlacement } from '../src/game/board/target-feedback.ts';
 import { generateBoardSetup, GENERATOR_VERSION } from '../src/game/board/setup.ts';
 import { createIslandBoard } from '../src/game/board/geometry.ts';
-import { worldGeometry, portBoatPlan, duneHeight, staticBoardKey } from '../src/game/board/three/model.ts';
+import { worldGeometry, portBoatPlan, duneHeight, staticBoardKey, svgBoardKey, type BoardSceneView } from '../src/game/board/three/model.ts';
+import { createGame } from '../src/game/rules/state.ts';
+import { HostAuthority } from '../src/game/network/authority.ts';
 
 for (const layout of ['standard', 'expanded-5-6'] as const) test(`${layout}: boats retain exactly two distinct bridges from their original coastal vertices`, () => {
   const geometry = worldGeometry(layout), topology = createIslandBoard(layout);
@@ -38,6 +40,43 @@ test('moving the robber never recreates the static scene key', () => {
   const b = generateBoardSetup(24680);
   assert.equal(staticBoardKey(b), staticBoardKey({ ...b, robberHexId: b.hexes.find(h => h.hexId !== b.robberHexId)!.hexId }));
   assert.notEqual(staticBoardKey(b), staticBoardKey(generateBoardSetup(86420)));
+});
+test('simultaneous discards preserve the public board keys for host and guests through robber phase', () => {
+  for (const boardLayout of ['standard', 'twin-capes'] as const) {
+    const state = createGame(29, ['a', 'b', 'c'], undefined, { boardLayout });
+    state.phase = 'discard'; state.currentSeat = 0; state.turn = 3;
+    state.discards = { b: 4, c: 4 };
+    state.players[1].hand.lumber = 8; state.players[2].hand.brick = 8;
+    const host = new HostAuthority(`scene-${boardLayout}`, state, () => 0);
+    const scene = (id: string): BoardSceneView => {
+      const pub = host.snapshot(id).public;
+      return { board: pub.board, roads: pub.roads, buildings: pub.buildings,
+        players: pub.players.map(p => ({ id: p.id, name: p.name, seat: p.seat, color: 'test' })),
+        harborPorts: false, setupCity: pub.phase === 'setup-city', placementPlayerId: id,
+        targetMode: null, legalTargets: [] };
+    };
+    const ids = ['a', 'b', 'c'];
+    const before = ids.map(id => [staticBoardKey(scene(id).board), svgBoardKey(scene(id))]);
+    const submit = (sender: string, cards: object) => host.receive(sender, JSON.stringify({ protocol: 1,
+      gameId: `scene-${boardLayout}`, revision: 0, commandId: `discard-${sender}`, sender,
+      command: { type: 'discard', playerId: sender, cards } }));
+    assert.equal(submit('b', { lumber: 4, brick: 0, wool: 0, grain: 0, ore: 0 }).pending, true);
+    assert.deepEqual(ids.map(id => [staticBoardKey(scene(id).board), svgBoardKey(scene(id))]), before);
+    assert.equal(submit('c', { lumber: 0, brick: 4, wool: 0, grain: 0, ore: 0 }).ok, true);
+    assert.equal(host.snapshot('a').public.phase, 'robber');
+    assert.deepEqual(ids.map(id => [staticBoardKey(scene(id).board), svgBoardKey(scene(id))]), before);
+  }
+});
+test('SVG key changes for visible board, target, owner and setup changes', () => {
+  const board = generateBoardSetup(24680);
+  const scene: BoardSceneView = { board, roads: {}, buildings: {}, players: [], targetMode: null, legalTargets: [] };
+  const key = svgBoardKey(scene);
+  assert.notEqual(svgBoardKey({ ...scene, board: { ...board, robberHexId: board.hexes.find(h => h.hexId !== board.robberHexId)!.hexId } }), key);
+  assert.notEqual(svgBoardKey({ ...scene, roads: { edge: 'a' } }), key);
+  assert.notEqual(svgBoardKey({ ...scene, setupCity: true }), key);
+  const target = { ...scene, targetMode: 'city' as const, legalTargets: ['vertex'], placementPlayerId: 'a' };
+  assert.notEqual(svgBoardKey(target), key);
+  assert.notEqual(svgBoardKey({ ...target, placementPlayerId: 'b' }), svgBoardKey(target));
 });
 test('3D receives only public geometry and targets, while camera remains outside gameplay', () => {
   const ui = readFileSync('src/game-ui.ts', 'utf8'), render = readFileSync('src/game/board/three/renderer.ts', 'utf8'), controller = readFileSync('src/game/board/three/controller.ts', 'utf8');

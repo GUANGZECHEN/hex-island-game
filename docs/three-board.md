@@ -14,6 +14,8 @@ Terrain is cached by a static map key, excluding robber location. Pieces and tar
 
 User-selected 2D, unavailable WebGL2 and context loss use the existing SVG renderer with the same current state. Legal SVG targets accept keyboard focus and Enter.
 
+The SVG board is also retained while its public scene is unchanged. Private discard acknowledgements and the final simultaneous-discard snapshot update controls and hands without replacing the island; actual map, piece, player, target and robber changes still redraw it. A missing SVG or renderer switch forces a fresh draw.
+
 ## Verification
 TypeScript, unit tests and production build; pure tests validate dual-deck geometry, dunes, static keys and privacy boundaries. scripts/qa-three-live.mjs exercises actual pixels, ray-picked game commands, Undo, standard/expanded maps, responsive layout, restart, input preservation, fallback, host/guest/spectator sync and reconnect. The legacy qa-e2e.mjs deliberately uses renderer=2d for SVG-specific regression; passing it alone does not count as 3D validation.
 

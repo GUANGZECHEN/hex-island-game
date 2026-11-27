@@ -1,5 +1,5 @@
 import { ThreeBoardRenderer, type BoardCameraView } from './renderer.ts';
-import { staticBoardKey, type BoardSceneView } from './model.ts';
+import { staticBoardKey, svgBoardKey, type BoardSceneView } from './model.ts';
 import { BoardRollOverlay } from './roll-overlay.ts';
 import type { RollPresentation } from './roll-presentation.ts';
 import { TargetFeedback, TAP_MAX_DISTANCE, isPlacement, type PlacementKind } from '../target-feedback.ts';
@@ -19,6 +19,7 @@ export class BoardRendererController {
   private abort = new AbortController();
   private preview = new TargetFeedback();
   private svgPiece?: (id: string, kind: PlacementKind) => SVGElement | null;
+  private svgKey: string | null = null;
   constructor(private host: HTMLElement, private drawSVG: (legalTargets: readonly string[]) => ((id: string, kind: PlacementKind) => SVGElement | null) | void, private choose: (id: string) => void, previousCamera: BoardCameraView | null = null) {
     this.rememberedCamera = previousCamera;
     const toggle = document.getElementById('board-render-toggle') as HTMLButtonElement;
@@ -140,10 +141,19 @@ export class BoardRendererController {
     }
     if (this.explicit2D || this.fallback) {
       if (this.instance) this.rememberedCamera = this.instance.captureView();
-      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d'; this.svgPiece = this.drawSVG(view.legalTargets) || undefined; this.paintSVG();
+      this.instance?.dispose(); this.instance = null; this.host.dataset.renderer = '2d';
+      const key = svgBoardKey(view);
+      // Discard acknowledgements and snapshots change controls and hands, not
+      // the board. Keep the existing SVG (and its focus/animation state).
+      if (key !== this.svgKey || !this.host.querySelector('svg.island-board')) {
+        this.svgPiece = this.drawSVG(view.legalTargets) || undefined;
+        this.svgKey = key;
+      }
+      this.paintSVG();
       this.rollOverlay?.update(view);
       if(resumeAfterFallback)this.resumeRoll();
     }
+    else this.svgKey = null;
     const active = !!this.instance;
     (document.getElementById('board-render-toggle') as HTMLButtonElement).textContent = active ? '2D view' : '3D view';
     (document.getElementById('board-view-reset') as HTMLButtonElement).disabled = !active;
