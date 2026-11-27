@@ -55,8 +55,8 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
  let goal:Hand=reachable?Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,reachable.order.demand[r]-reachable.order.loaded[r])])) as Hand:{...emptyCargo(),lumber:1,brick:1};
  const cards=self.cards.filter(c=>c.boughtTurn<state.turn);
  if(!state.playedDevelopment){
-  if(cards.some(c=>c.type==='invention')){const resources:Resource[]=[];for(const r of [...RESOURCES].sort((a,b)=>(goal[b]-self.hand[b])-(goal[a]-self.hand[a])))while(resources.length<2&&resources.filter(x=>x===r).length<state.bank[r]&&resources.filter(x=>x===r).length<Math.max(0,goal[r]-self.hand[r]))resources.push(r);if(resources.length===2)return {type:'play-card',playerId:id,card:'invention',resources};}
-  if(cards.some(c=>c.type==='monopoly')){const resource=RESOURCES.find(r=>goal[r]>self.hand[r]&&state.bank[r]>0);if(resource)return {type:'play-card',playerId:id,card:'monopoly',resource};}
+  if(cards.some(c=>c.type==='invention')){const resources:Resource[]=[];for(const r of [...RESOURCES].sort((a,b)=>(goal[b]-self.hand[b])-(goal[a]-self.hand[a])))while(resources.length<2&&resources.filter(x=>x===r).length<Math.max(0,goal[r]-self.hand[r]))resources.push(r);if(resources.length===2)return {type:'play-card',playerId:id,card:'invention',resources};}
+  if(cards.some(c=>c.type==='monopoly')){const resource=RESOURCES.find(r=>goal[r]>self.hand[r]);if(resource)return {type:'play-card',playerId:id,card:'monopoly',resource};}
   if(distant&&cards.some(c=>c.type==='road-building')&&road())return {type:'play-card',playerId:id,card:'road-building'};
   if(cards.some(c=>c.type==='knight')&&Object.keys(state.buildings).some(v=>createIslandBoard(state.board.layout).hexes.find(x=>x.id===state.board.robberHexId)?.vertexIds.includes(v)))return {type:'play-card',playerId:id,card:'knight'};
  }
@@ -65,7 +65,7 @@ export function chooseHarborBot(state:GameState,id:string):BotCommand|null {
  if(settlement)return {type:'build-settlement',playerId:id,vertexId:settlement};
  const city=choose(legalTargetIds(state,id,'city'),v=>cityScore(state,id,v));if(city)return {type:'build-city',playerId:id,vertexId:city};
  if(!reachable&&distant)goal={...emptyCargo(),lumber:1,brick:1};
- for(const receive of RESOURCES){if(self.hand[receive]>=goal[receive]||state.bank[receive]<1)continue;
+ for(const receive of RESOURCES){if(self.hand[receive]>=goal[receive])continue;
   for(const give of RESOURCES){const rate=bankTradeRate(state,id,give);if(give!==receive&&self.hand[give]-rate>=goal[give])return {type:'bank-trade',playerId:id,give,receive,rate};}
  }
  return {type:'end-turn',playerId:id};

@@ -90,13 +90,13 @@ export function createActionAvailabilityReader(state:GameState, playerId:string,
  };
  for(const give of RESOURCES)for(const receive of RESOURCES)if(give!==receive){
   const rate=bankTradeRate(state,playerId,give);
-  result.bankTrades[`${give}:${receive}`]=availability(true,action&&!!player&&player.hand[give]>=rate&&state.bank[receive]>0);
+  result.bankTrades[`${give}:${receive}`]=availability(true,action&&!!player&&player.hand[give]>=rate);
  }
  const inventionCard=card('invention');
  const read=(draft:AvailabilityDraft={}):ActionAvailability=>{
   const selection={...context,...draft};
   const invention=selection.invention;
-  const inventionValid=Array.isArray(invention)&&invention.length===2&&invention.every(r=>RESOURCES.includes(r))&&RESOURCES.every(r=>invention.filter(x=>x===r).length<=state.bank[r]);
+  const inventionValid=Array.isArray(invention)&&invention.length===2&&invention.every(r=>RESOURCES.includes(r));
   const offer=selection.offer;
   const offerValid=!!offer&&Array.isArray(offer.targets)&&offer.targets.length>0&&new Set(offer.targets).size===offer.targets.length&&offer.targets.every(id=>id!==playerId&&state.players.some(p=>p.id===id)&&(!isHarbor(state)||partnersConnected(safeState,playerId,id)))&&validHand(offer.give)&&validHand(offer.receive)&&size(offer.give)>0&&size(offer.receive)>0&&!!player&&RESOURCES.every(r=>offer.give[r]<=player.hand[r]);
   const discard=selection.discard;

@@ -31,6 +31,10 @@ function transfer(from:Hand,to:Hand,cards:Hand) {
  if (!validHand(cards) || RESOURCES.some(r=>from[r]<cards[r])) throw new Error('Insufficient resources.');
  for(const r of RESOURCES){from[r]-=cards[r];to[r]+=cards[r];}
 }
+// Bank is a signed ledger, so grants never test its balance.
+function grantFromBank(bank:Hand,to:Hand,cards:Hand) {
+ for(const r of RESOURCES){bank[r]-=cards[r];to[r]+=cards[r];}
+}
 function updateArmy(state:GameState) {
  if(isHarbor(state)){state.armyHolder=null;return;}
  const max=Math.max(...state.players.map(p=>p.knights));
@@ -77,10 +81,10 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   if(index<0)throw new Error('Card unavailable or purchased this turn.');
   if(command.card==='invention') {
    if(!Array.isArray(command.resources)||command.resources.length!==2||!command.resources.every(validResource))throw new Error('Choose two resources.');
-   const cards=Object.fromEntries(RESOURCES.map(r=>[r,command.resources!.filter(x=>x===r).length])) as Hand;transfer(state.bank,player.hand,cards);
+   const cards=Object.fromEntries(RESOURCES.map(r=>[r,command.resources!.filter(x=>x===r).length])) as Hand;grantFromBank(state.bank,player.hand,cards);
   } else if(command.card==='monopoly') {
    if(!validResource(command.resource))throw new Error('Choose a resource.');
-   if(isHarbor(state)){const amount=Math.min(2,state.bank[command.resource]);state.bank[command.resource]-=amount;player.hand[command.resource]+=amount;}
+   if(isHarbor(state)){const amount=2;state.bank[command.resource]-=amount;player.hand[command.resource]+=amount;}
    else for(const other of state.players)if(other.id!==player.id){player.hand[command.resource]+=other.hand[command.resource];other.hand[command.resource]=0;}
   } else if(command.card==='knight') {state.resumePhase=state.phase;state.phase=usesHarborPirate(state)?'pirate':'robber';player.knights++;updateArmy(state);}
   else if(command.card==='road-building') { if(player.roads>0){state.resumePhase=state.phase;state.phase='free-road';state.freeRoads=Math.min(2,player.roads);} }
@@ -92,7 +96,7 @@ export function applyEconomyCommand(original:GameState, command:EconomyCommand):
   if(!validResource(command.give)||!validResource(command.receive)||command.give===command.receive||![2,3,4].includes(command.rate))throw new Error('Invalid bank trade.');
   if(command.rate===2&&!ownsTradePort(state,player.id,command.give)||command.rate===3&&!ownsTradePort(state,player.id,'generic'))throw new Error('Port unavailable.');
   const give=Object.fromEntries(RESOURCES.map(r=>[r,r===command.give?command.rate:0])) as Hand,receive=Object.fromEntries(RESOURCES.map(r=>[r,r===command.receive?1:0])) as Hand;
-  transfer(player.hand,state.bank,give);transfer(state.bank,player.hand,receive);
+  transfer(player.hand,state.bank,give);grantFromBank(state.bank,player.hand,receive);
  } else if(command.type==='offer') {
   if(isHarbor(state)&&(!Array.isArray(command.targets)||command.targets.some(id=>!partnersConnected(state,player.id,id))))throw new Error('Connect both settlements before trading.');
   if(typeof command.id!=='string'||!/^[A-Za-z0-9_-]{1,80}$/.test(command.id)||!Array.isArray(command.targets)||!command.targets.length||new Set(command.targets).size!==command.targets.length||command.targets.some(id=>id===player.id||!state.players.some(p=>p.id===id))||!validHand(command.give)||!validHand(command.receive)||!handSize(command.give)||!handSize(command.receive)||RESOURCES.some(r=>command.give[r]>player.hand[r]))throw new Error('Invalid offer.');

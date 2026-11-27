@@ -97,6 +97,15 @@ test('public activity reports only bank or port trade ratio',()=>{
   }
 });
 
+test('trade notices preserve 2:1, 3:1 and 4:1 ratios with negative ledger balances',()=>{
+ for(const rate of [2,3,4]){
+  const before={...base(),phase:'action',players:[{id:'Player 1',resources:8,developmentCards:0},...base().players.slice(1)],bank:{lumber:-8,brick:-4,wool:-3,grain:-5,ore:-10}};
+  const after={...before,players:[{id:'Player 1',resources:9-rate,developmentCards:0},...before.players.slice(1)],bank:{...before.bank,lumber:before.bank.lumber+rate,ore:before.bank.ore-1}};
+  const expected=rate===2?'at a resource port':rate===3?'at a generic port':'with the bank';
+  assert.equal(derivePublicActivity(before,after),`Player 1 traded ${rate}:1 ${expected}.`);
+ }
+});
+
 test('public pirate activity reports trade closure only when the pirate moves',()=>{
  const previous={...base(),phase:'pirate',board:{robberHexId:'h0',piratePortEdgeId:'west'}};
  const next={...previous,phase:'action',board:{...previous.board,piratePortEdgeId:'east'}};

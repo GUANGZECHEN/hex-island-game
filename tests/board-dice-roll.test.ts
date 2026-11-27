@@ -85,23 +85,23 @@ test('a valid roll shows only matching unblocked hexes and actual settled/city a
  assert.ok(!blocked.hexIds.includes(hexId));
  assert.ok(!blocked.gains.some(g=>g.vertexId===vertexIds[0]||g.vertexId===vertexIds[2]));
 });
-test('building labels never invent gains when the bank cannot pay and match actual reducer awards',()=>{
+test('building labels match full reducer awards even with a negative ledger',()=>{
  const {s,total,resource}=setup();
- s.bank[resource]=2; // owes two players 3 cards; full resource is withheld.
+ s.bank[resource]=2; // Two players are owed three cards in total.
  let report=describeRoll(s,pair(total));
- assert.equal(report.gains.filter(g=>g.resource===resource).length,0);
- s.bank[resource]=3;
+ assert.equal(report.gains.filter(g=>g.resource===resource).reduce((n,g)=>n+g.count,0),3);
+ s.bank[resource]=-3;
  report=describeRoll(s,pair(total));
  const gains=calculateDiceProduction(s,total);
  for(const player of s.players)for(const r of RESOURCES){
   const visual=report.gains.filter(g=>g.playerId===player.id&&g.resource===r).reduce((sum,g)=>sum+g.count,0);
   assert.equal(visual,gains[player.id][r],`visual ${player.id}/${r} must match authoritative public production`);
  }
- // A single recipient is awarded partial stock; labels must not say +2.
+ // A single recipient receives the complete award too.
  for(const key of Object.keys(s.buildings))s.buildings[key].playerId='Player 1';
- s.bank[resource]=1;
+ s.bank[resource]=0;
  const limited=describeRoll(s,pair(total));
- assert.equal(limited.gains.reduce((n,g)=>n+(g.resource===resource?g.count:0),0),1);
+ assert.equal(limited.gains.reduce((n,g)=>n+(g.resource===resource?g.count:0),0),3);
 });
 test('all dice totals, seven and roll detection stay consistent with gameplay rules',()=>{
  const {s}=setup();

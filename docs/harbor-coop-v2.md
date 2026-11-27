@@ -1,5 +1,7 @@
 # Harbor Co-op v2: trade stations and a 12-order campaign
 
+Bank amendment approved 2026-11-27: the unlimited supply rule in [the current rules](game/GAME_MVP.md#unlimited-bank-resources) supersedes any finite-stock limits below, including for recovered archived matches. All other version-specific mechanics and recorded awards remain as described.
+
 Product Owner approval: 2026-11-16. Task classification: complex, directly approved gameplay implementation. Supported: two humans online, local hotseat/solo control of both seats, or one human plus a local teammate Bot. Classic is unchanged. New games use harbor version 2; existing version-1 saves retain their recorded rules (docs/harbor-coop-v1.md) until restarted.
 
 ## Explicit user rules

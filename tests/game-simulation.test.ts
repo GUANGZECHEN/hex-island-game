@@ -5,7 +5,7 @@ import { applySetupCommand, createGame, RESOURCES, type GameState, type Hand } f
 import { applyTurnCommand } from '../src/game/rules/turn.ts';
 const geometry=createIslandBoard();
 function check(s:GameState){
- for(const r of RESOURCES){assert.ok(s.bank[r]>=0);for(const p of s.players)assert.ok(p.hand[r]>=0);assert.equal(s.bank[r]+s.players.reduce((n,p)=>n+p.hand[r],0),19);}
+ for(const r of RESOURCES){assert.ok(Number.isSafeInteger(s.bank[r]));for(const p of s.players)assert.ok(p.hand[r]>=0);assert.equal(s.bank[r]+s.players.reduce((n,p)=>n+p.hand[r],0),19);}
  for(const p of s.players){assert.equal(p.roads+Object.values(s.roads).filter(x=>x===p.id).length,15);assert.equal(p.settlements+Object.values(s.buildings).filter(x=>x.playerId===p.id&&x.kind==='settlement').length,5);assert.equal(p.cities+Object.values(s.buildings).filter(x=>x.playerId===p.id&&x.kind==='city').length,4);}
  for(const e of geometry.edges)assert.ok(!(s.buildings[e.vertexIds[0]]&&s.buildings[e.vertexIds[1]]));
  assert.ok(geometry.hexes.some(h=>h.id===s.board.robberHexId));

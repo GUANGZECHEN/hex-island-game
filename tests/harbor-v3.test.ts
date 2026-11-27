@@ -37,10 +37,11 @@ test('v3 authoritative seven awards distinct stocked types, publishes the result
  const restored=HostAuthority.fromRecovery(saved,()=>{throw new Error('recovery drew entropy');});assert.deepEqual(restored.checkpoint().state,after);
  const bad=structuredClone(saved);bad.state.harbor!.sevenReward!.gains.a.lumber=2;assert.throws(()=>HostAuthority.fromRecovery(bad,()=>0));
 });
-test('v3 shortage picks at most one of a type per player and prioritizes the roller',()=>{
- for(const seat of [0,1]){const s=game();s.currentSeat=seat;s.startingSeat=seat;for(const r of RESOURCES)s.bank[r]=0;s.bank.lumber=2;s.bank.brick=1;
- const values=[2,3,0,0,0];let i=0;const next=applyTurnCommand(s,{type:'roll',playerId:s.players[seat].id},()=>values[i++]);
- const first=next.harbor!.sevenReward!.gains[s.players[seat].id],second=next.harbor!.sevenReward!.gains[s.players[1-seat].id];assert.equal(size(first),2);assert.equal(size(second),1);assert.equal(first.lumber,1);assert.equal(first.brick,1);assert.equal(second.lumber,1);assert.ok(RESOURCES.every(r=>next.bank[r]>=0));validateHarborState(next);
+test('v3 seven draws two different types per partner with an empty ledger',()=>{
+ for(const seat of [0,1]){
+  const s=game();s.currentSeat=seat;s.startingSeat=seat;for(const r of RESOURCES)s.bank[r]=0;
+  const values=[2,3,0,0,0,0];let i=0;const next=applyTurnCommand(s,{type:'roll',playerId:s.players[seat].id},()=>values[i++]);
+  for(const player of next.players){const gains=next.harbor!.sevenReward!.gains[player.id];assert.equal(size(gains),2);assert.equal(RESOURCES.filter(r=>gains[r]===1).length,2);}
+  assert.equal(next.bank.lumber,-2);assert.equal(next.bank.brick,-2);validateHarborState(next);
  }
- const s=game();for(const r of RESOURCES)s.bank[r]=0;s.bank.ore=5;const v=[2,3,0,0];let i=0;const next=applyTurnCommand(s,{type:'roll',playerId:'a'},()=>v[i++]);assert.equal(size(next.harbor!.sevenReward!.gains.a),1);assert.equal(size(next.harbor!.sevenReward!.gains.b),1);assert.equal(next.bank.ore,3);
 });

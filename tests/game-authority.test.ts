@@ -225,3 +225,14 @@ test('current Twin Capes restores a moved land robber and validates the pending 
  assert.equal(restored.snapshot('mover').private.hand.ore,1);assert.equal(restored.snapshot('owner').private.hand.ore,0);
  assert.equal(restored.spectatorSnapshot().public.phase,'roll');assert.equal(restored.spectatorSnapshot().private,null);
 });
+
+
+test('recovery preserves signed bank accounting and private hands through JSON',()=>{
+ const state=createGame(19,['a','b']);state.phase='action';state.currentSeat=0;state.turn=2;state.bank.ore=-3;state.bank.brick=0;state.players[0].hand.ore=5;
+ const saved=JSON.parse(JSON.stringify(new HostAuthority('negative-ledger',state,()=>0).checkpoint()));
+ const restored=HostAuthority.fromRecovery(saved,()=>0);assert.deepEqual(restored.checkpoint().state.bank,state.bank);
+ assert.equal(restored.snapshot('a').private.hand.ore,5);assert.equal((restored.snapshot('b').public.players[0] as any).hand,undefined);
+ for(const invalid of [Infinity,NaN,1.5,Number.MAX_SAFE_INTEGER+1]){const bad=structuredClone(saved);bad.state.bank.ore=invalid;assert.throws(()=>HostAuthority.fromRecovery(bad,()=>0),/accounting/);}
+ const missing=structuredClone(saved);delete missing.state.bank.ore;assert.throws(()=>HostAuthority.fromRecovery(missing,()=>0),/accounting/);
+ const bad=structuredClone(saved);bad.state.players[0].hand.ore=-1;assert.throws(()=>HostAuthority.fromRecovery(bad,()=>0),/accounting/);
+});

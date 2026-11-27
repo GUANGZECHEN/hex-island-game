@@ -30,14 +30,14 @@ Approved: owned-road/owned-building support only for new roads (including Road B
 
 ## Harbor shipping and seven amendment (2026-11-16)
 
-Approved for Harbor v2: Load may use only the loading player's own roads from their own settlement/city. Trade stations transfer cards, not road access. Rolling seven awards each partner one random resource from available bank stock and immediately resumes normal actions, with no discards, robber movement or theft. Knight's existing behavior, Classic, archived v1 campaigns and infrastructure constraints are unchanged.
+Approved for Harbor v2: Load may use only the loading player's own roads from their own settlement/city. Trade stations transfer cards, not road access. Rolling seven awards each partner one random resource from the unlimited bank and immediately resumes normal actions, with no discards, robber movement or theft. Knight's existing behavior, Classic, archived v1 campaigns and infrastructure constraints are unchanged.
 
 
 ## Optional Classic rule toggles (approved 2026-11-18)
 
 The Product Owner approved two independent, host-selected **Classic** rule switches shown to all lobby participants before readiness/start. They default off, are part of authoritative game state and recovery, and are retained for same-room restarts. Existing Harbor Co-op mechanics are preserved unchanged; these two variants are disabled for Harbor Co-op. All gameplay and bot actions use the same host-authoritative reducer and public rule projection.
 
-**Catch-up resources:** Let x be the highest publicly visible VP. After the current player's own roll, award one random stocked bank resource if x is 5, 6 or 7 and the roller has at most x - 3 VP; award two when x is greater than 7, using the same eligibility gap. There is no award below x = 5. When awarding two cards, choose different stocked resource types where available. On seven, determine every player's discard obligation from their hand before granting the supplement. The host owns the draws, deducts bank stock and records the actual award as public per-roll metadata. After dice and normal production gains finish displaying, announce `<player name> gained supplement` with the actual resource icons and quantities. Presentation, repeated snapshots and recovery cannot grant cards again or refresh a clock. Hidden development VP do not count toward the public threshold. The optional Classic-only toggle and Harbor Co-op rules are unchanged.
+**Catch-up resources:** Let x be the highest publicly visible VP. After the current player's own roll, award one random bank resource if x is 5, 6 or 7 and the roller has at most x - 3 VP; award two when x is greater than 7, using the same eligibility gap. There is no award below x = 5. When awarding two cards, choose two different resource types. On seven, determine every player's discard obligation from their hand before granting the supplement. The host owns the draws, records each bank transfer and records the actual award as public per-roll metadata. After dice and normal production gains finish displaying, announce `<player name> gained supplement` with the actual resource icons and quantities. Presentation, repeated snapshots and recovery cannot grant cards again or refresh a clock. Hidden development VP do not count toward the public threshold. The optional Classic-only toggle and Harbor Co-op rules are unchanged.
 
 **Harbor ships:** A player who already owns a port may pay two lumber, two brick and two ore to add a ship to any vacant port vertex that satisfies the settlement-distance constraint. **No road connection is required**, allowing remote harbor construction independently of the player's roads. A ship occupies that vertex and blocks construction at adjacent vertices; it provides one victory point, one (settlement-level) resource per active neighboring resource tile, and access to that port's trade ratio. A ship can never be upgraded to a city, anchor a new road, or continue a longest-road traversal. Each player has a maximum supply of **two ships per match**. A third ship cannot be built; a valid Undo restores its piece. This supply cap is enforced in the game reducer and reflected in public player controls. Finite legal harbor vertices still apply. This rule adds no new network service or game mode.
 
@@ -49,9 +49,9 @@ The room host may pause and resume an ongoing match. Pausing freezes every outst
 
 ## Harbor cooperative revision 3 (2026-11-21)
 
-Approved: remove development cards from Co-op; change the trade-station construction cost to one wool, one grain and one ore; assign the human to the city-start side in local human-plus-Bot Co-op; and grant both players two different randomly selected resource types, one card each, on seven. The award uses stocked bank types, skips any unavailable second distinct type and preserves the existing roller-first shortage order. Seven still causes no discards, robber movement or theft. Trade-station junction and one-card-per-own-turn allowances, owner-only shipping, asymmetric setup and the twelve-order campaign remain unchanged.
+Approved: remove development cards from Co-op; change the trade-station construction cost to one wool, one grain and one ore; assign the human to the city-start side in local human-plus-Bot Co-op; and grant both players two different randomly selected resource types, one card each, on seven. The unlimited bank supplies two different types to each partner; draws retain their existing roller-first order. Seven still causes no discards, robber movement or theft. Trade-station junction and one-card-per-own-turn allowances, owner-only shipping, asymmetric setup and the twelve-order campaign remain unchanged.
 
-New Co-op games use rule version 3. Saved v1/v2 games retain their recorded rules until restart. Classic development cards, local Classic Bot counts, online human seating, private hands, host authority and existing deployment permissions are unchanged. See docs/harbor-coop.md for current rules and archived versions.
+New Co-op games use rule version 3. Saved v1/v2 games retain their recorded campaign rules until restart; the unlimited-bank amendment applies immediately to subsequent actions on the updated client. Classic development cards, local Classic Bot counts, online human seating, private hands, host authority and existing deployment permissions are unchanged. See docs/harbor-coop.md for current rules and archived versions.
 
 ## Twin Capes
 
@@ -60,3 +60,12 @@ Twin Capes is a selectable Classic map for two to six players. Its 25 land hexes
 The normal Classic robber starts on the desert. A seven requires the usual discards followed by a robber move. Playing a Knight also moves the robber. The occupied tile produces no resources, and the active player steals one random resource from an eligible opponent adjacent to the destination under the ordinary Classic rules. Harbors retain their trading rates.
 
 Sixteen harbors serve the map. Each player has unlimited ships. A ship requires an existing port foothold, a legal port destination and two lumber, two brick and two ore. Each ship earns one public victory point. Games already in progress on the original 29-hex Twin Capes retain their recorded map and blockade-only pirate rules.
+
+
+## Unlimited bank resources 2026 11 27
+
+The Product Owner approved unlimited bank resources for every Classic map and Harbor Co-op. Every eligible settlement or ship receives one card per producing adjacent hex, and a city receives two. Bank availability cannot cancel or reduce production, starting resources, Catch-up, cooperative seven awards, bank or port trades, or resource-granting development cards.
+
+The bank panel shows infinity for all five resources. Players must still own the resources they spend or exchange. Trade rates, development-card supply, robber blocking, Classic discards, Catch-up eligibility, distinct reward types and other mode-specific rules remain in force.
+
+The amendment also applies to future actions in recovered older matches. Existing hands, cargo, board versions, random state and recorded rewards are preserved. Previously missed payouts are not replayed. Bank transfers remain a serializable accounting ledger; its values may be negative and never represent an availability limit.

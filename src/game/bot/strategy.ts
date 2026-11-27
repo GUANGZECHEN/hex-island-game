@@ -285,7 +285,7 @@ export function chooseBankTrade(state:GameState,playerId:string,reservedCost?:Ha
  const player=state.players.find(p=>p.id===playerId)!;
  const goals=reservedCost?[{cost:reservedCost,score:100,kind:'reserved'}]:strategicGoalCosts(state,playerId).filter(g=>missingCount(player.hand,g.cost)>0).sort((a,b)=>(b.score/(1+missingCount(player.hand,b.cost)))-(a.score/(1+missingCount(player.hand,a.cost))));
  for(const goal of goals){
-  const receives=RESOURCES.filter(r=>player.hand[r]<goal.cost[r]&&state.bank[r]>0).sort((a,b)=>cardValue(state,playerId,b)-cardValue(state,playerId,a));
+  const receives=RESOURCES.filter(r=>player.hand[r]<goal.cost[r]).sort((a,b)=>cardValue(state,playerId,b)-cardValue(state,playerId,a));
   for(const receive of receives){
    const gives=[...RESOURCES].filter(give=>give!==receive).map(give=>({give,rate:bankTradeRate(state,playerId,give)})).filter(x=>player.hand[x.give]-goal.cost[x.give]>=x.rate).sort((a,b)=>cardValue(state,playerId,a.give)-cardValue(state,playerId,b.give)||a.rate-b.rate);
    if(gives[0])return {type:'bank-trade',playerId,give:gives[0].give,receive,rate:gives[0].rate};
@@ -297,9 +297,9 @@ export function chooseInventionResources(state:GameState,playerId:string):Resour
  const player=state.players.find(p=>p.id===playerId)!;
  const goals=strategicGoalCosts(state,playerId).filter(g=>{const missing=missingCount(player.hand,g.cost);return missing>0&&missing<=2;}).sort((a,b)=>b.score-a.score);
  for(const goal of goals){
-  const result:Resource[]=[];for(const r of RESOURCES)for(let i=0;i<Math.max(0,goal.cost[r]-player.hand[r]);i++)if(state.bank[r]-result.filter(x=>x===r).length>0)result.push(r);
+  const result:Resource[]=[];for(const r of RESOURCES)for(let i=0;i<Math.max(0,goal.cost[r]-player.hand[r]);i++)result.push(r);
   if(result.length===missingCount(player.hand,goal.cost)){
-   while(result.length<2){const extra=[...RESOURCES].filter(r=>state.bank[r]-result.filter(x=>x===r).length>0).sort((a,b)=>cardValue(state,playerId,b)-cardValue(state,playerId,a))[0];if(!extra)break;result.push(extra);}
+   while(result.length<2){const extra=[...RESOURCES].sort((a,b)=>cardValue(state,playerId,b)-cardValue(state,playerId,a))[0];if(!extra)break;result.push(extra);}
    if(result.length===2)return result;
   }
  }

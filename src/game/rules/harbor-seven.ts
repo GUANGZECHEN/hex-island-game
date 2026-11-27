@@ -6,7 +6,7 @@ export interface SevenReward { turn:number; gains:Record<string,Hand> }
 const emptyHand=():Hand=>({lumber:0,brick:0,wool:0,grain:0,ore:0});
 
 /** Called only inside a validated roll transition, never during rendering/recovery.
- * Draw resource TYPES uniformly from bank types still in stock. Each player can
+ * Draw resource types uniformly from the unlimited bank. Each player can
  * receive the same type. The current roller draws their full award first; this rotates with turns rather than favoring a fixed player seat.
  */
 export function awardHarborSeven(state:GameState,secureRandom?:()=>number):void {
@@ -16,11 +16,11 @@ export function awardHarborSeven(state:GameState,secureRandom?:()=>number):void 
   const player:Player=state.players[(state.currentSeat+offset)%state.players.length];
   const count=state.harbor!.version===3?2:1;
   for(let pick=0;pick<count;pick++){
-   const stocked:Resource[]=RESOURCES.filter(resource=>state.bank[resource]>0 && gains[player.id][resource]===0);
-   if(!stocked.length)break;
-   const draw=secureRandom?secureIndex(secureRandom,stocked.length):drawIndex(state.randomState,stocked.length);
+   const eligible:Resource[]=RESOURCES.filter(resource=>gains[player.id][resource]===0);
+   if(!eligible.length)break;
+   const draw=secureRandom?secureIndex(secureRandom,eligible.length):drawIndex(state.randomState,eligible.length);
    state.randomState=draw.state??state.randomState;
-   const resource=stocked[draw.index];
+   const resource=eligible[draw.index];
    state.bank[resource]--;player.hand[resource]++;gains[player.id][resource]++;
   }
  }
