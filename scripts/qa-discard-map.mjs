@@ -103,7 +103,7 @@ try{
   // Player 1 projection on the existing spectator page (avoids a second 3D scene).
   await deliver(active,spectator,'Player 1');
   await spectator.getByRole('button',{name:'Move robber',exact:true}).click();
-  const target=spectator.locator('[data-legal-target="robber"]').first();assert.ok(await target.count()>0,'robber targets available');
+  const target=spectator.locator('#board [data-legal-target="robber"]').first();assert.ok(await target.count()>0,'robber targets available');
   const id=await target.getAttribute('data-target-id');await target.press('Enter');
   const move=await spectator.evaluate(()=>window.__discardCommands.shift());
   assert.deepEqual(move,{type:'move-robber',playerId:'Player 1',hexId:id});
@@ -111,7 +111,7 @@ try{
   await deliver(active,spectator,'Player 1');
   const updated=(await spectator.evaluate(()=>window.__discardFixture.data())).board;
   assert.equal(updated.robberHexId,id);
-  assert.equal(await spectator.locator(`[data-hex-id="${id}"]`).getAttribute('data-robber'),'true');
+  assert.equal(await spectator.locator(`#board [data-hex-id="${id}"]`).getAttribute('data-robber'),'true');
   await active.screenshot({path:join(evidence,boardLayout+'-'+mode+'-discard.png')});
   console.log(`PASS ${boardLayout} ${mode}: staged discards, snapshots, board identity, camera and robber targeting`);
   await browser.close();browser=null;active=null;
