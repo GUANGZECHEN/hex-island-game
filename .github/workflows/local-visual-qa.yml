@@ -1,0 +1,141 @@
+name: Validate local visual gameplay without QA tunnel
+
+on:
+  push:
+    branches: [game/mvp, work/persistent-actions-20261121, work/learnable-action-panels-20261122, work/catch-up-supplement-20261122, work/bot-supplement-20261122]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Select focused browser checks for isolated layout changes
+        id: scope
+        shell: bash
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          focus=false
+          supplemental=false
+          catchup_fixture=false
+          e2e_fixture=false
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/persistent-actions-20261121' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" ]]; then
+            changed=$(git diff --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(src/style\.css|scripts/qa-persistent-actions\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
+              focus=true
+            fi
+          fi
+          # Supplemental browser fixture edits do not change the application.
+          # Keep running their full group; retain the earlier app-suite evidence
+          # for an exact-parent push containing only these test-harness files.
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/learnable-action-panels-20261122' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" ]]; then
+            changed=$(git diff --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-(compact-actions|target-feedback|trade-camera)\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
+              supplemental=true
+            fi
+          fi
+          # This parent preserves the app from 5d68f98, which passed dice,
+          # 3D and Co-op checks. Rerun this fixture and remaining action checks.
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == 'refs/heads/work/catch-up-supplement-20261122' ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == '56682466eb0b17819a57b7dc06d8e782f13e95dd' ]]; then
+            changed=$(git diff --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-catch-up\.mjs|\.github/workflows/local-visual-qa\.yml)$' >/dev/null; then
+              catchup_fixture=true
+            fi
+          fi
+          # This exact parent must have passed the full local browser suite before
+          # publication. The follow-up changes only the live E2E fixture/workflows.
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == 'fe1be38f18eea4651cbff4bcb8cda087ecbf0151' ]]; then
+            changed=$(git diff --no-renames --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-e2e\.mjs|\.github/workflows/(local-visual-qa|qa-pages)\.yml)$' >/dev/null; then
+              e2e_fixture=true
+              echo 'Pinned fixture-only follow-up: retaining the verified parent full local browser evidence; live E2E is rerun by QA Pages.'
+            fi
+          fi
+          echo "e2e_fixture=$e2e_fixture" >> "$GITHUB_OUTPUT"
+          echo "focus=$focus" >> "$GITHUB_OUTPUT"
+          echo "supplemental=$supplemental" >> "$GITHUB_OUTPUT"
+          echo "catchup_fixture=$catchup_fixture" >> "$GITHUB_OUTPUT"
+      - name: Install, typecheck, unit tests, and compile standalone frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Install headless Chromium for the actual board
+        if: steps.scope.outputs.e2e_fixture != 'true'
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Verify staged discards preserve the board and camera
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-discard-map.mjs
+      - name: Verify unlimited-bank production and trading
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-unlimited-bank.mjs
+      - name: Verify personal ending music on local and shared guest players
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: node scripts/qa-outcome-music.mjs
+      - name: Verify board targets and grain appearance after placement and Undo
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true'
+        run: node scripts/qa-target-feedback.mjs
+      - name: Verify the Twin Capes lake map, robber and mobile roll payouts
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: node scripts/qa-twin-capes.mjs
+      - name: Verify real dice geometry, resource payout and 2D fallback
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-dice-visual.mjs
+      - name: Verify 3D graphics, input, camera, audio-independent behavior and layouts
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: node scripts/qa-three-live.mjs
+      - name: Verify local Harbor Co-op rules and seven
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true' && steps.scope.outputs.catchup_fixture != 'true'
+        run: node scripts/qa-harbor-coop.mjs
+      - name: Verify catch-up supplement timing and exact awards in 3D and 2D
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true' && steps.scope.outputs.supplemental != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-catch-up.mjs
+      - name: Verify bot catch-up supplement timing
+        if: steps.scope.outputs.e2e_fixture != 'true'
+        run: GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-bot-catch-up.mjs
+      - name: Verify persistent action availability
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.supplemental != 'true'
+        run: node scripts/qa-persistent-actions.mjs
+      - name: Verify compact costs and trade camera stability
+        if: steps.scope.outputs.e2e_fixture != 'true' && steps.scope.outputs.focus != 'true'
+        run: |
+          node scripts/qa-compact-actions.mjs
+          GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node scripts/qa-trade-camera.mjs
+      - name: Save screenshots and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-game-evidence
+          path: |
+            dice-evidence
+            unlimited-bank-evidence
+            discard-map-evidence
+            three-evidence
+            harbor-evidence
+            catch-up-evidence
+            bot-catch-up-evidence
+            persistent-actions-evidence
+            compact-action-evidence
+            target-evidence
+            twin-capes-evidence
+          if-no-files-found: ignore
+          retention-days: 7

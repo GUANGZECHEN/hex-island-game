@@ -1,0 +1,72 @@
+/* A short icon + label row, then a separate cost row. Never widen the board tray. */
+.board-workspace .board-command-pane button.action-button {
+  display: grid;
+  grid-template-columns: 1.12rem minmax(0, 1fr);
+  grid-auto-rows: auto;
+  align-content: center;
+  align-items: center;
+  justify-content: start;
+  column-gap: .28rem;
+  row-gap: .24rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+.board-workspace .board-command-pane button.action-button > .icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 1.06rem;
+  height: 1.06rem;
+  margin: 0;
+}
+.board-workspace .board-command-pane button.action-button > .action-label {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.18;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.board-workspace .board-command-pane button.action-button > .action-cost {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: .12rem;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.board-workspace .board-command-pane button.action-button .action-cost .resource-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: .04rem .12rem;
+  gap: .08rem;
+  font-size: .62rem;
+  line-height: 1.15;
+}
+.board-workspace .board-command-pane button.action-button .action-cost .resource-chip > .icon {
+  width: .77rem;
+  height: .77rem;
+  flex: 0 0 .77rem;
+}
+
+/* A disabled ship action remains discoverable with its precise eligibility hint. */
+.board-workspace .board-command-pane button.action-button > .ship-action-reason {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  font-size: .65rem;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #746b5c;
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,132 @@
+# Hex Island MVP
+
+The game supports two to six private-room players. The host can choose Standard (2–4 players), Expanded (5–6), or Twin Capes (2–6) when creating a Classic room. The board and its seed are described in [board setup](BOARD_SETUP.md); topology is described in [board geometry](BOARD_GEOMETRY.md). A separate deterministic game state contains seats, inventories, bank, development deck and played cards, pieces, building/road ownership, turn phase, robber, trade offer and award holders. Local hot-seat play uses a pass screen before a different player sees their hand. Local play also offers one to five optional deterministic test bots with Player 1 as the only human viewer. Bot count directly sets total local player count to one human plus the selected bots; with the automatic map option, one to three bots use the standard board and four or five use the expanded board. Bot turns run through the same reducers and never use the multiplayer transport.
+
+The rules below describe Classic unless specified otherwise. [Harbor Co-op](../harbor-coop.md) is a separate two-player campaign. New Co-op games use version 3: no development cards, trade stations cost one wool plus one grain plus one ore, and seven grants each partner two different resource types. In local human-plus-Bot Co-op, Player 1 remains the human identity but occupies the city-start second seat; the Bot occupies the settlement-and-roads first seat. Saved Co-op v1/v2 campaigns retain their original campaign rules until restart, with the unlimited bank amendment applied to future actions.
+
+The setup reducer validates settlement distance and a connected road in clockwise then reverse order. Normal turns roll two dice, distribute the full resources owed from an unlimited bank, resolve seven/discards/robber/theft when required, and enter the action phase. Roads, settlements and cities validate geometry, supply and costs. Domestic trades require explicit acceptance; bank trades use 4:1 or an owned 3:1/2:1 port. Development cards implement knight, road building, invention, monopoly and hidden victory points. A player may claim ten points on their turn. Longest route enumerates edge-disjoint trails, including cycles, and stops at an opponent's building; award ties retain an eligible incumbent. Largest army uses played knights and the same incumbent tie rule.
+
+## Twin Capes
+
+Choose **Classic → Twin Capes** in local room setup or in the host's private-room map selector. Two to six players share 25 land hexes and 16 harbors. The middle crossing and two three-hex outer corridors enclose two lakes of two hexes each. The desert has no number. The 24 productive tiles use the standard tokens plus **5, 9, 4, 10, 3, 11**.
+
+**Unlimited ships.** Establish a foothold at a port, then spend 2 lumber, 2 brick and 2 ore to place a ship on an eligible empty port junction. Settlement spacing still applies. Each ship earns 1 public victory point and gives access to its port rate at that harbor. The supply indicator shows ∞.
+
+**The robber.** The robber starts on the desert. Sevens and Knights move it under the normal Classic rules, including ordinary discards on a seven and a one-card steal from an eligible neighboring opponent. The occupied tile stops producing. All harbors continue trading.
+
+Saved 29-hex Twin Capes matches retain their original single crossing and blockade-only pirate. A new match uses the lake map.
+
+## Unlimited bank resources
+
+All maps and game modes use unlimited resources. An eligible settlement or ship receives one card per producing adjacent hex; a city receives two. The bank cannot run out, so production, starting resources, supplements, cooperative seven bonuses, bank/port trades and resource-granting development cards always supply their full amounts. The bank panel displays infinity for all five types. Players must still pay from their own hands, and normal trade ratios, robber blocking, discards and development-card deck limits apply.
+
+Existing games restored in the updated client use unlimited supply for future actions, preserving their hands, cargo and historical awards. The saved numeric bank is a signed transfer ledger for compatible recovery and public trade notices; its values do not limit available cards.
+
+## Gameplay interface
+
+Every roll adds a game-log entry with the dice result and the number of resource cards each player received, including zero. The totals reflect the cards actually credited after production and any applicable roll bonuses.
+
+The board remains the primary surface. On desktop, the adjacent panel keeps connection status, private hand and current actions together; on narrow screens the same panel is a compact bottom control surface. Each multiplayer player may choose a display nickname before game start. Nicknames are presentation-only: stable Player IDs continue to drive authority, seat credentials, commands and recovery. Resource and building iconography uses compact local SVGs: wool is represented by a fluffy wool-bundle glyph; board settlements use a B3 house glyph and cities use a B3 town-hall/clock-tower glyph, colored by player identity. The visual system follows [ART-A01 / ART-B01 / ART-C01 / ART-FINAL](ART_DIRECTION.md): terrain hexes use original layered gradients and low-contrast natural illustrations over a muted ocean, number tokens use warm tabletop-chip styling with probability pips, roads render as wooden player-color pieces, and settlements/cities use solid tabletop materials with short placement motion. The control surface continues the same tabletop language with paper player boards, resource-specific hand tokens, award badges, tactile action controls, segmented tabs and exchange-tray trade controls. Motion uses the same short tabletop language: authoritative dice values tumble briefly in the public action alert, public development-card plays flip into view, hidden purchases use a generic card back, and board-piece/turn transitions remain decorative and non-blocking.
+
+Gameplay layout uses three responsive presentation bands: wide desktop uses a board/control two-column layout, medium laptop/tablet widths stack controls below a full-width board, and phone widths use a compact single-column surface without page-level horizontal overflow. Invite-entry width constraints apply only before gameplay begins.
+
+Public table state is attached directly to the board: a centered turn banner continuously names the active player, a public activity line announces visible events such as dice results, robber movement, theft without resource identity, builds and normal turn end, and compact player cards occupy the board corners. Visible gameplay events such as dice rolls, builds, development-card purchases/plays, robber actions and trades also appear briefly as large board-centered action alerts so remote players can follow the active player's progress without watching the control panel. When a player claims victory, the normal alerts are cleared and a larger board-centered victory celebration shows the winner name with animated confetti/glow for about five seconds; the effect is one-shot per finished game and is visible to players and spectators. Domestic trade alerts reveal only participant names and card counts, never resource identities; bank/port trade alerts reveal only the public exchange rate. Each player card shows public resource-card count, development-card count, played Knight count, public victory points, remaining roads/settlements/cities, and current longest-road length; the current Largest Army holder's Knight count is highlighted; the local hand area repeats the local remaining piece supply. On mobile the same player cards become a compact 2×2 grid above the board. Actions, trade and status/log are grouped into client-side tabs. Buying and playing development cards live in Actions whenever the mode supports them; buying has a persistent resource-cost reference while card-play controls appear when usable, and there is no separate Cards tab. On touchscreens, tap a highlighted construction target once to build there. Use **Undo last action** to take back an eligible placement. Mouse players click the board directly and keyboard players can focus targets in the SVG view. All players can cancel a selection. Players may scroll the board itself sideways on very narrow screens to preserve readable cells. A player's own development cards use local icons and newly bought cards are marked until they become playable.
+
+A shared set of local SVG resource icons is used on tiles, the private hand, bank, trade quantities and build costs; each hand and cost icon has an accessible text equivalent. Action icons accompany short labels. A separate, persistent resource-cost panel contains Build road (one lumber and one brick), Build settlement (one lumber, one brick, one wool and one grain), Upgrade house to city (two grain and three ore), and Buy development card (one wool, one grain and one ore). These reference controls use native disabled behavior until the action is legal; turn, phase, pause, game completion, legal targets, piece supply, resources and deck stock determine availability. The corresponding build button displays 0 during free setup placements and Road Building. Normal paid placements display their resource costs. Co-op v3 omits development cards and therefore has three reference controls. Other Actions and Trade operations appear only in their actionable context, including executable bank/port exchange pairs at the current rate. Co-op v3 also excludes robber and discard operations. Spectators do not receive gameplay controls.
+
+Trade and resource-selection drafts update local availability without submitting a command or refreshing the action clock. Contextual forms retain disabled confirmation controls while the player completes a required selection: an offer requires a valid recipient and nonempty affordable give/request amounts, a discard requires exactly the requested cards, and Year of Plenty requires exactly two valid resource choices, which may be the same type. Pending trade recipients can accept or reject during the proposer's turn, and safe Undo follows the authoritative undo owner even after a setup placement advances the seat. Pausing disables the persistent reference controls and suspends actionable forms. Switching tabs, rendering icons and changing layout are local UI operations and send no gameplay or relay messages.
+
+## Multiplayer
+
+Private rooms use Cloudflare Workers and a SQLite-backed Durable Object. Before creating a room, the host chooses the board version plus a board map seed or randomizes a visual map preview; the selected version and seed are used when the multiplayer game starts. Room creation returns high-entropy host and guest capabilities. Each browser authenticates one WebSocket to the room Durable Object; the Durable Object tracks membership, enforces room expiry/capacity and relays bounded text messages only between the host and authenticated guests. On the standard board, two through four connected players may start once every occupied player seat is ready. On the expanded board, five or six connected players may start. Before start, new invite holders claim available seats up to the selected board's capacity. After start, an invite holder without an existing seat capability is attached as a spectator instead.
+
+Gameplay remains host-authoritative. The host assigns a distinct random seat capability to each guest player and keeps the live authoritative game state and entropy in the host browser. Guests send versioned commands to the host through the Cloudflare WebSocket relay. The host validates sender seat, revision, turn and game rules, then returns per-player projections through the same relay. Other players never receive a guest's resource identities or development cards. Spectators receive a public-only projection with no private hand/cards and no private domestic-trade offer; spectator commands are rejected by the host session. Spectators do not appear in recovery seat credentials and do not block Resume. For crash/page-close recovery, the host also writes bounded complete checkpoints to the room Durable Object. The Durable Object stores these checkpoint payloads but does not evaluate game rules, choose random outcomes, or advance the game.
+
+This standard multiplayer path does not use WebRTC DataChannels, ICE, STUN or TURN. The networking API remains isolated from game rules so a future WebSocket backend can replace Cloudflare without rewriting the rules engine.
+
+Invitation links open a minimal guest/spectator surface: host-only room creation, map selection, diagnostics, manual rejoin and local-game controls are hidden before first paint. A guest's first room connection automatically retries transient relay/network failures, including a brief `host-unavailable` window while the host WebSocket reconnects; permanent invitation errors are reported explicitly. Ready stays disabled until the host assigns a player seat.
+
+A returning guest can reclaim its seat with its locally stored seat capability while the room remains valid. A valid seat capability may replace a stale still-connected peer record, which prevents races between reconnect and delayed WebSocket leave detection. Transient WebSocket failures use fast exponential retries for the first ten attempts, then continue in the background every 30 seconds and eventually every 60 seconds instead of giving up. After reconnect, guests automatically present their existing seat capability and receive the latest snapshot/revision. The host room capability and guest seat capabilities are also retained in local browser storage so page closure does not by itself lose the rejoin identity.
+
+### Saved-game recovery
+
+After game start and after every accepted authoritative command, the host writes a complete latest checkpoint containing the game ID, revision, full private `GameState`, original seat mapping/capabilities, and QA mode flag. When a checkpoint enters a new normal-play round, the previous round's final latest checkpoint is moved into history. The room stores the current latest checkpoint plus at most three historical round checkpoints; setup checkpoints are not added to round history.
+
+If the host page is closed, guests are disconnected by the room relay as before. The original host can use **Rejoin previous room** from the same browser profile; the host capability reconnects to the existing room and loads the latest checkpoint only to reconstruct the original seat registry. Original guests then use their saved guest/seat capabilities to reclaim the same Player IDs. Gameplay stays paused during this process. When all original seats are connected, the host chooses **Resume latest** or one of the retained round checkpoints. The selected checkpoint recreates the host authority at that revision and broadcasts fresh per-player projections. Selecting an older checkpoint is an explicit rollback and becomes the new latest checkpoint.
+
+Recovery data expires with the room's 48-hour lifetime. Clearing browser storage loses that browser's locally retained rejoin capability. This is recovery for the original host and seats, not host migration to a different owner/device.
+
+## Deployment and verification
+
+The frontend is built with `npm ci && npm run build` and uses the existing GitHub Pages base path. The Worker is built from `signaling/` using the checked-in `wrangler.jsonc`. The Cloudflare Git integration can deploy the default branch to the persistent `hex-island-signaling` Worker. GitHub Pages receives the approved Worker HTTPS origin through `VITE_SIGNALING_URL`.
+
+The currently approved `game/mvp` QA deployment uses local Wrangler plus a Cloudflare Quick Tunnel. Following successful validation, the workflow keeps that temporary backend online for about five hours. A new deployment replaces the temporary backend and its endpoint, so players should open the current site and create a fresh room invitation. The separate persistent `hex-island-signaling-qa` Worker remains available in the existing infrastructure but is not selected by this build. The workflow runs the real relay/checkpoint smoke test and Chromium two-browser reconnect, rejoin and saved-game recovery E2E. Local source-based browser checks run on the feature branch before publication; the deployment checks then exercise the published page. Publishing through `game/mvp` does not merge into `main`.
+
+Local validation is:
+- root: `npm ci && npm run typecheck && npm test && npm run build`
+- signaling: `cd signaling && npm ci && npm run typecheck && npm test && npm run build`
+
+## Two-browser QA checklist
+
+The opt-in `?qaPlayers=2` mode remains available for focused transport QA. Standard games also support two players. Normal rooms allow 2–4 players on the standard board or 5–6 players on the expanded board.
+
+1. Open the host page with `?qaPlayers=2` and confirm the QA indicator.
+2. Choose or randomize the host map seed, create a private room and copy the invitation.
+3. Open that invitation in a second independent browser/profile.
+4. Confirm both browsers report the Cloudflare room/relay as connected.
+5. Mark both players ready and start from the host.
+6. Complete both setup rounds.
+7. Roll and complete at least two normal turns.
+8. Confirm each browser sees only its own private resources and development cards.
+9. Reload/disconnect the guest, then use **Rejoin previous room** in the same browser profile.
+10. Confirm the same guest seat, board state and revision return, then perform one legal action and verify both browsers update.
+11. Close both host and guest pages, reopen the same browser profiles, rejoin the hosted room first and the guest second, then confirm the host sees saved-game choices only after the original seats are restored.
+12. Select **Resume latest** and confirm both browsers restore the same saved revision, private views and board seed.
+13. After game start, open the original invitation in a fresh third browser profile and confirm it enters spectator mode, hides all private/action controls, and follows later revisions/public events in real time.
+
+The invitation and seat capability are bearer capabilities. Keep them private and do not log or publish them.
+
+
+## Board readability polish
+
+The gameplay control surface includes a compact public player strip showing every player, each player's public resource-card count, player color, the local player marker, and a non-color-only current-turn highlight. Resource composition remains private.
+
+Board target modes reuse the deterministic local rules reducers to calculate legal settlement, road, city and robber candidates. These candidates are highlighted directly on the SVG board and target-mode changes remain client-only; they do not generate WebSocket messages.
+
+Resource-specific ports use the same local resource SVG vocabulary as hands and build costs. Each port is rendered as a small wooden coastal dock whose two pier legs preserve the exact two coastal vertices used by game rules. Generic docks show an anchor mark plus 3:1; resource docks show the resource icon plus 2:1. Desktop may show subtle plank/bollard/boat detail, while phone layouts simplify those decorations without changing port information. Full port descriptions remain available to assistive technology.
+
+
+## Trade and robber presentation
+
+Incoming domestic trade offers are displayed from the recipient's perspective: the proposer is named, resources the recipient would receive are shown separately from resources the recipient would give, and the existing Accept/Reject actions remain authoritative.
+
+The desert uses a local SVG terrain icon. The robber is represented by a white prohibition badge with a red ring and diagonal slash. On numbered tiles the badge is centered directly over the number token, and the occupied tile is visually dimmed while the robber marker remains fully visible.
+
+
+## 5–6 player board
+
+The host may select an expanded 5–6 player board before room creation. Its horizontal column sizes are 3–4–5–5–4–3, adding one complete five-hex column to the standard 3–4–5–4–3 island for 24 total hexes. The expanded setup contains two deserts; both deserts have no number token and one of them starts with the robber. The selected layout is serialized in authoritative snapshots and saved-game recovery data, so every player and spectator renders the same geometry after reconnect or resume.
+
+The expanded table admits up to six player seats before game start and uses the same host-authoritative rules engine, turn structure, build/trade/development-card behavior and victory rules as the current standard game. Additional expansion-specific turn phases are outside this approved change.
+
+
+## Background music
+
+Open **Music** and choose the local folder containing `m01001` and the gameplay tracks. The waiting room loops `m01001`. Each new match shuffles the gameplay tracks. `m01017.wav` and `m01018.wav` are reserved for the end of the match and play once. Winners hear `m01017.wav` and losers hear `m01018.wav`. A local game against bots follows the human player’s result. A shared hot-seat device plays the winner’s track. Co-op partners hear their team’s result. Once all tracks have played, the next pass shuffles again. With multiple tracks, the first song of a new pass differs from the one that just ended. During a match, open **Music** and select a track. **Play now** starts it immediately, including when music is paused. **Move up** and **Move down** change the playback order. **Shuffle** keeps the current song playing and shuffles the remaining tracks for a fresh pass. The imported files and pause preference are stored on this device. Select **Play music** if the browser requires a click before playback. Use browser-supported formats such as MP3, WAV, or Ogg.
+
+
+In an online private room, the host can turn on **Music → Share music with this room**. Everyone admitted to the room, including spectators, can hear the host’s waiting-room song, current match track and playlist changes. At game end each seated listener hears their own outcome track. Spectators’ music stops. Guests can mute **Listen to room music** independently. If a browser needs a gesture, open **Music → Play room music**. The host can stop playback with **Pause music** or withdraw sharing at any time.
+
+The host streams mono audio through the authenticated room connection. During a Classic ending, the host can stream separate victory and defeat audio to the corresponding seats. Music files, track names, microphone audio and dice sounds stay out of the stream. Guests can join mid-song with an empty music library. The room service forwards short audio frames in memory. Guests hear the music about a second behind the host so that short bursts of delayed packets can play continuously. Longer interruptions can still cause a gap. The player resumes automatically when audio arrives. Pausing or changing tracks clears the previous audio for listeners. Leaving the room stops the stream.
+
+## Local test bots
+
+Local game setup includes a test-bot selector for zero through five bots. Bot modes keep Player 1 as the only human viewer; selecting N bots creates Player 1 plus N automated players. One through three bots use the standard board. Four bots create a five-player expanded-board game, and five bots create a six-player expanded-board game automatically. Bot turns do not open the pass-device screen; the human keeps the Player 1 private hand visible while automated players advance with a two-second delay between actions. On a visible board, bot progression also waits for the roll presentation and any supplement notice to finish; hidden or offscreen boards do not block bot progression.
+
+Each Bot is deterministic and local-only. Bots handle setup placement, rolling, required discards, robber movement/theft, normal building, bank/port trades, development-card purchase/play, victory claims and end-turn progression. Their strategy is production-aware: opening placement scores pips, resource complementarity/scarcity and port fit; settlements and cities are the primary production investments; before a settlement is reachable, the bot ranks several future settlement sites by value and road distance and advances the highest-ranked route one road at a time; only after the target becomes legally buildable does it reserve settlement resources across turns; Longest Road alone has only secondary weight; development cards are discretionary after building goals; robber and development-card use consider public opponent threat. Domestic trade responses compare resource value and become more conservative when the proposer is publicly close to winning. See [BOT_STRATEGY.md](BOT_STRATEGY.md). Bots do not initiate private-room connections or participate in multiplayer rooms, spectators or saved-room recovery. Their commands are applied through the same setup/turn/build/economy reducers used by human actions, and a per-bot-turn action cap prevents accidental automation loops.
+
+## Optional Classic Catch-up
+
+Let x be the highest public VP. After their own roll, the active player receives a supplement only when x >= 5 and their VP <= x - 3: one random resource for x = 5, 6 or 7, and two distinct resources for x > 7. Hidden development VP do not count. Seven first fixes discard obligations from the pre-supplement hands; the award cannot trigger additional discards.
+
+The host records and projects the actual award, and the public activity log records its recipient, resource types and quantities once. Ordinary production appears over buildings first; a separate `<player name> gained supplement` notice then shows the awarded resource icons and quantities. Rendering, duplicate commands, reconnect and recovery cannot issue another award. Catch-up remains an optional Classic rule and does not change Harbor Co-op.

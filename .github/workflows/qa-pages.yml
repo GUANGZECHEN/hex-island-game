@@ -1,0 +1,395 @@
+name: Deploy game/mvp QA to GitHub Pages
+
+on:
+  push:
+    branches: [game/mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # A marked frontend-only push must not cancel the existing five-hour backend.
+  group: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[reuse-qa-ingress]') && 'game-mvp-qa-frontend' || 'game-mvp-qa-clock' }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            signaling/package-lock.json
+
+      - name: Select pinned fixture-only browser scope
+        id: scope
+        shell: bash
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          e2e_fixture=false
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && git rev-parse --verify HEAD^ >/dev/null 2>&1 && [[ "$PUSH_BEFORE" == "$(git rev-parse HEAD^)" && "$PUSH_BEFORE" == 'fe1be38f18eea4651cbff4bcb8cda087ecbf0151' ]]; then
+            changed=$(git diff --no-renames --name-only HEAD^ HEAD)
+            if [[ -n "$changed" ]] && ! printf '%s\n' "$changed" | grep -vE '^(scripts/qa-e2e\.mjs|\.github/workflows/(local-visual-qa|qa-pages)\.yml)$' >/dev/null; then
+              e2e_fixture=true
+              echo 'Pinned fixture-only follow-up: retaining the verified parent full browser evidence and rerunning the previously failed live E2E gate.'
+            fi
+          fi
+          echo "e2e_fixture=$e2e_fixture" >> "$GITHUB_OUTPUT"
+
+      - name: Install and validate
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          (cd signaling && npm ci && npm run typecheck && npm test)
+
+      - name: Select QA signaling mode
+        id: signaling_mode
+        env:
+          REUSE_INGRESS: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[reuse-qa-ingress]') }}
+        run: |
+          set -euo pipefail
+          if [[ "$REUSE_INGRESS" == 'true' ]]; then
+            echo 'mode=reuse' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mode=temporary' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reuse the live QA ingress
+        if: steps.signaling_mode.outputs.mode == 'reuse'
+        run: |
+          set -euo pipefail
+          origin=$(node scripts/reuse-qa-ingress.mjs)
+          echo "QA_SIGNALING_URL=$origin" >> "$GITHUB_ENV"
+          echo 'QA_INGRESS_VALID=true' >> "$GITHUB_ENV"
+
+      - name: Diagnose persistent Cloudflare access safely
+        if: steps.signaling_mode.outputs.mode == 'permanent'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-safe-diagnostic.mjs
+
+      - name: Deploy persistent QA Worker
+        id: deploy_qa_signaling
+        if: steps.signaling_mode.outputs.mode == 'permanent'
+        working-directory: signaling
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOYMENT_MODE: permanent
+          WRANGLER_CONFIG: wrangler.qa.jsonc
+          WRANGLER_LOG_SANITIZE: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: bash ../scripts/deploy-signaling.sh
+
+      - name: Use persistent QA Worker origin
+        if: steps.signaling_mode.outputs.mode == 'permanent'
+        env:
+          WORKER_ORIGIN: ${{ steps.deploy_qa_signaling.outputs.worker_origin }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$WORKER_ORIGIN" =~ ^https://hex-island-signaling-qa\.[a-z0-9-]+\.workers\.dev$ ]]; then
+            echo '::error::Persistent QA Worker origin was invalid.'
+            exit 1
+          fi
+          echo "QA_SIGNALING_URL=$WORKER_ORIGIN" >> "$GITHUB_ENV"
+
+      - name: Start temporary Durable Object-compatible QA backend
+        if: steps.signaling_mode.outputs.mode == 'temporary'
+        run: |
+          set -euo pipefail
+          setsid bash -c 'cd signaling && exec npm exec -- wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.qa.jsonc' >"$RUNNER_TEMP/wrangler-qa.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/wrangler-qa.pid"
+          for attempt in {1..30}; do
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}'               --request OPTIONS               --header 'Origin: https://guangzechen.github.io'               --header 'Access-Control-Request-Method: POST'               --header 'Access-Control-Request-Headers: content-type'               --max-time 5               http://127.0.0.1:8787/rooms || true)
+            if [[ "$status" == "204" ]]; then exit 0; fi
+            sleep 1
+          done
+          echo '::error::Temporary QA Worker did not become ready.'
+          exit 1
+
+      - name: Install pinned cloudflared
+        if: steps.signaling_mode.outputs.mode == 'temporary'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             https://github.com/cloudflare/cloudflared/releases/download/2026.10.6/cloudflared-linux-amd64             --output "$RUNNER_TEMP/cloudflared"
+          echo '1d356dac769d0dbf62ebe588c4034824bbff98d5790c2f844cc99e0e2f57462d  '"$RUNNER_TEMP"'/cloudflared' | sha256sum --check -
+          chmod 700 "$RUNNER_TEMP/cloudflared"
+
+      - name: Start temporary public QA ingress
+        if: steps.signaling_mode.outputs.mode == 'temporary'
+        run: |
+          set -euo pipefail
+          # Use the supported TCP transport after repeated default-transport readiness failures.
+          # This changes only this temporary runner tunnel, not the permanent Worker or game protocol.
+          setsid "$RUNNER_TEMP/cloudflared" tunnel             --protocol http2             --url http://127.0.0.1:8787             --no-autoupdate             --loglevel info             >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
+
+          tunnel_url=''
+          for attempt in {1..45}; do
+            tunnel_url=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
+            if [[ -n "$tunnel_url" ]]; then break; fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then
+              echo '::error::QA ingress process exited before publishing an endpoint.'
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ ! "$tunnel_url" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ ]]; then
+            echo '::error::QA ingress did not provide a valid endpoint.'
+            exit 1
+          fi
+          echo "QA_SIGNALING_URL=$tunnel_url" >> "$GITHUB_ENV"
+
+      - name: Wait for temporary QA ingress propagation
+        if: steps.signaling_mode.outputs.mode == 'temporary'
+        run: |
+          set -euo pipefail
+          # Quick Tunnel hostnames sometimes lag in the runner's DNS even
+          # after cloudflared reports a registered edge connection. Probe both
+          # ordinary DNS and a DNS-over-HTTPS resolver before concluding failure.
+          probe_ingress() {
+            local origin="$1"
+            local status
+            status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --request OPTIONS \
+              --header 'Origin: https://guangzechen.github.io' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: content-type' \
+              --max-time 8 "$origin/rooms" 2>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            if [[ "$status" == "204" ]]; then printf '%s' "$status"; return; fi
+            # Use DoH only as a recovery path for the runner's transient DNS
+            # failures. A DoH-only HTTP 204 must NOT be considered ready until
+            # Node/Chromium can resolve and reach the same tunnel hostname.
+            local result edge_ip hostname
+            result=$(curl --silent --show-error --doh-url https://1.1.1.1/dns-query \
+              --output /dev/null --write-out '%{http_code} %{remote_ip}' \
+              --request OPTIONS \
+              --header 'Origin: https://guangzechen.github.io' \
+              --header 'Access-Control-Request-Method: POST' \
+              --header 'Access-Control-Request-Headers: content-type' \
+              --max-time 6 "$origin/rooms" 2>>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            status="${result%% *}"
+            edge_ip="${result#* }"
+            hostname="${origin#https://}"
+            if [[ "$status" == "204" && "$hostname" =~ ^[a-z0-9-]+\.trycloudflare\.com$ && "$edge_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+              # The edge was reachable through DoH; pin only this ephemeral
+              # QA hostname to its verified edge IP on this isolated runner.
+              # Browser/Node can now resolve it with the ordinary OS resolver.
+              printf '%s %s\n' "$edge_ip" "$hostname" | sudo tee -a /etc/hosts >/dev/null
+              status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+                --request OPTIONS \
+                --header 'Origin: https://guangzechen.github.io' \
+                --header 'Access-Control-Request-Method: POST' \
+                --header 'Access-Control-Request-Headers: content-type' \
+                --max-time 8 "$origin/rooms" 2>>"$RUNNER_TEMP/qa-ingress-curl.log" || true)
+            fi
+            printf '%s' "${status:-000}"
+          }
+          # Keep the original bounded Quick Tunnel retries; no infrastructure switch.
+          for tunnel_attempt in 1 2 3; do
+            if (( tunnel_attempt > 1 )); then
+              kill -- -"$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null || true
+              setsid "$RUNNER_TEMP/cloudflared" tunnel --protocol http2 --url http://127.0.0.1:8787 --no-autoupdate --loglevel info >"$RUNNER_TEMP/cloudflared-qa.log" 2>&1 &
+              echo $! > "$RUNNER_TEMP/cloudflared-qa.pid"
+              next_url=''
+              for wait in {1..30}; do
+                next_url=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUNNER_TEMP/cloudflared-qa.log" | head -n 1 || true)
+                if [[ -n "$next_url" ]]; then break; fi
+                if ! kill -0 "$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null; then break; fi
+                sleep 1
+              done
+              if [[ ! "$next_url" =~ ^https://[a-z0-9-]+\.trycloudflare\.com$ ]]; then
+                echo "QA temporary ingress attempt $tunnel_attempt did not yield an endpoint."
+                continue
+              fi
+              QA_SIGNALING_URL="$next_url"
+            fi
+            for attempt in {1..20}; do
+              status=$(probe_ingress "$QA_SIGNALING_URL")
+              if [[ "$status" == "204" ]]; then
+                # A successful curl probe alone is insufficient when only DoH
+                # resolves the hostname; confirm the Node client also connects.
+                if node --input-type=module -e 'const r=await fetch(process.argv[1]+"/rooms",{method:"OPTIONS",headers:{"Origin":"https://guangzechen.github.io","Access-Control-Request-Method":"POST","Access-Control-Request-Headers":"content-type"},signal:AbortSignal.timeout(6000)});if(r.status!==204)process.exit(1)' "$QA_SIGNALING_URL" >/dev/null 2>>"$RUNNER_TEMP/qa-ingress-curl.log"; then
+                  echo "QA_SIGNALING_URL=$QA_SIGNALING_URL" >> "$GITHUB_ENV"
+                  echo "QA_INGRESS_VALID=true" >> "$GITHUB_ENV"
+                  exit 0
+                fi
+                status=000
+              fi
+              if (( attempt % 10 == 0 )); then
+                registered=$(grep -c 'Registered tunnel connection' "$RUNNER_TEMP/cloudflared-qa.log" || true)
+                echo "QA ingress attempt $tunnel_attempt check $attempt: HTTP $status; registered transport connections: $registered"
+                if [[ -s "$RUNNER_TEMP/qa-ingress-curl.log" ]]; then
+                  tail -n 2 "$RUNNER_TEMP/qa-ingress-curl.log" | sed -E 's@https://[a-z0-9-]+\\.trycloudflare\\.com@[temporary QA host]@g' || true
+                fi
+              fi
+              sleep 2
+            done
+          done
+          echo '::warning::QA ingress unavailable after three allocations; publish the visual QA site without claiming multiplayer validation.'
+          echo 'QA_INGRESS_VALID=false' >> "$GITHUB_ENV"
+
+      # Keep game/mvp visual acceptance publishable when the existing free
+      # temporary tunnel is unreachable. Never claim a remote QA pass in fallback.
+      - name: Use existing signaling origin for visual QA fallback
+        if: env.QA_INGRESS_VALID == 'false'
+        env:
+          EXISTING_SIGNALING_URL: ${{ vars.SIGNALING_URL }}
+        run: |
+          set -euo pipefail
+          if [[ "${EXISTING_SIGNALING_URL:-}" =~ ^https://[a-z0-9.-]+/?$ ]]; then
+            echo "QA_SIGNALING_URL=$EXISTING_SIGNALING_URL" >> "$GITHUB_ENV"
+            echo '::warning::Temporary QA tunnel unavailable; using already-configured signaling origin without running multiplayer QA.'
+          else
+            echo 'QA_SIGNALING_URL=' >> "$GITHUB_ENV"
+            echo '::warning::Temporary QA tunnel unavailable; online rooms disabled in this visual QA build.'
+          fi
+
+      - name: Verify full relay and checkpoint path
+        if: env.QA_INGRESS_VALID != 'false'
+        run: node signaling/scripts/smoke.mjs "$QA_SIGNALING_URL"
+
+      - name: Build QA frontend
+        run: VITE_SIGNALING_URL="$QA_SIGNALING_URL" npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          # GitHub keeps artifacts from previous attempts of the same run.
+          # A unique name prevents deploy-pages from finding two matches.
+          name: github-pages-attempt-${{ github.run_attempt }}
+          path: dist
+
+      - name: Wait for Pages artifact metadata
+        run: sleep 5
+
+      - name: Deploy QA Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-attempt-${{ github.run_attempt }}
+
+      - name: Require live ingress for pinned fixture follow-up
+        if: steps.scope.outputs.e2e_fixture == 'true' && env.QA_INGRESS_VALID == 'false'
+        run: |
+          echo '::error::The pinned fixture follow-up requires the real live E2E gate.'
+          exit 1
+
+      - name: Run real Chromium multiplayer, reconnect, rejoin and saved-game E2E
+        if: env.QA_INGRESS_VALID != 'false'
+        env:
+          QA_URL: ${{ steps.deployment.outputs.page_url }}?v=${{ github.sha }}&qaPlayers=2
+          QA_SIGNALING_URL: ${{ env.QA_SIGNALING_URL }}
+          E2E_FIXTURE_ONLY: ${{ steps.scope.outputs.e2e_fixture }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qa-e2e"
+          cp scripts/qa-twin-capes.mjs scripts/qa-e2e.mjs scripts/qa-three-live.mjs scripts/qa-board-performance.mjs scripts/qa-compact-actions.mjs scripts/qa-target-feedback.mjs scripts/qa-board-targets.mjs scripts/qa-harbor-coop.mjs scripts/qa-trade-camera.mjs scripts/qa-dice-visual.mjs scripts/qa-catch-up.mjs scripts/qa-bot-catch-up.mjs scripts/qa-unlimited-bank.mjs scripts/qa-discard-map.mjs "$RUNNER_TEMP/qa-e2e/"
+          cd "$RUNNER_TEMP/qa-e2e"
+          npm init -y >/dev/null 2>&1
+          npm install --silent playwright@1.58.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium >/dev/null
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-discard-map.mjs; fi
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-unlimited-bank.mjs; fi
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then node qa-twin-capes.mjs; fi
+          node qa-e2e.mjs
+          if [[ "$E2E_FIXTURE_ONLY" != true ]]; then
+            node qa-three-live.mjs
+            node qa-compact-actions.mjs
+            node qa-target-feedback.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-trade-camera.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-dice-visual.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-catch-up.mjs
+            GAME_SOURCE_ROOT="$GITHUB_WORKSPACE" node qa-bot-catch-up.mjs
+            node qa-harbor-coop.mjs
+          else
+            echo 'Retained parent browser-suite evidence; the live E2E gate was rerun above.'
+          fi
+
+      - name: Upload integrated 3D evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrated-three-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/qa-e2e/three-evidence
+            ${{ runner.temp }}/qa-e2e/compact-action-evidence
+            ${{ runner.temp }}/qa-e2e/target-evidence
+            ${{ runner.temp }}/qa-e2e/twin-capes-evidence
+            ${{ runner.temp }}/qa-e2e/harbor-evidence
+            ${{ runner.temp }}/qa-e2e/catch-up-evidence
+            ${{ runner.temp }}/qa-e2e/bot-catch-up-evidence
+            ${{ runner.temp }}/qa-e2e/unlimited-bank-evidence
+            ${{ runner.temp }}/qa-e2e/discard-map-evidence
+
+      - name: Report QA environment
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          SIGNALING_MODE: ${{ steps.signaling_mode.outputs.mode }}
+          E2E_FIXTURE_ONLY: ${{ steps.scope.outputs.e2e_fixture }}
+        run: |
+          {
+            if [[ "${QA_INGRESS_VALID:-true}" == 'false' ]]; then
+              echo '## Visual QA publication (multiplayer tunnel unavailable)'
+            else
+              echo '## Reconnect-tested two-browser QA'
+            fi
+            echo
+            echo "QA page: ${PAGE_URL}?qaPlayers=2"
+            echo "Signaling mode: ${SIGNALING_MODE}"
+            if [[ "$E2E_FIXTURE_ONLY" == true ]]; then
+              echo 'Pinned fixture-only follow-up: parent full browser evidence retained; the previously failed live E2E gate was rerun.'
+            fi
+            if [[ "${QA_INGRESS_VALID:-true}" == 'false' ]]; then
+              echo 'Temporary QA relay failed to become reachable; remote multiplayer E2E was skipped.'
+              echo 'The separate local Chromium/unit suite remains the visual acceptance gate.'
+              if [[ -n "${QA_SIGNALING_URL:-}" ]]; then
+                echo 'The frontend uses the already configured existing signaling URL.'
+              else
+                echo 'This QA build supports local play only until the signaling route is restored.'
+              fi
+            elif [[ "$SIGNALING_MODE" == permanent ]]; then
+              echo "Persistent QA Worker: ${QA_SIGNALING_URL}"
+              echo 'Rooms remain recoverable for up to 48 hours, subject to normal Cloudflare availability.'
+            elif [[ "$SIGNALING_MODE" == reuse ]]; then
+              echo "Reused existing Quick Tunnel QA ingress: ${QA_SIGNALING_URL}"
+              echo 'The existing ingress retains its remaining lifetime; this deployment does not extend it.'
+            else
+              echo 'Quick Tunnel QA ingress is active by Product Owner choice.'
+              echo 'This QA tunnel is kept online for about 5 hours after validation.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep temporary QA ingress online
+        if: steps.signaling_mode.outputs.mode == 'temporary' && env.QA_INGRESS_VALID != 'false'
+        run: bash scripts/keep-qa-ingress.sh
+
+      - name: Cleanup temporary QA processes
+        if: always() && steps.signaling_mode.outputs.mode == 'temporary'
+        run: |
+          set +e
+          if [[ -f "$RUNNER_TEMP/cloudflared-qa.pid" ]]; then
+            kill -- -"$(cat "$RUNNER_TEMP/cloudflared-qa.pid")" 2>/dev/null || true
+          fi
+          if [[ -f "$RUNNER_TEMP/wrangler-qa.pid" ]]; then
+            kill -- -"$(cat "$RUNNER_TEMP/wrangler-qa.pid")" 2>/dev/null || true
+          fi
+          rm -f "$RUNNER_TEMP/cloudflared-qa.log" "$RUNNER_TEMP/cloudflared-qa.pid"             "$RUNNER_TEMP/cloudflared" "$RUNNER_TEMP/wrangler-qa.log" "$RUNNER_TEMP/wrangler-qa.pid"

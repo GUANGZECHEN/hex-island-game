@@ -1,0 +1,87 @@
+name: Provision permanent QA signaling Worker
+
+on:
+  push:
+    branches: [game/mvp]
+    paths:
+      - .github/workflows/permanent-qa-signaling.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: permanent-qa-signaling-worker
+  cancel-in-progress: true
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: signaling/package-lock.json
+
+      # Only the existing, separately named QA Worker is eligible for deployment.
+      # Never deploy to the production Worker or create new paid infrastructure.
+      - name: Verify existing Cloudflare deployment credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo '::error::Permanent deployment requires both repository Actions secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Neither value should be committed to Git.'
+            exit 1
+          fi
+          echo 'Cloudflare account credentials were configured (values not logged).'
+
+      - name: Diagnose existing Cloudflare account access safely
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/cloudflare-safe-diagnostic.mjs
+
+      - name: Validate authorized Durable Object room backend
+        working-directory: signaling
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Deploy dedicated permanent QA Worker and smoke-test real rooms
+        id: deploy
+        working-directory: signaling
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOYMENT_MODE: permanent
+          WRANGLER_CONFIG: wrangler.qa.jsonc
+          WRANGLER_LOG_SANITIZE: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: bash ../scripts/deploy-signaling.sh
+
+      - name: Report stable QA Worker address
+        env:
+          WORKER_ORIGIN: ${{ steps.deploy.outputs.worker_origin }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$WORKER_ORIGIN" =~ ^https://hex-island-signaling-qa\.[a-z0-9-]+\.workers\.dev$ ]]; then
+            echo '::error::Permanent QA Worker origin did not match its dedicated name.'
+            exit 1
+          fi
+          {
+            echo '## Stable QA signaling Worker'
+            echo
+            echo "Verified endpoint: \`$WORKER_ORIGIN\`"
+            echo
+            echo 'Cloudflare account-backed Worker + SQLite Durable Objects.'
+            echo 'The origin is persistent; individual private rooms still expire under the game room TTL.'
+            echo 'The existing temporary five-hour QA session was not stopped by this deployment.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PERMANENT_QA_SIGNALING_URL=$WORKER_ORIGIN"

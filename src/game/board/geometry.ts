@@ -1,8 +1,24 @@
 /** Logical board topology. All identities use integer lattice coordinates. */
+const PLAYER_RANGES = {
+  standard: { min: 2, max: 4 },
+  'expanded-5-6': { min: 5, max: 6 },
+  'twin-capes': { min: 2, max: 6 },
+} as const;
+
+export type BoardLayout = keyof typeof PLAYER_RANGES;
+
+export function isBoardLayout(value: unknown): value is BoardLayout {
+  return typeof value === 'string' && Object.hasOwn(PLAYER_RANGES, value);
+}
+
+export function boardPlayerRange(layout: BoardLayout) {
+  return PLAYER_RANGES[layout];
+}
+
 export interface Vertex { id: string; u: number; v: number }
 export interface Edge { id: string; vertexIds: readonly [string, string]; hexIds: readonly string[] }
 export interface Hex { id: string; q: number; r: number; vertexIds: readonly string[]; edgeIds: readonly string[]; neighborIds: readonly string[] }
-export interface Board { hexes: readonly Hex[]; vertices: readonly Vertex[]; edges: readonly Edge[] }
+export interface Board { layout: BoardLayout; hexes: readonly Hex[]; vertices: readonly Vertex[]; edges: readonly Edge[] }
 
 // Pointy-top corners in an integer lattice: x units sqrt(3)/2, y units 1/2.
 const CORNERS: readonly (readonly [number, number])[] = [[0,-2],[1,-1],[1,1],[0,2],[-1,1],[-1,-1]];
@@ -10,15 +26,42 @@ const vertexId = (u: number, v: number): string => `v:${u},${v}`;
 const compareIds = (a:string,b:string):number => a < b ? -1 : a > b ? 1 : 0;
 const edgeId = (a: string, b: string): string => `e:${[a,b].sort().join('|')}`;
 
-/** Radius-two axial island. Stable ordering is q, then r, ascending. */
-export function createIslandBoard(): Board {
+const STANDARD_COLUMNS: readonly (readonly [number, number, number])[] = [
+  [-2,0,2],[-1,-1,2],[0,-2,2],[1,-2,1],[2,-2,0],
+];
+const EXPANDED_COLUMNS: readonly (readonly [number, number, number])[] = [
+  [-2,0,2],[-1,-1,2],[0,-2,2],[1,-2,2],[2,-2,1],[3,-2,0],
+];
+
+// Two mirrored 14-hex capes meet at (0,0). Above and below that hex the coast
+// turns away to form two open bays; no second route crosses between the capes.
+const LEGACY_TWIN_COLUMNS: readonly (readonly [number, number, number])[] = [
+  [-4,0,2],[-3,-1,2],[-2,-2,1],[-1,-2,0],[0,0,0],[1,0,2],[2,-1,2],[3,-2,1],[4,-2,0],
+];
+export const LEGACY_BOARD_VERSION = 'mulberry32-fy-rejection-v2' as const;
+// Each row of the compact board contains 5, 6, 7, 6 or 5 cells before its lakes are cut out.
+const TWIN_CAPES_COLUMNS: readonly (readonly [number, number, number])[] = [
+  [-3,0,2], [-2,-1,2], [-1,-2,2], [0,-2,2], [1,-2,2], [2,-2,1], [3,-2,0],
+];
+export const TWIN_CAPES_LAKES = [[[0,-1],[1,-1]],[[-1,1],[0,1]]] as const;
+const lakeCells = new Set(TWIN_CAPES_LAKES.flat().map(([q,r]) => `h:${q},${r}`));
+const COLUMNS = { standard: STANDARD_COLUMNS, 'expanded-5-6': EXPANDED_COLUMNS, 'twin-capes': TWIN_CAPES_COLUMNS };
+
+/**
+ * Standard island columns are 3-4-5-4-3.
+ * The 5-6 player layout inserts one horizontal-direction column of five,
+ * producing 3-4-5-5-4-3 (24 hexes total).
+ */
+export function createIslandBoard(layout:BoardLayout='standard', version?: string): Board {
   const vertices = new Map<string, Vertex>();
   const edges = new Map<string, { id: string; vertexIds: [string, string]; hexIds: string[] }>();
   const cells: { id: string; q: number; r: number; vertexIds: string[]; edgeIds: string[] }[] = [];
-  for (let q = -2; q <= 2; q++) {
-    for (let r = -2; r <= 2; r++) {
-      if (Math.abs(q + r) > 2) continue;
+  const legacyTwin = layout === 'twin-capes' && version === LEGACY_BOARD_VERSION;
+  const columns = legacyTwin ? LEGACY_TWIN_COLUMNS : COLUMNS[layout];
+  for (const [q,rMin,rMax] of columns) {
+    for (let r=rMin;r<=rMax;r++) {
       const id = `h:${q},${r}`;
+      if (layout === 'twin-capes' && !legacyTwin && lakeCells.has(id)) continue;
       const vertexIds = CORNERS.map(([du,dv]) => {
         const u = 2*q + r + du, v = 3*r + dv, key = vertexId(u,v);
         if (!vertices.has(key)) vertices.set(key, { id:key, u, v });
@@ -35,5 +78,5 @@ export function createIslandBoard(): Board {
     }
   }
   const hexes = cells.map(cell => ({...cell, neighborIds: cell.edgeIds.flatMap(key => edges.get(key)!.hexIds.filter(id => id !== cell.id)).sort()}));
-  return {hexes, vertices:[...vertices.values()].sort((a,b)=>compareIds(a.id,b.id)), edges:[...edges.values()].sort((a,b)=>compareIds(a.id,b.id))};
+  return {layout,hexes, vertices:[...vertices.values()].sort((a,b)=>compareIds(a.id,b.id)), edges:[...edges.values()].sort((a,b)=>compareIds(a.id,b.id))};
 }

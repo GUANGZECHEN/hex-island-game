@@ -24,3 +24,21 @@ test('view maps every hex, corner and edge to finite consistent coordinates',()=
  for(const hex of view.hexes){assert.equal(hex.points.length,6);for(const p of [hex.center,...hex.points])assert.ok(Number.isFinite(p.x)&&Number.isFinite(p.y));}
  for(const edge of view.edges){for(const point of [edge.start,edge.end])assert.ok(Number.isFinite(point.x)&&Number.isFinite(point.y));const logical=board.edges.find(e=>e.id===edge.id)!;assert.deepEqual(edge.start,vertexPoints.get(logical.vertexIds[0]));assert.deepEqual(edge.end,vertexPoints.get(logical.vertexIds[1]));}
 });
+
+
+test('expanded 5-6 player island inserts one five-hex column horizontally',()=>{
+ const board=createIslandBoard('expanded-5-6');
+ assert.equal(board.layout,'expanded-5-6');
+ assert.equal(board.hexes.length,24);
+ assert.equal(board.vertices.length,66);
+ assert.equal(board.edges.length,89);
+ assert.equal(board.edges.filter(edge=>edge.hexIds.length===1).length,34);
+ const columns=new Map<number,number>();
+ for(const hex of board.hexes)columns.set(hex.q,(columns.get(hex.q)??0)+1);
+ assert.deepEqual([...columns.entries()], [[-2,3],[-1,4],[0,5],[1,5],[2,4],[3,3]]);
+ assert.deepEqual([3,4,6].map(n=>board.hexes.filter(h=>h.neighborIds.length===n).length),[6,8,10]);
+ assert.deepEqual(createIslandBoard('expanded-5-6'),board);
+ const view=createBoardView(board);
+ assert.equal(view.hexes.length,24);assert.equal(view.vertices.length,66);assert.equal(view.edges.length,89);
+ for(const value of view.viewBox.split(' ').map(Number))assert.ok(Number.isFinite(value));
+});

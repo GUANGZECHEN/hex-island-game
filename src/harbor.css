@@ -1,0 +1,12 @@
+#harbor-panel{padding:.55rem;border:1px solid #96bfc0;background:linear-gradient(150deg,#f4fbf8,#e5f1f3);border-radius:.65rem;min-width:0;color:#203d38;font-size:.76rem}
+#harbor-panel[hidden]{display:none!important}
+#harbor-panel h3{margin:0 0 .4rem;font-size:.92rem;color:#19575c}#harbor-panel h4{font-size:.76rem;margin:.45rem 0 .25rem}
+.harbor-progress{font-weight:850;margin:.3rem 0 .55rem}.harbor-order{background:#fffdf5;border:1px solid #c5d7d2;border-radius:.5rem;padding:.45rem;margin:.4rem 0}
+.harbor-order-heading{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:space-between}.harbor-order-heading span{font-size:.68rem;color:#456e63}.harbor-order-heading .harbor-urgent{color:#a53927;font-weight:900}
+.harbor-order p{margin:.25rem 0;font-size:.7rem}.harbor-cargo{display:flex;gap:.6rem;flex-wrap:wrap;margin:.35rem 0;font-weight:850}.harbor-cargo>span{display:inline-flex;align-items:center;gap:.2rem}.harbor-cargo svg,.harbor-load-controls svg{width:1rem;height:1rem}
+.harbor-load-controls{display:flex;gap:.25rem;flex-wrap:wrap}.harbor-load-controls button{display:inline-flex;align-items:center;gap:.25rem;padding:.3rem .4rem;min-height:36px;background:#fff;border:1px solid #a0bab0;border-radius:.35rem;font-weight:750;color:#254b3b;cursor:pointer}.harbor-load-controls button:hover{background:#ffedb2}
+.harbor-event{font-size:.71rem;color:#315b50}.harbor-result{font-size:.9rem;font-weight:900;padding:.5rem;background:#fff1b6;border-radius:.4rem}#harbor-panel[data-outcome="lost"] .harbor-result{background:#ffe0d4}
+#harbor-panel details{font-size:.71rem}#harbor-panel summary{cursor:pointer;font-weight:800}#local-game-mode,#room-game-mode{max-width:100%;margin:.3rem 0 .55rem}.harbor-port-label{font-size:.2px;font-weight:900;fill:#244d4d;paint-order:stroke;stroke:#fff8dc;stroke-width:.05px;text-anchor:middle}
+@media(max-width:1100px){#harbor-panel{grid-column:1/-1}.board-workspace .board-player-column:has(#harbor-panel:not([hidden])){display:grid;grid-template-columns:1fr 1fr}.board-workspace .board-player-column #player-strip{grid-column:1/-1}.board-workspace .board-player-column #board-ledger{grid-column:1/-1}}
+
+.harbor-station{margin:.4rem 0;padding:.4rem;border:1px solid #76a99a;border-radius:.4rem;background:#f4fbf1}.harbor-station p{font-size:.69rem;margin:.25rem 0}.trade-station-piece{pointer-events:none}

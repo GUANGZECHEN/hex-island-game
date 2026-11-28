@@ -1,0 +1,22 @@
+/* Legal choices stay yellow; only the hovered, focused or pressed choice is orange. */
+#board .game-target-vertex.target-active{fill:#ff981f!important;stroke:#b75c0a!important;stroke-width:.065;opacity:1;filter:none!important}
+#board .game-target-road.target-active{stroke:#ff981f!important;stroke-opacity:1;opacity:1;filter:none!important}
+#board .game-target-city.target-active .game-building-shell{stroke:#ff981f!important;stroke-width:.10;filter:none!important}
+#board .robber-target{cursor:pointer}
+#board .robber-target:focus{outline:none}
+#board .robber-target .island-cell{stroke:#ffd15c;stroke-width:.10;stroke-opacity:.68}
+#board .robber-target.target-active .island-cell{stroke:#ff981f;stroke-width:.11;stroke-opacity:.84}
+#board .robber-target.target-active .island-cell-inset{fill:#ff981f;fill-opacity:.18;stroke:#d56a0f;stroke-width:.05}
+#board [data-target-active="true"]{cursor:pointer}
+
+#board [data-placement-preview]{opacity:.82;pointer-events:none}
+#board .placement-neighbor .terrain-art:not(.wheat-preview-local){opacity:.15}
+#board .placement-neighbor .wheat-preview-local .wheat-preview{opacity:.08}
+
+/* The coastal marker remains upright and actionable when the board is scaled. */
+.pirate-target-ring{fill:transparent;stroke:none;pointer-events:none}
+#board .port-piece.pirate-target{pointer-events:auto;cursor:pointer}
+#board .pirate-target .pirate-target-ring{pointer-events:all;stroke:#ffd15c;stroke-width:.075}
+#board .pirate-target.target-active .pirate-target-ring,
+#board .pirate-target:focus-visible .pirate-target-ring{stroke:#ff981f;stroke-width:.105}
+.pirate-boat{pointer-events:none}
